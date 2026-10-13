@@ -13,14 +13,41 @@ PostGIS). Run commands from `backend/`.
 
 ## Layout
 
-- `cmd/api/`: entry point only (server setup and routing).
+- `cmd/api/`: composition root only (configuration, adapters, and server
+  lifecycle).
 - `internal/`: all domain code.
+- `openapi.yaml`: contract for implemented HTTP routes.
+
+Before adding backend packages or seams, read
+[`docs/architecture/backend.md`](../docs/architecture/backend.md). Capability
+modules are the primary shape. Handler, service, and repository roles do not
+require separate packages, and a Go interface needs real variation rather than
+layering ceremony.
+
+## Planning a session
+
+Every backend session plan follows the
+[architecture guide](../docs/architecture/backend.md) and
+[DevSteps](../DevSteps.md). The guide sets the module shape, and DevSteps sets
+the scope. Each plan must state:
+
+- which capability module owns each new behavior, and where its transactions
+  are owned;
+- any new seam or Go interface, plus the second adapter or real variation
+  that justifies it (otherwise leave it out);
+- the test surface: capability, HTTP, and persistence integration tests;
+- the migrations, `openapi.yaml`, and `AGENTS.md` updates the session needs.
+
+If a plan has to break a rule in the guide, update the guide in the same pull
+request, or record an ADR under `docs/adr/` when the reason is load-bearing.
+Never drift from it silently.
 
 ## Definition of done
 
 - `gofmt -l .` prints nothing.
 - `go vet ./...` and `go test ./...` pass; CI runs the same checks.
 - Every new endpoint ships with a test.
+- The change passes the review checks in the architecture guide.
 
 ## Dependencies
 

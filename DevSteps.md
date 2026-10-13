@@ -228,9 +228,10 @@ Community writes from a `rename_required` Profile return
 `403 profile_suspended` with the expiry when one exists. `DELETE /v1/me`
 remains available in every Profile state.
 
-The database connection is server-owned and may bypass RLS, so service and
-repository queries must enforce API visibility independently. RLS remains
-enabled on every table as defense in depth. Supabase's Data API does not
+The database connection is server-owned and may bypass RLS, so capability
+modules and their persistence implementation must enforce API visibility
+independently. RLS remains enabled on every table as defense in depth.
+Supabase's Data API does not
 provide anonymous product reads or direct product writes; authenticated Users
 may read only their own private rows. The Go API is the sole public product
 contract.
@@ -480,11 +481,11 @@ To tolerate device clock skew, a supplied `visited_at` up to five minutes
 ahead is accepted and stored as the current server time. A value further in
 the future is rejected.
 
-The cooldown check and insert are atomic. The repository transaction acquires
-a transaction-scoped advisory lock derived from the user and venue IDs,
-checks for any existing `visited_at` within the cooldown interval before or
-after the requested visit time, and inserts only when none exists. Concurrent
-requests therefore cannot create duplicate Check-ins.
+The cooldown check and insert are atomic. The Check-in module's transaction
+acquires a transaction-scoped advisory lock derived from the user and venue
+IDs, checks for any existing `visited_at` within the cooldown interval before
+or after the requested visit time, and inserts only when none exists.
+Concurrent requests therefore cannot create duplicate Check-ins.
 
 ### Aggregates
 
@@ -717,11 +718,16 @@ Requests pass through panic recovery, request-ID, and structured logging
 middleware. Protected route groups additionally run JWT authentication and
 require a resolved caller.
 
-Handlers parse path, query, and JSON input and translate domain results into
-HTTP responses. Services enforce validation, visibility, authorship, cooldown,
-and transaction boundaries. Repositories contain SQL and map database records
-to domain values. These layers communicate through narrow interfaces so
-handlers and services can be tested without a database.
+HTTP adapters parse path, query, and JSON input and translate domain results
+into HTTP responses. Capability modules enforce validation, visibility,
+authorship, cooldown, and transaction boundaries. Their private persistence
+implementation contains SQL and maps database records to domain values.
+
+These are implementation roles, not mandatory package layers. A seam is added
+only when behavior actually varies, and its interface stays with the caller.
+The rules for module depth, dependencies, transaction ownership, adapters, and
+testing are in
+[the backend architecture guide](docs/architecture/backend.md).
 
 Expected package responsibilities:
 
@@ -733,7 +739,7 @@ backend/
 │   ├── auth/                # JWT verification and caller identity
 │   ├── config/              # environment parsing and validation
 │   ├── database/            # pgx pool lifecycle
-│   ├── profile/             # profile handler, service, repository
+│   ├── profile/             # Profile capability
 │   ├── venue/               # genre, venue discovery, and submissions
 │   ├── review/              # reviews and rating aggregates
 │   └── checkin/             # check-in rules and persistence
@@ -791,7 +797,7 @@ Every endpoint ships with tests in the same session.
 
 `testcontainers-go` starts a pinned PostGIS image. The harness creates the
 minimal `auth` schema required by migrations, applies every migration from an
-empty database, and then runs repository tests.
+empty database, and then runs persistence integration tests.
 
 Integration coverage includes:
 
@@ -883,9 +889,9 @@ request builder against the running service.
 ### Session 3: Backend foundation
 
 Introduce configuration, `pgx/v5`, database lifecycle, common envelopes,
-middleware, graceful shutdown, and the handler/service/repository seams.
-Preserve `/healthz`, add `/readyz`, and align `go.mod`, CI, container builds,
-and backend guidance on Go 1.23.
+middleware, graceful shutdown, capability-module composition, and only the
+seams justified by real variation. Preserve `/healthz`, add `/readyz`, and
+align `go.mod`, CI, container builds, and backend guidance on Go 1.23.
 
 **Exit condition:** the service starts with validated configuration, exposes
 operational routes, and has reusable infrastructure for feature slices.
@@ -999,8 +1005,11 @@ and deployment configuration is validated without certifying a beta release.
 ## Definition of done for every session
 
 - Work occurs on a `feature/*` branch and targets `dev` by pull request.
+- The session plan and code follow
+  [the backend architecture guide](docs/architecture/backend.md); any
+  deviation updates the guide or adds an ADR in the same pull request.
 - New schema changes use a new numbered migration with RLS and policies.
-- New endpoints have handler, service, and relevant integration coverage.
+- New endpoints have HTTP, capability, and relevant integration coverage.
 - `backend/openapi.yaml` matches implemented behavior and `/docs` renders it.
 - `gofmt -l .` prints nothing.
 - `go vet ./...` and `go test ./...` pass from `backend/`.
