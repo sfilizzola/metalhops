@@ -1,0 +1,25 @@
+# OS / IDE
+.DS_Store
+.idea/
+*.iml
+.vscode/
+
+# Android / Gradle
+.gradle/
+build/
+local.properties
+*.apk
+*.aab
+*.keystore
+*.jks
+
+# iOS / Xcode
+xcuserdata/
+DerivedData/
+Pods/
+
+# Backend / env
+.env
+.env.*
+node_modules/
+*.log
