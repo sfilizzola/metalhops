@@ -23,3 +23,16 @@ Pods/
 .env.*
 node_modules/
 *.log
+
+# Go
+backend/bin/
+*.test
+*.out
+
+# Secrets
+*.pem
+!.env.example
+
+# Supabase local
+infra/supabase/.branches/
+infra/supabase/.temp/
