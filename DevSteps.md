@@ -3,7 +3,7 @@
 MetalHops MVP API roadmap. Refer to this document as **DevSteps** across every implementation session.
 
 **Date:** 2026-10-13
-**Status:** Approved refined design, ready for per-session planning
+**Status:** Sessions 1 and 2 are done. Session 3 is next. Sessions 4–14 are not started.
 
 ## Goal
 
@@ -863,7 +863,16 @@ The Check-in cooldown remains a separate domain rule and returns `409`.
 
 ## Single-session implementation sequence
 
+| Session | Status |
+| --- | --- |
+| 1. Repository boundaries | Done |
+| 2. Browsable API contract | Done |
+| 3. Backend foundation | Next |
+| 4–14 | Not started |
+
 ### Session 1: Repository boundaries
+
+**Status:** Done.
 
 Update the root project map and roadmap to identify `admin/` as a future basic
 moderation web app. Add documentation-only `admin/README.md` and
@@ -873,6 +882,8 @@ moderation web app. Add documentation-only `admin/README.md` and
 admin, and shared infrastructure scopes.
 
 ### Session 2: Browsable API contract
+
+**Status:** Done.
 
 Add the initial OpenAPI 3.1 document, `/openapi.yaml`, and the Scalar `/docs`
 page with its environment switch. Initially document only routes that are
@@ -885,6 +896,8 @@ request builder against the running service.
 
 ### Session 3: Backend foundation
 
+**Status:** Next.
+
 Introduce configuration, `pgx/v5`, database lifecycle, common envelopes,
 middleware, graceful shutdown, capability-module composition, and only the
 seams justified by real variation. Preserve `/healthz`, add `/readyz`, and
@@ -894,6 +907,8 @@ align `go.mod`, CI, container builds, and backend guidance on Go 1.23.
 operational routes, and has reusable infrastructure for feature slices.
 
 ### Session 4: API safety and data boundary
+
+**Status:** Not started.
 
 Add the migration that closes direct public reads and writes through
 Supabase's Data API. Add the shared idempotency-record schema and primitives
@@ -906,6 +921,8 @@ safe, and baseline abuse limits apply before community writes are added.
 
 ### Session 5: Authentication and profiles
 
+**Status:** Not started.
+
 Add JWT/JWKS verification, protected-route middleware, the profile migration,
 base RLS policies, authenticated per-User write limiting, and
 `GET/PATCH/DELETE /v1/me`. This session supports active Profiles only and
@@ -916,6 +933,8 @@ document gains the bearer security scheme on those protected routes.
 invalid tokens fail consistently.
 
 ### Session 6: Profile safety and moderation API
+
+**Status:** Not started.
 
 Add Profile Reports, rename-required and suspended states, public identity
 redaction, moderation audit, expiry behavior, and privileged endpoints that
@@ -929,6 +948,8 @@ identities are not exposed publicly.
 
 ### Session 7: Venue catalogue
 
+**Status:** Not started.
+
 Implement genre listing, verified-venue listing, venue detail, aggregates,
 and cursor pagination without the optional discovery filters.
 
@@ -936,6 +957,8 @@ and cursor pagination without the optional discovery filters.
 detail screen.
 
 ### Session 8: Venue discovery
+
+**Status:** Not started.
 
 Add every approved text, classification, location, and radius filter to the
 venue list endpoint. Add indexes justified by query plans and PostGIS
@@ -947,6 +970,8 @@ filters.
 
 ### Session 9: Venue submissions
 
+**Status:** Not started.
+
 Implement transactional pending submissions, correction of pending
 submissions, strong duplicate prevention, daily quotas, and the caller's
 submission history. Add any migration required to strengthen Venue constraints
@@ -956,6 +981,8 @@ and RLS read policies without editing the initial migration.
 status, and correct it without creating strong duplicates.
 
 ### Session 10: Venue safety and moderation API
+
+**Status:** Not started.
 
 Add rejection feedback, correction of rejected submissions, Venue Reports,
 the Delisted Venue lifecycle, append-only moderation audit, and privileged
@@ -969,6 +996,8 @@ history is retained.
 
 ### Session 11: Reviews and ratings
 
+**Status:** Not started.
+
 Add the review migration, RLS policies, public review list, authenticated
 upsert/delete operations, and venue rating aggregates.
 
@@ -976,6 +1005,8 @@ upsert/delete operations, and venue rating aggregates.
 reviews.
 
 ### Session 12: Review safety and moderation API
+
+**Status:** Not started.
 
 Add Review Reports, commentary restrictions, the append-only moderation audit
 schema, and privileged endpoints for listing and resolving Review Reports,
@@ -988,6 +1019,8 @@ can resolve reports through those endpoints without retaining removed text.
 
 ### Session 13: Check-ins
 
+**Status:** Not started.
+
 Add the check-in migration, RLS policies, cooldown rule, check-in creation,
 personal history, User-only deletion, and venue check-in aggregates.
 
@@ -995,6 +1028,8 @@ personal history, User-only deletion, and venue check-in aggregates.
 without duplicate Check-in spam, and a User can remove an incorrect Check-in.
 
 ### Session 14: API completion and admin handoff
+
+**Status:** Not started.
 
 Run cross-feature integration scenarios, verify migration-from-empty and RLS,
 close OpenAPI example gaps, confirm error and pagination edge cases, validate
