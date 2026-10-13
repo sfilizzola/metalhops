@@ -7,5 +7,5 @@ single API contract keeps visibility, moderation, validation, and audit rules
 consistent across clients. RLS denies anonymous product access and direct
 product writes as defense in depth; authenticated author-only private reads
 may remain.
-Operator SQL runbooks are a temporary moderation bridge and must be retired as
-privileged Go API workflows become available.
+Moderation is performed only through privileged Go API workflows, and there is
+no operator SQL bridge.
