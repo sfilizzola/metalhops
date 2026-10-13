@@ -1,6 +1,7 @@
 package main
 
 import (
+	_ "embed"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -11,10 +12,29 @@ import (
 	"github.com/metalhops/metalhops/backend"
 )
 
-func newMux() *http.ServeMux {
+//go:embed docs.html
+var docsHTML []byte
+
+const docsCSP = "default-src 'none'; script-src https://cdn.jsdelivr.net; style-src 'unsafe-inline'; font-src https://fonts.scalar.com; img-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'"
+
+func docsUIEnabled(value string) (bool, error) {
+	switch value {
+	case "", "true":
+		return true, nil
+	case "false":
+		return false, nil
+	default:
+		return false, fmt.Errorf("DOCS_UI_ENABLED must be true, false, or empty")
+	}
+}
+
+func newMux(docsEnabled bool) *http.ServeMux {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", healthHandler)
 	mux.HandleFunc("GET /openapi.yaml", openAPIHandler)
+	if docsEnabled {
+		mux.HandleFunc("GET /docs", docsHandler)
+	}
 	return mux
 }
 
@@ -28,15 +48,10 @@ func openAPIHandler(w http.ResponseWriter, _ *http.Request) {
 	_, _ = w.Write(contract.OpenAPI)
 }
 
-func docsUIEnabled(value string) (bool, error) {
-	switch value {
-	case "", "true":
-		return true, nil
-	case "false":
-		return false, nil
-	default:
-		return false, fmt.Errorf("DOCS_UI_ENABLED must be true, false, or empty")
-	}
+func docsHandler(w http.ResponseWriter, _ *http.Request) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Content-Security-Policy", docsCSP)
+	_, _ = w.Write(docsHTML)
 }
 
 func main() {
@@ -45,9 +60,14 @@ func main() {
 		port = "8080"
 	}
 
+	docsEnabled, err := docsUIEnabled(os.Getenv("DOCS_UI_ENABLED"))
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	srv := &http.Server{
 		Addr:              ":" + port,
-		Handler:           newMux(),
+		Handler:           newMux(docsEnabled),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 

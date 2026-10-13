@@ -13,7 +13,7 @@ func TestHealthz(t *testing.T) {
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
 
-	newMux().ServeHTTP(rec, req)
+	newMux(false).ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected status 200, got %d", rec.Code)
@@ -27,7 +27,7 @@ func TestOpenAPI(t *testing.T) {
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/openapi.yaml", nil)
 
-	newMux().ServeHTTP(rec, req)
+	newMux(false).ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected status 200, got %d", rec.Code)
@@ -48,6 +48,56 @@ func TestOpenAPI(t *testing.T) {
 		if strings.Contains(body, banned) {
 			t.Fatalf("contract contains %q", banned)
 		}
+	}
+}
+
+func TestDocsEnabled(t *testing.T) {
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/docs", nil)
+
+	newMux(true).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", rec.Code)
+	}
+	if got := rec.Header().Get("Content-Type"); got != "text/html; charset=utf-8" {
+		t.Fatalf("content type %q", got)
+	}
+	const csp = "default-src 'none'; script-src https://cdn.jsdelivr.net; style-src 'unsafe-inline'; font-src https://fonts.scalar.com; img-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'"
+	if got := rec.Header().Get("Content-Security-Policy"); got != csp {
+		t.Fatalf("csp %q", got)
+	}
+	body := rec.Body.String()
+	for _, want := range []string{
+		"https://cdn.jsdelivr.net/npm/@scalar/api-reference@1.74.0/esm.js",
+		"sha384-fQ9g3BzMsV0YRs+bFQN9Vwro31LlcOIAb3WgtmfR5wFk1gfp1A9vjMaWtrr0i8H6",
+		`data-url="/openapi.yaml"`,
+		`crossorigin="anonymous"`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("missing %q", want)
+		}
+	}
+	for _, banned := range []string{"proxy", "registry.scalar.com"} {
+		if strings.Contains(body, banned) {
+			t.Fatalf("docs page contains %q", banned)
+		}
+	}
+}
+
+func TestDocsDisabled(t *testing.T) {
+	mux := newMux(false)
+
+	docs := httptest.NewRecorder()
+	mux.ServeHTTP(docs, httptest.NewRequest(http.MethodGet, "/docs", nil))
+	if docs.Code != http.StatusNotFound {
+		t.Fatalf("expected status 404, got %d", docs.Code)
+	}
+
+	spec := httptest.NewRecorder()
+	mux.ServeHTTP(spec, httptest.NewRequest(http.MethodGet, "/openapi.yaml", nil))
+	if spec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", spec.Code)
 	}
 }
 
