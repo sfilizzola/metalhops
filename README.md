@@ -18,7 +18,9 @@ The idea came from a trip to Indústria/Düsseldorf for a System of a Down show,
 
 - **Community-powered database** of rock and metal bars, pubs, and venues worldwide.
 - **Self-submit model:** users can add new places, and bar owners can submit and claim their own listings.
-- **Verification layer:** submissions are reviewed or verified before being fully trusted on the map.
+- **Verification layer:** submissions are reviewed before becoming Verified
+  Venues in the public catalogue. Verification confirms catalogue eligibility
+  and does not imply owner involvement.
 - **Rankings and ratings** for each place, by city, region, and genre.
 
 ## Planned Features
@@ -37,7 +39,7 @@ The idea came from a trip to Indústria/Düsseldorf for a System of a Down show,
 ### Community
 - Check-ins and ratings, in the spirit of Untappd
 - Leaderboards and rankings by city, country, and genre
-- Verified-venue badge for owner-submitted and confirmed listings
+- Verified-Venue badge for moderator-approved catalogue listings
 - Moderation and reporting tools
 
 ### Stretch Ideas
@@ -52,7 +54,9 @@ The idea came from a trip to Indústria/Düsseldorf for a System of a Down show,
 3. **Native Android (Kotlin) MVP:** GPS and maps are core features, so we build natively from day one.
 4. **Validate:** grow the venue database and gather feedback from the scene.
 5. **Native iOS (Swift) later:** reuse the same API once Android proves the concept.
-6. **Optional web:** a small landing page and moderation/admin panel, only if needed.
+6. **Admin web app:** build moderation as a separate basic frontend after the
+   core API. It will use privileged Go API endpoints; choose its framework and
+   moderation contract in its own design cycle.
 
 The project is deliberately scoped to need **less constant dedication**, making it a good fit for a small team contributing part-time.
 
@@ -71,7 +75,10 @@ The project is deliberately scoped to need **less constant dedication**, making 
         Auth · Storage
 ```
 
-The apps authenticate with Supabase Auth and send the resulting JWT to the Go API, which verifies it. Simple reads can go straight to Supabase (protected by row-level security); anything with business rules goes through the Go API.
+The apps authenticate with Supabase Auth and send the resulting JWT to the Go
+API, which verifies it. All product data goes through the Go API so every
+client uses the same contract and visibility rules. Supabase row-level
+security remains enabled as defense in depth.
 
 ## Technical Direction
 
@@ -93,7 +100,7 @@ Suggested libraries and tooling:
 | Router | Standard library `net/http` (Go 1.22+) or `chi` |
 | Database access | `pgx` + `sqlc` (type-safe queries) |
 | Migrations | `goose` or Supabase migrations |
-| API contract | OpenAPI, with generated Kotlin and Swift clients |
+| API contract | OpenAPI; each mobile project chooses whether to generate a client |
 | Auth | Verify Supabase JWTs in middleware |
 | Integration tests | `testcontainers-go` against real Postgres/PostGIS |
 
@@ -129,8 +136,10 @@ Free-tier caveats to watch (verify on Supabase's pricing page):
 ### Supporting Services
 
 - **Venue data seeding:** OpenStreetMap / Overpass API to bootstrap the database
-- **CI/CD:** GitHub Actions (test, lint, build; Render auto-deploys from `main`)
-- **Backups:** scheduled `pg_dump` to storage we control, since free-tier backups are limited
+- **CI/CD:** GitHub Actions tests and validates migrations; protected releases
+  apply migrations before triggering the Render deployment
+- **Backups:** rely on the Supabase plan for the MVP; design owned backups and
+  restore drills before public beta
 
 ## Roadmap
 
@@ -153,6 +162,7 @@ Free-tier caveats to watch (verify on Supabase's pricing page):
 | `android/` | Android app (Kotlin) |
 | `ios/` | iOS app (future) |
 | `backend/` | Go API |
+| `admin/` | Moderation web app (future) |
 | `docs/` | Product, architecture and API docs |
 | `design/` | Wireframes and assets |
 | `infra/` | Supabase migrations and Render config |
