@@ -151,8 +151,9 @@ Free-tier caveats to watch (verify on Supabase's pricing page):
 - [ ] Go API on Render: JWT verification, venues, nearby search, reviews
 - [ ] Seed venue data from OpenStreetMap
 - [ ] Android MVP: map, venue pages, submissions, ratings
-- [ ] Verification and moderation flow
+- [ ] Operator moderation through the SQL runbook, as part of the API roadmap ([DevSteps](DevSteps.md))
 - [ ] Android beta (Google Play internal/closed testing)
+- [ ] Admin web app, in its own design cycle after the API
 - [ ] iOS app (Swift / SwiftUI)
 
 ## Repository Structure
