@@ -1,4 +1,6 @@
-# MetalHops MVP API roadmap
+# DevSteps
+
+MetalHops MVP API roadmap. Refer to this document as **DevSteps** across every implementation session.
 
 **Date:** 2026-10-13
 **Status:** Approved refined design, ready for per-session planning
@@ -75,7 +77,7 @@ Android signs users in directly with Supabase Auth. It sends the resulting
 bearer token to the Go API, and all product data flows through that API.
 Android does not query Supabase tables directly.
 This boundary is recorded in
-[ADR 0001](../../adr/0001-product-data-through-go-api.md).
+[ADR 0001](docs/adr/0001-product-data-through-go-api.md).
 
 ```text
 Android app
