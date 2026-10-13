@@ -7,12 +7,14 @@ MetalHops MVP API roadmap. Refer to this document as **DevSteps** across every i
 
 ## Goal
 
-Deliver the complete Go API needed by the first Android MVP through a sequence
-of small, independently reviewable sessions. Each session must leave the API
+Deliver the complete Go API, including the user-facing contract and the
+permanent privileged moderation endpoints, through a sequence of small,
+independently reviewable sessions. Each session must leave the API
 working, tested, and documented so a new session can continue without relying
 on unstated context.
 
-This roadmap ends at a developer-ready API and Android handoff. Certifying a
+This roadmap ends as an admin-ready API. The admin app is the next project,
+and the Android client starts only after that app exists. Certifying a
 Google Play internal, closed, or public beta is a later cross-stack milestone.
 
 The MVP lets a person discover verified rock and metal venues, maintain a
@@ -38,6 +40,7 @@ that only hosts occasional relevant events is outside the MVP catalogue.
 - One editable Review per user and Venue, with a required rating and optional
   commentary.
 - Authenticated Review reporting for harmful commentary.
+- Privileged endpoints for Profile, Venue, and Review moderation decisions.
 - Repeatable check-ins protected by a server-side cooldown.
 - A browsable OpenAPI contract with an interactive web UI.
 
@@ -45,15 +48,13 @@ that only hosts occasional relevant events is outside the MVP catalogue.
 
 - Venue and review photos.
 - Owner claims and owner-managed listings. In the future, a Verified Venue
-  Owner may temporarily hide Review commentary for Platform Moderator review,
+  Owner may hide Review commentary until a Platform Moderator reviews it,
   but cannot hide or change its rating or make a final moderation decision.
 - Rankings, leaderboards, badges, and achievements.
 - Social graphs and activity feeds.
 - Advanced venue attributes such as vibe, drinks, food, darts, pool, live
   music, and outdoor seating.
-- Moderation decision endpoints and the moderation UI. Venue- and
-  Review-report intake are included, but operators process both queues through
-  the temporary SQL runbook.
+- The moderation UI, which belongs to the admin app.
 - OpenStreetMap catalogue import, which remains a separate post-API project.
 - Generated Kotlin or Swift clients; each mobile design cycle chooses its
   client strategy from the published OpenAPI contract.
@@ -61,15 +62,13 @@ that only hosts occasional relevant events is outside the MVP catalogue.
   available in its Supabase plan and revisits this before public beta.
 - Beta rollout, production launch certification, and store submission.
 
-Moderation is a separate basic web application under a future `admin/` stack.
-This roadmap creates only `admin/README.md` and `admin/AGENTS.md` so the
-boundary is visible. Its framework, API needs, and implementation require a
-separate design cycle. The future admin frontend will use privileged endpoints
-in this Go API, not direct Supabase access or a separate backend. Until that
-project exists, operator-only SQL runbooks cover moderation without adding
-temporary HTTP endpoints; the admin project retires those runbooks as each
-workflow moves behind the API. The version-controlled bridge lives at
-`docs/operations/moderation.md`.
+Moderation is a separate basic web application under `admin/`. This roadmap
+does not build that app or choose its framework. The app calls privileged
+endpoints on this Go API, not direct Supabase access or a separate backend.
+Operator actions are those privileged endpoints. A caller who is not an
+operator receives the existing `403`. Each session that adds one of these
+endpoints names how that rule recognizes an operator, and this roadmap does
+not add an operator-provisioning model.
 
 ## Architecture
 
@@ -269,8 +268,8 @@ operator User references to null.
 A new Venue Submission starts as `pending`. Moderation can move it to
 `verified` or `rejected`. A Verified Venue can later move to `delisted` and
 back to `verified`; a Delisted Venue is retained but hidden from public
-discovery. Moderation transitions are performed through the temporary runbook
-until the admin project exists.
+discovery. Moderation transitions are performed through privileged moderation
+endpoints.
 A rejected submission carries:
 
 - `rejection_reason`, constrained to `duplicate`, `not_eligible`,
@@ -312,15 +311,14 @@ report per User and Venue. Reports are private and never alter Venue
 visibility automatically. The MVP acknowledges submission but exposes no
 report-history or resolution-status endpoint.
 
-Before the admin project is available, trusted operators perform the
-`pending` to `verified` or `rejected` transition through a version-controlled
-SQL runbook. The runbook uses a transaction, enforces the same rejection
-invariants, appends the moderation action, and requires the operator and one
-submission to be identified explicitly. It also lists pending Venue Reports,
-supports correcting a Verified Venue or moving it to/from `delisted`, and
-atomically resolves each handled report. A moderation action marks all pending
-Reports for that Venue as `actioned`; reports without an action are dismissed
-individually.
+Trusted operators perform the `pending` to `verified` or `rejected` transition
+through a privileged moderation endpoint. The endpoint uses a transaction,
+enforces the same rejection invariants, appends the moderation action, and
+requires the operator and one submission to be identified explicitly. It also
+lists pending Venue Reports, supports correcting a Verified Venue or moving it
+to or from `delisted`, and atomically resolves each handled report. A
+moderation action marks all pending Reports for that Venue as `actioned`;
+reports without an action are dismissed individually.
 
 Creation and correction reject a strong Duplicate Venue Submission before
 writing. A strong match has the same normalized name and lies within 100
@@ -387,9 +385,9 @@ Users cannot report themselves.
 suspensions, renames, restorations, actor type (`operator`, `user`, or
 `system`), nullable actor User ID, reason/note, and timestamp. A User's
 compliant rename and automatic suspension expiry append restoration actions.
-The operator runbook lists pending Profile Reports and resolves them
-atomically with any moderation action. Report submission does not alter the
-target Profile, and the MVP exposes no report-history endpoint.
+A privileged moderation endpoint lists pending Profile Reports and resolves
+them atomically with any moderation action. Report submission does not alter
+the target Profile, and the MVP exposes no report-history endpoint.
 A moderation action marks all pending Reports for that Profile as `actioned`;
 reports without an action are dismissed individually.
 
@@ -451,14 +449,13 @@ commentary, do not change public visibility, and are private to the reporter
 and Platform Moderators.
 The MVP exposes no report-history or resolution-status endpoint.
 
-Until the admin project exists, the operator SQL runbook supports two atomic
-actions: clear and lock commentary while preserving the rating, or record the
-action and delete the entire Review. Both actions require a reason and
-operator User ID and create the User–Venue commentary restriction. The
-runbook also lists pending Review Reports and atomically marks each handled
-report as `actioned` or `dismissed`. A moderation action marks all pending
-Reports for that Review as `actioned`; reports without an action are dismissed
-individually.
+Privileged moderation endpoints support two atomic actions: clear and lock
+commentary while preserving the rating, or record the action and delete the
+entire Review. Both actions require a reason and operator User ID and create
+the User–Venue commentary restriction. The endpoints also list pending Review
+Reports and atomically mark each handled report as `actioned` or `dismissed`.
+A moderation action marks all pending Reports for that Review as `actioned`;
+reports without an action are dismissed individually.
 
 ### Check-ins
 
@@ -814,7 +811,7 @@ Integration coverage includes:
 - Commentary removal locks, full Review deletion, structured moderation
   reasons, and append-only audit records that never retain removed text.
 - Review-report uniqueness, privacy, idempotency, and report resolution
-  through the operator runbook.
+  through the privileged moderation API.
 - Check-in cooldown queries.
 - User deletion cascades private contributions while retaining Venue
   Submissions with a null Submitter.
@@ -917,15 +914,17 @@ implements the agreed contribution retention for User deletion.
 **Exit condition:** valid Supabase identities can maintain a profile while
 invalid tokens fail consistently.
 
-### Session 6: Profile safety and moderation bridge
+### Session 6: Profile safety and moderation API
 
 Add Profile Reports, rename-required and suspended states, public identity
-redaction, moderation audit, expiry behavior, and the temporary operator SQL
-runbook.
+redaction, moderation audit, expiry behavior, and privileged endpoints that
+list and resolve Profile Reports and apply rename-required and suspension
+actions. The session plan names the routes and how the existing `403` rule
+recognizes an operator. Do not add an operator-provisioning model.
 
 **Exit condition:** Users can report unsafe Profiles, operators can require a
-rename or suspend community writes, and moderated identities are not exposed
-publicly.
+rename or suspend community writes through those endpoints, and moderated
+identities are not exposed publicly.
 
 ### Session 7: Venue catalogue
 
@@ -955,14 +954,17 @@ and RLS read policies without editing the initial migration.
 **Exit condition:** a signed-in User can submit a Venue, track its pending
 status, and correct it without creating strong duplicates.
 
-### Session 10: Venue safety and moderation bridge
+### Session 10: Venue safety and moderation API
 
 Add rejection feedback, correction of rejected submissions, Venue Reports,
-the Delisted Venue lifecycle, append-only moderation audit, and the temporary
-operator SQL runbook. Do not add a moderation decision endpoint.
+the Delisted Venue lifecycle, append-only moderation audit, and privileged
+endpoints that verify, reject, correct, or delist Venues and resolve Venue
+Reports. The session plan names the routes and how the existing `403` rule
+recognizes an operator. Do not add an operator-provisioning model.
 
-**Exit condition:** operators can verify, reject, correct, or delist Venues;
-Users can report Verified Venue problems; catalogue history is retained.
+**Exit condition:** operators can verify, reject, correct, or delist Venues
+through those endpoints; Users can report Verified Venue problems; catalogue
+history is retained.
 
 ### Session 11: Reviews and ratings
 
@@ -972,14 +974,16 @@ upsert/delete operations, and venue rating aggregates.
 **Exit condition:** Android can display, create, edit, and delete ratings and
 reviews.
 
-### Session 12: Review safety and moderation bridge
+### Session 12: Review safety and moderation API
 
 Add Review Reports, commentary restrictions, the append-only moderation audit
-schema, and the operator SQL runbook for queue processing, commentary removal,
-or full Review deletion.
+schema, and privileged endpoints for listing and resolving Review Reports,
+clearing and locking commentary, or deleting the Review. The session plan
+names the routes and how the existing `403` rule recognizes an operator. Do
+not add an operator-provisioning model.
 
 **Exit condition:** Users can report unsafe commentary, and trusted operators
-can resolve reports without an admin UI or retaining removed text.
+can resolve reports through those endpoints without retaining removed text.
 
 ### Session 13: Check-ins
 
@@ -989,18 +993,20 @@ personal history, User-only deletion, and venue check-in aggregates.
 **Exit condition:** Android can record visits and show the user's history
 without duplicate Check-in spam, and a User can remove an incorrect Check-in.
 
-### Session 14: API completion and Android handoff
+### Session 14: API completion and admin handoff
 
 Run cross-feature integration scenarios, verify migration-from-empty and RLS,
 close OpenAPI example gaps, confirm error and pagination edge cases, validate
 the migration-before-deploy release workflow and Render configuration,
-document Android request flows, and document the account-deletion flow needed
-for Google Play disclosure and support pages.
-Do not generate or commit mobile client code.
+document the user-facing and moderation request flows, and document the
+account-deletion flow needed for later Google Play disclosure and support
+pages.
+Do not generate or commit client code, and do not start the admin app.
 
 **Exit condition:** formatting, vet, unit tests, integration tests, migration
-tests, and build all pass; the OpenAPI contract describes the runnable API,
-and deployment configuration is validated without certifying a beta release.
+tests, and build all pass; the OpenAPI contract describes the runnable user
+and moderation routes, and deployment configuration is validated without
+certifying a beta release.
 
 ## Definition of done for every session
 
@@ -1019,8 +1025,7 @@ and deployment configuration is validated without certifying a beta release.
 
 ## Success criteria
 
-After Session 14, the Android team can build every core MVP user journey
-against the documented API without direct database access or undocumented
-backend behavior. Each roadmap session is independently understandable,
-testable, and reviewable, and moderation remains cleanly separated for its own
-future design and implementation cycle.
+After Session 14, the admin project can be designed and built against the
+documented API, including moderation. The Android client starts only after
+the admin app exists. Each roadmap session is independently understandable,
+testable, and reviewable. Moderation has no temporary path.
