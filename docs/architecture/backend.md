@@ -339,5 +339,8 @@ The repository intentionally begins smaller than this target:
   product clients are built.
 - legacy JWT-secret configuration remains until the authentication session
   introduces asymmetric verification.
+- `backend/contract.go` embeds `openapi.yaml` because `go:embed` cannot
+  reference a parent directory. The backend-foundation session moves that
+  embed with the HTTP routes.
 
 These are named migration steps, not patterns to copy into new code.

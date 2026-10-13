@@ -11,3 +11,5 @@ services:
         sync: false
       - key: SUPABASE_JWT_SECRET
         sync: false
+      - key: DOCS_UI_ENABLED
+        value: "false"

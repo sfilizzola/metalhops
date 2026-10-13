@@ -24,6 +24,16 @@ modules are the primary shape. Handler, service, and repository roles do not
 require separate packages, and a Go interface needs real variation rather than
 layering ceremony.
 
+## Documentation routes
+
+`GET /openapi.yaml` serves the embedded `openapi.yaml` in every environment.
+`GET /docs` serves the Scalar page when `DOCS_UI_ENABLED` is unset or `true`.
+The exact value `false` leaves `/docs` unregistered. Any other value stops
+the process at startup. Local `.env.example` sets `true`. Render sets `false`.
+
+Both routes live in `cmd/api` until Session 3 moves HTTP behavior. The
+contract embed is `backend/contract.go`.
+
 ## Planning a session
 
 Every backend session plan follows the
