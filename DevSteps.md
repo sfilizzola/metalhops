@@ -754,10 +754,10 @@ Session 2 introduces browser navigation before product endpoints are built.
 than a floating `latest` tag. The page pins an integrity hash and sends a
 Content Security Policy limited to the required same-origin and CDN resources.
 
-The OpenAPI security scheme accepts Supabase bearer tokens. Developers can
-authorize once in the page and exercise protected endpoints. The contract
-contains realistic request and response examples, but no real credentials or
-production hostnames.
+The contract documents only implemented routes. Session 2 has no protected
+routes, so it declares no bearer security scheme. The authentication session
+adds that scheme when the first protected route exists. Examples contain no
+real credentials or production hostnames.
 
 The API remains functional if the CDN is unavailable; only the interactive
 page fails to load. `/openapi.yaml` remains locally available. Self-hosting
@@ -909,7 +909,8 @@ safe, and baseline abuse limits apply before community writes are added.
 Add JWT/JWKS verification, protected-route middleware, the profile migration,
 base RLS policies, authenticated per-User write limiting, and
 `GET/PATCH/DELETE /v1/me`. This session supports active Profiles only and
-implements the agreed contribution retention for User deletion.
+implements the agreed contribution retention for User deletion. The OpenAPI
+document gains the bearer security scheme on those protected routes.
 
 **Exit condition:** valid Supabase identities can maintain a profile while
 invalid tokens fail consistently.

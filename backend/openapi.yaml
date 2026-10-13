@@ -1,0 +1,26 @@
+openapi: 3.1.0
+info:
+  title: MetalHops API
+  version: 0.1.0
+  description: Routes the running API implements.
+servers:
+  - url: http://localhost:8080
+paths:
+  /healthz:
+    get:
+      operationId: getHealth
+      summary: Process health
+      responses:
+        "200":
+          description: The process is running.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [status]
+                properties:
+                  status:
+                    const: ok
+              example:
+                status: ok
