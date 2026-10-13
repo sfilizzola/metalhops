@@ -10,6 +10,7 @@ the rules below are what to follow.
 | --- | --- | --- |
 | `backend/` | Go REST API (Render) | Active |
 | `android/` | Kotlin, Jetpack Compose app | Not started |
+| `admin/` | Moderation web app; documentation only until its own design cycle | Not started |
 | `infra/` | Supabase migrations, Render blueprint | Shared |
 | `.github/workflows/` | CI | Shared |
 
@@ -30,6 +31,7 @@ Read that folder's `AGENTS.md` first:
 
 - `backend/AGENTS.md`
 - `android/AGENTS.md`
+- `admin/AGENTS.md`
 
 ## Repo-wide rules
 
