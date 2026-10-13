@@ -50,35 +50,33 @@ The idea came from a trip to Indústria/Düsseldorf for a System of a Down show,
 ## Product Approach
 
 1. **Supabase as the foundation:** managed Postgres + PostGIS, auth, and storage at $0 to start.
-2. **Go API on Render:** custom business logic (verification, moderation, rankings) lives in a Go service, so Android and iOS share the same rules.
-3. **Native Android (Kotlin) MVP:** GPS and maps are core features, so we build natively from day one.
-4. **Validate:** grow the venue database and gather feedback from the scene.
-5. **Native iOS (Swift) later:** reuse the same API once Android proves the concept.
-6. **Admin web app:** build moderation as a separate basic frontend after the
-   core API. It will use privileged Go API endpoints; choose its framework and
-   moderation contract in its own design cycle.
+2. **Go API on Render:** custom business logic (verification, moderation, and rankings) lives in a Go service, so the admin app, Android, and iOS share one contract. Moderation rules are permanent privileged endpoints.
+3. **Admin web app:** build it in its own design cycle, calling the privileged Go API endpoints.
+4. **Native Android client:** build it after the admin app exists. GPS and maps are core features, so Android is native.
+5. **Validate:** grow the venue database and gather feedback from the scene.
+6. **Native iOS (Swift) later:** reuse the same API once Android proves the concept.
 
 The project is deliberately scoped to need **less constant dedication**, making it a good fit for a small team contributing part-time.
 
 ## Architecture
 
-```
-┌──────────────┐   ┌──────────────┐
-│ Android app  │   │   iOS app    │   (later)
-│ Kotlin       │   │ Swift        │
-└──────┬───────┘   └──────┬───────┘
-       └────────┬─────────┘
-                ▼
-     Go REST API (Render)
-                ▼
-  Supabase: PostgreSQL + PostGIS
-        Auth · Storage
+```text
+┌──────────────┐   ┌──────────────┐   ┌──────────────┐
+│  Admin app   │   │ Android app  │   │   iOS app    │
+│              │   │ (after admin)│   │   (later)    │
+└──────┬───────┘   └──────┬───────┘   └──────┬───────┘
+       └──────────────────┼──────────────────┘
+                          ▼
+               Go REST API (Render)
+                          ▼
+        Supabase: PostgreSQL + PostGIS
+              Auth · Storage
 ```
 
-The apps authenticate with Supabase Auth and send the resulting JWT to the Go
-API, which verifies it. All product data goes through the Go API so every
-client uses the same contract and visibility rules. Supabase row-level
-security remains enabled as defense in depth.
+The admin app, Android, and iOS authenticate with Supabase Auth and send the
+resulting JWT to the Go API, which verifies it. All product data goes through
+the Go API so every client uses the same contract and visibility rules.
+Supabase row-level security remains enabled as defense in depth.
 
 ## Technical Direction
 
@@ -148,12 +146,11 @@ Free-tier caveats to watch (verify on Supabase's pricing page):
 - [ ] Data model: venues, reviews, genres, users
 - [ ] Supabase project: schema, PostGIS, auth, RLS policies
 - [ ] Repo setup, tooling, and CI (monorepo: `backend/` (Go), `android/`, later `ios/`)
-- [ ] Go API on Render: JWT verification, venues, nearby search, reviews
+- [ ] Go API on Render, including privileged moderation endpoints ([DevSteps](DevSteps.md))
+- [ ] Admin web app, in its own design cycle
 - [ ] Seed venue data from OpenStreetMap
-- [ ] Android MVP: map, venue pages, submissions, ratings
-- [ ] Operator moderation through the SQL runbook, as part of the API roadmap ([DevSteps](DevSteps.md))
+- [ ] Android client: map, venue pages, submissions, ratings
 - [ ] Android beta (Google Play internal/closed testing)
-- [ ] Admin web app, in its own design cycle after the API
 - [ ] iOS app (Swift / SwiftUI)
 
 ## Repository Structure
