@@ -4,6 +4,9 @@
 *.iml
 .vscode/
 
+# Local git worktrees
+.worktrees/
+
 # Android / Gradle
 .gradle/
 build/
