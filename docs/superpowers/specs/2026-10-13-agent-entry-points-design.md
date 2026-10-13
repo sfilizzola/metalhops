@@ -81,7 +81,8 @@ Target: under about 60 lines, because both tools load it every session.
 5. **Before working in a stack:** read that folder's `AGENTS.md`.
 6. **Repo-wide rules:** `feature/*` branches merge into `dev` by pull request;
    never commit secrets (`.env` stays local, `.env.example` is the template);
-   follow `.editorconfig`.
+   follow `.editorconfig`; write commands with plain tools, never personal
+   CLI wrappers or aliases.
 
 ### `backend/AGENTS.md`
 
@@ -97,7 +98,7 @@ Target: under about 60 lines, because both tools load it every session.
    options to propose, not defaults.
 5. **Shared paths backend work may change:**
    - `infra/supabase/migrations/`: add a new numbered file; never edit a
-     migration that has been applied. Every new table enables row-level
+     migration that is already on `dev` or `main`. Every new table enables row-level
      security and defines its policies in the same migration.
    - `infra/render.yaml`
    - `.github/workflows/backend.yml`

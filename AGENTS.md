@@ -38,5 +38,7 @@ Read that folder's `AGENTS.md` first:
 - Never commit secrets. `.env` files stay local; `.env.example` is the
   template.
 - Follow `.editorconfig`.
+- Write commands in project files with plain tools (`make`, `go`, `git`),
+  never personal CLI wrappers or aliases; contributors may not have them.
 - Keep these agent files current: when a command, path, or rule changes,
   update the matching `AGENTS.md` in the same pull request.

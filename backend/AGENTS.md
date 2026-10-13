@@ -33,8 +33,9 @@ PostGIS). Run commands from `backend/`.
 ## Shared paths backend work may change
 
 - `infra/supabase/migrations/`: add a new numbered file (`0002_<name>.sql`,
-  and so on). Never edit a migration that has been applied. Every new table
-  enables row-level security and defines its policies in the same migration.
+  and so on). Never edit a migration that is already on `dev` or `main`; add
+  a new one instead. Every new table enables row-level security and defines
+  its policies in the same migration.
 - `infra/render.yaml`: Render blueprint for this service.
 - `.github/workflows/backend.yml`: backend CI.
 
