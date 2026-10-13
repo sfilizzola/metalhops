@@ -1,7 +1,7 @@
 # No interim moderation bridge
 
 **Date:** 2026-10-13
-**Status:** Approved design, not yet implemented
+**Status:** Implemented
 
 ## Goal
 
