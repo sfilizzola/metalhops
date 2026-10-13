@@ -59,7 +59,7 @@ Out of scope for now:
 - `.cursor/rules/`: add `.cursor/rules/backend.mdc` (pointing to
   `backend/AGENTS.md`) only if verification shows Cursor missing the nested
   guide.
-- `ios/`: the folder does not exist yet.
+- An `ios/` guide: the folder holds only a placeholder until iOS work starts.
 - An `infra/` guide: the backend guide covers which `infra/` paths backend
   work may change.
 - `android/CLAUDE.md`: added when Android work starts.
