@@ -50,3 +50,27 @@ func TestOpenAPI(t *testing.T) {
 		}
 	}
 }
+
+func TestDocsUIEnabled(t *testing.T) {
+	ok, err := docsUIEnabled("")
+	if err != nil || !ok {
+		t.Fatalf("empty: enabled=%v err=%v", ok, err)
+	}
+	ok, err = docsUIEnabled("true")
+	if err != nil || !ok {
+		t.Fatalf("true: enabled=%v err=%v", ok, err)
+	}
+	ok, err = docsUIEnabled("false")
+	if err != nil || ok {
+		t.Fatalf("false: enabled=%v err=%v", ok, err)
+	}
+	for _, value := range []string{"TRUE", "1", " true"} {
+		enabled, gotErr := docsUIEnabled(value)
+		if gotErr == nil || enabled {
+			t.Fatalf("%q: enabled=%v err=%v", value, enabled, gotErr)
+		}
+		if gotErr.Error() != "DOCS_UI_ENABLED must be true, false, or empty" {
+			t.Fatalf("%q error %q", value, gotErr.Error())
+		}
+	}
+}

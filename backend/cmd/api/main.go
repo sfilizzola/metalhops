@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -25,6 +26,17 @@ func healthHandler(w http.ResponseWriter, _ *http.Request) {
 func openAPIHandler(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "application/yaml")
 	_, _ = w.Write(contract.OpenAPI)
+}
+
+func docsUIEnabled(value string) (bool, error) {
+	switch value {
+	case "", "true":
+		return true, nil
+	case "false":
+		return false, nil
+	default:
+		return false, fmt.Errorf("DOCS_UI_ENABLED must be true, false, or empty")
+	}
 }
 
 func main() {
