@@ -1,9 +1,12 @@
 package config
 
 import (
+	"bufio"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
+	"strings"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -78,8 +81,52 @@ func parseDocs(value string) (bool, error) {
 }
 
 func readEnvFile(dir string) (map[string]string, error) {
-	if dir == "" {
-		return nil, fmt.Errorf("read .env")
+	path := filepath.Join(dir, ".env")
+	file, err := os.Open(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return map[string]string{}, nil
+		}
+		return nil, fmt.Errorf("read %s: %v", path, err)
 	}
-	return map[string]string{}, nil
+	defer file.Close()
+
+	values := map[string]string{}
+	scanner := bufio.NewScanner(file)
+	lineNo := 0
+	for scanner.Scan() {
+		lineNo++
+		key, value, skip, err := parseEnvLine(scanner.Text())
+		if err != nil {
+			return nil, fmt.Errorf(".env line %d is malformed", lineNo)
+		}
+		if skip {
+			continue
+		}
+		values[key] = value
+	}
+	if err := scanner.Err(); err != nil {
+		return nil, fmt.Errorf("read %s: %v", path, err)
+	}
+	return values, nil
+}
+
+func parseEnvLine(line string) (key, value string, skip bool, err error) {
+	if strings.TrimSpace(line) == "" {
+		return "", "", true, nil
+	}
+	trimmed := strings.TrimLeft(line, " \t")
+	if strings.HasPrefix(trimmed, "#") {
+		return "", "", true, nil
+	}
+	trimmed = strings.TrimPrefix(trimmed, "export ")
+	key, value, ok := strings.Cut(trimmed, "=")
+	if !ok {
+		return "", "", false, fmt.Errorf("malformed")
+	}
+	key = strings.TrimSpace(key)
+	if key == "" {
+		return "", "", false, fmt.Errorf("malformed")
+	}
+	return key, value, false, nil
 }
