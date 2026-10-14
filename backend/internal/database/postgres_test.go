@@ -44,8 +44,14 @@ func TestMigrationVersions(t *testing.T) {
 	execSQL(t, pool, `
 		do $$
 		begin
+			if not exists (select 1 from pg_roles where rolname = 'anon') then
+				create role anon nologin nosuperuser nobypassrls;
+			end if;
 			if not exists (select 1 from pg_roles where rolname = 'authenticated') then
-				create role authenticated;
+				create role authenticated nologin nosuperuser nobypassrls;
+			end if;
+			if not exists (select 1 from pg_roles where rolname = 'service_role') then
+				create role service_role nologin nosuperuser bypassrls;
 			end if;
 		end
 		$$;
@@ -56,13 +62,14 @@ func TestMigrationVersions(t *testing.T) {
 		create function auth.uid() returns uuid as $$
 			select null::uuid
 		$$ language sql stable`)
-	execSQL(t, pool, readMigration(t))
+	execSQL(t, pool, readMigration(t, "0001_init.sql"))
 	execSQL(t, pool, `insert into supabase_migrations.schema_migrations (version) values ('0001')`)
 	ready, reason = pool.Check(ctx)
-	if !ready || reason != "ok" {
+	if ready || reason != "migrations_behind" {
 		t.Fatalf("0001 ready %v reason %s", ready, reason)
 	}
 
+	execSQL(t, pool, readMigration(t, "0002_api_safety.sql"))
 	execSQL(t, pool, `insert into supabase_migrations.schema_migrations (version) values ('0002')`)
 	ready, reason = pool.Check(ctx)
 	if !ready || reason != "ok" {
@@ -84,13 +91,13 @@ func execSQL(t *testing.T, pool *Pool, sql string) {
 	}
 }
 
-func readMigration(t *testing.T) string {
+func readMigration(t *testing.T, name string) string {
 	t.Helper()
 	_, file, _, ok := runtime.Caller(0)
 	if !ok {
 		t.Fatal("runtime caller")
 	}
-	path := filepath.Join(filepath.Dir(file), "..", "..", "..", "infra", "supabase", "migrations", "0001_init.sql")
+	path := filepath.Join(filepath.Dir(file), "..", "..", "..", "infra", "supabase", "migrations", name)
 	body, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)
