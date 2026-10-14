@@ -24,3 +24,40 @@ paths:
                     const: ok
               example:
                 status: ok
+  /readyz:
+    get:
+      operationId: getReady
+      summary: Dependency readiness
+      responses:
+        "200":
+          description: Required dependencies are ready.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [status]
+                properties:
+                  status:
+                    const: ok
+              example:
+                status: ok
+        "503":
+          description: A required dependency is not ready.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [status, reason]
+                properties:
+                  status:
+                    const: not_ready
+                  reason:
+                    enum:
+                      - database_unreachable
+                      - migrations_unavailable
+                      - migrations_behind
+              example:
+                status: not_ready
+                reason: migrations_unavailable

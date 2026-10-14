@@ -1,0 +1,174 @@
+package api
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"log/slog"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+
+	"github.com/metalhops/metalhops/backend"
+)
+
+func TestOperationalRoutes(t *testing.T) {
+	var buf bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&buf, nil))
+	handler := newServer(true, contract.OpenAPI, ReadinessFunc(func(context.Context) (bool, string) {
+		return true, "ok"
+	}), logger)
+
+	health := get(handler, "/healthz?token=secret")
+	if health.Code != http.StatusOK || health.Body.String() != "{\"status\":\"ok\"}\n" {
+		t.Fatalf("health %d %s", health.Code, health.Body.String())
+	}
+	assertRequestID(t, health)
+
+	spec := get(handler, "/openapi.yaml")
+	if spec.Code != http.StatusOK || spec.Header().Get("Content-Type") != "application/yaml" {
+		t.Fatalf("spec %d %q", spec.Code, spec.Header().Get("Content-Type"))
+	}
+	if spec.Body.String() != string(contract.OpenAPI) {
+		t.Fatal("spec bytes differ")
+	}
+	for _, banned := range []string{"/v1", "bearer", `{"data":`} {
+		if strings.Contains(spec.Body.String(), banned) {
+			t.Fatalf("contract contains %q", banned)
+		}
+	}
+
+	docs := get(handler, "/docs")
+	if docs.Code != http.StatusOK || docs.Header().Get("Content-Type") != "text/html; charset=utf-8" {
+		t.Fatalf("docs %d %q", docs.Code, docs.Header().Get("Content-Type"))
+	}
+	const csp = "default-src 'none'; script-src https://cdn.jsdelivr.net; style-src 'unsafe-inline'; font-src https://fonts.scalar.com; img-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'"
+	if docs.Header().Get("Content-Security-Policy") != csp {
+		t.Fatalf("csp %q", docs.Header().Get("Content-Security-Policy"))
+	}
+	for _, want := range []string{
+		"https://cdn.jsdelivr.net/npm/@scalar/api-reference@1.74.0/esm.js",
+		"sha384-fQ9g3BzMsV0YRs+bFQN9Vwro31LlcOIAb3WgtmfR5wFk1gfp1A9vjMaWtrr0i8H6",
+		`data-url="/openapi.yaml"`,
+		`crossorigin="anonymous"`,
+	} {
+		if !strings.Contains(docs.Body.String(), want) {
+			t.Fatalf("missing %q", want)
+		}
+	}
+	for _, banned := range []string{"proxy", "registry.scalar.com"} {
+		if strings.Contains(docs.Body.String(), banned) {
+			t.Fatalf("docs page contains %q", banned)
+		}
+	}
+
+	disabled := newServer(false, contract.OpenAPI, readyOK(), logger)
+	missing := get(disabled, "/docs")
+	if missing.Code != http.StatusNotFound {
+		t.Fatalf("disabled docs %d", missing.Code)
+	}
+
+	logText := buf.String()
+	if !strings.Contains(logText, `"path":"/healthz"`) || strings.Contains(logText, "token=secret") || strings.Contains(logText, "postgres://") {
+		t.Fatalf("access log %s", logText)
+	}
+	if !strings.Contains(logText, `"method":"GET"`) || !strings.Contains(logText, `"status":200`) || !strings.Contains(logText, `"duration_ms"`) || !strings.Contains(logText, `"request_id"`) {
+		t.Fatalf("access log fields %s", logText)
+	}
+}
+
+func TestReadyz(t *testing.T) {
+	ok := get(newServer(false, contract.OpenAPI, readyOK(), slog.Default()), "/readyz")
+	if ok.Code != http.StatusOK || ok.Body.String() != "{\"status\":\"ok\"}\n" {
+		t.Fatalf("ready %d %s", ok.Code, ok.Body.String())
+	}
+	for _, reason := range []string{"database_unreachable", "migrations_unavailable", "migrations_behind"} {
+		handler := newServer(false, contract.OpenAPI, ReadinessFunc(func(context.Context) (bool, string) {
+			return false, reason
+		}), slog.Default())
+		rec := get(handler, "/readyz")
+		if rec.Code != http.StatusServiceUnavailable {
+			t.Fatalf("%s status %d", reason, rec.Code)
+		}
+		if rec.Body.String() != `{"status":"not_ready","reason":"`+reason+"\"}\n" {
+			t.Fatalf("%s body %s", reason, rec.Body.String())
+		}
+	}
+}
+
+func TestPanicEnvelope(t *testing.T) {
+	var buf bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&buf, nil))
+	handler := wrap(logger, http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		panic("boom")
+	}))
+	rec := get(handler, "/boom")
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("status %d", rec.Code)
+	}
+	if strings.Contains(rec.Body.String(), "goroutine") || strings.Contains(rec.Body.String(), "boom") {
+		t.Fatalf("body leaked panic: %s", rec.Body.String())
+	}
+	var got struct {
+		Error struct {
+			Code      string `json:"code"`
+			Message   string `json:"message"`
+			RequestID string `json:"request_id"`
+		} `json:"error"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.Error.Code != "internal_error" || got.Error.Message != "The server could not complete the request." {
+		t.Fatalf("error %#v", got.Error)
+	}
+	if rec.Header().Get("X-Request-ID") != got.Error.RequestID {
+		t.Fatalf("header %q body %q", rec.Header().Get("X-Request-ID"), got.Error.RequestID)
+	}
+	if !strings.Contains(buf.String(), `"status":500`) || !strings.Contains(buf.String(), got.Error.RequestID) {
+		t.Fatalf("panic log %s", buf.String())
+	}
+}
+
+func TestRandomFailure(t *testing.T) {
+	previous := readRandom
+	readRandom = func([]byte) (int, error) { return 0, context.Canceled }
+	t.Cleanup(func() { readRandom = previous })
+
+	var buf bytes.Buffer
+	handler := newServer(false, nil, readyOK(), slog.New(slog.NewJSONHandler(&buf, nil)))
+	rec := get(handler, "/healthz")
+	if rec.Code != http.StatusInternalServerError || strings.Contains(rec.Body.String(), "goroutine") {
+		t.Fatalf("status %d body %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), `"request_id":"unavailable"`) {
+		t.Fatalf("body %s", rec.Body.String())
+	}
+	if !strings.Contains(buf.String(), `"status":500`) {
+		t.Fatalf("log %s", buf.String())
+	}
+}
+
+func get(handler http.Handler, target string) *httptest.ResponseRecorder {
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, target, nil))
+	return rec
+}
+
+func readyOK() Readiness {
+	return ReadinessFunc(func(context.Context) (bool, string) { return true, "ok" })
+}
+
+func assertRequestID(t *testing.T, rec *httptest.ResponseRecorder) {
+	t.Helper()
+	id := rec.Header().Get("X-Request-ID")
+	if len(id) != 32 {
+		t.Fatalf("request id %q", id)
+	}
+	for _, c := range id {
+		if (c < '0' || c > '9') && (c < 'a' || c > 'f') {
+			t.Fatalf("request id %q", id)
+		}
+	}
+}
