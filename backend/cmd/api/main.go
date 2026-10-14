@@ -49,7 +49,7 @@ func main() {
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
-	if err := api.Serve(ctx, srv, version, 15*time.Second, pool.Close); err != nil {
+	if err := api.Serve(ctx, srv, version, cfg.DocsUIEnabled, 15*time.Second, pool.Close); err != nil {
 		slog.Error("server", "err", database.Redact(cfg.DatabaseURL, err.Error()))
 		os.Exit(1)
 	}

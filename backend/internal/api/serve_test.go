@@ -21,7 +21,7 @@ func TestServeClosesPoolWhenListenFails(t *testing.T) {
 
 	closed := false
 	srv := &http.Server{Addr: ln.Addr().String(), Handler: http.NewServeMux()}
-	err = Serve(context.Background(), srv, "v0.1.0-dev", time.Second, func() { closed = true })
+	err = Serve(context.Background(), srv, "v0.1.0-dev", false, time.Second, func() { closed = true })
 	if err == nil || !closed {
 		t.Fatalf("err %v closed %v", err, closed)
 	}
@@ -63,7 +63,7 @@ func TestServeShutdownTimeoutClosesPool(t *testing.T) {
 		output <- string(banner)
 	}()
 	go func() {
-		done <- Serve(ctx, srv, "v0.1.0-dev", 50*time.Millisecond, func() { close(closed) })
+		done <- Serve(ctx, srv, "v0.1.0-dev", true, 50*time.Millisecond, func() { close(closed) })
 	}()
 
 	deadline := time.Now().Add(2 * time.Second)
@@ -103,7 +103,7 @@ func TestServeShutdownTimeoutClosesPool(t *testing.T) {
 	writer.Close()
 	os.Stdout = previous
 	banner := <-output
-	want := "🤘 MetalHops backend\nv0.1.0-dev\nLive at http://" + addr + " — crank it up!\n"
+	want := "🤘 MetalHops backend\nv0.1.0-dev\nLive at http://" + addr + " and API online at http://" + addr + "/docs — crank it up!\n"
 	if !strings.Contains(banner, want) {
 		t.Errorf("startup banner %q, want %q", banner, want)
 	}

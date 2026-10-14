@@ -14,7 +14,7 @@ import (
 // Serve runs srv until ctx is canceled or the server fails to start, then
 // drains in-flight requests for up to timeout before closing the database
 // pool via closePool. closePool always runs before Serve returns.
-func Serve(ctx context.Context, srv *http.Server, version string, timeout time.Duration, closePool func()) error {
+func Serve(ctx context.Context, srv *http.Server, version string, docs bool, timeout time.Duration, closePool func()) error {
 	listener, err := net.Listen("tcp", srv.Addr)
 	if err != nil {
 		closePool()
@@ -24,7 +24,11 @@ func Serve(ctx context.Context, srv *http.Server, version string, timeout time.D
 	if strings.HasPrefix(address, ":") {
 		address = "localhost" + address
 	}
-	fmt.Fprint(os.Stdout, "🤘 MetalHops backend\n"+version+"\nLive at http://"+address+" — crank it up!\n")
+	banner := "🤘 MetalHops backend\n" + version + "\nLive at http://" + address
+	if docs {
+		banner += " and API online at http://" + address + "/docs"
+	}
+	fmt.Fprint(os.Stdout, banner+" — crank it up!\n")
 
 	errCh := make(chan error, 1)
 	go func() {
