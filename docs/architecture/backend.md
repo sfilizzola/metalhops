@@ -245,7 +245,7 @@ provider details to clients.
 
 ## Configuration and process lifecycle
 
-Go 1.23 is the backend toolchain version for source, CI, and container builds.
+Go 1.24 is the backend toolchain version for source, CI, and container builds.
 
 Configuration is parsed once. Each setting has one owner, type, default, and
 validation rule. Secrets are never logged. Feature modules receive only the
@@ -332,8 +332,11 @@ The repository intentionally begins smaller than this target:
 
 - `cmd/api` still owns `/healthz`; the backend-foundation session moves HTTP
   behavior behind the HTTP module.
-- `go.mod` may lag the Go 1.23 toolchain until foundation work updates module
-  metadata and dependencies together.
+- the backend-foundation session raised `go.mod` from Go 1.23 to Go 1.24: pgx
+  (database pool) and testcontainers-go (PostGIS integration tests) cannot
+  both stay on a Go 1.23 toolchain under `-mod=readonly`, so source, CI
+  (`.github/workflows/backend.yml`), and the container build
+  (`backend/Dockerfile`) all moved to Go 1.24 together in that session.
 - migration `0001_init.sql` still permits direct catalogue reads and Venue
   submissions; the API-safety migration must close those policies before
   product clients are built.
