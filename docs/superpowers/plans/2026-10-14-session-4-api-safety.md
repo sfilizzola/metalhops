@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Close direct Data API access, add the in-transaction idempotency helper, and limit public traffic to 120 requests per minute per client IP.
+**Goal:** Close direct Data API access, add the in-transaction idempotency helper, and limit public traffic to a token bucket with burst capacity 120 and a sustained rate of 2 requests per second per client IP.
 
 **Architecture:** Migration `0002_api_safety.sql` drops the four `0001` policies, revokes Data API grants, and creates `idempotency_records`. `internal/idempotency.Execute` runs inside the caller's `pgx` transaction and has no HTTP route. `internal/ratelimit` owns the token buckets and client-IP walk. `cmd/api` passes its middleware into `internal/api`, which runs it after the request ID and inside panic recovery. `internal/pgtest` is the shared PostGIS harness.
 
@@ -12,19 +12,22 @@
 
 ## Global Constraints
 
-- Leave `infra/supabase/migrations/0001_init.sql` unchanged.
+- Leave `infra/supabase/migrations/0001_init.sql` unchanged. `0002` revokes `PUBLIC`, `anon`, `authenticated`, and `service_role` on the tables it closes, on `genres_id_seq`, and on `idempotency_records`. It does not try to clear Supabase default privileges. Later migrations repeat that revoke for every product table and every sequence they create. A table that uses `gen_random_uuid()` adds no sequence revoke. The Render `DATABASE_URL` user owns these tables. Do not grant a second API role.
 - Add no `/v1` route, no `Idempotency-Key` parsing, and no OpenAPI path.
 - `GET /healthz` and `GET /readyz` gain no `429` response. They are exempt.
 - Add `golang.org/x/time/rate`. DevSteps already approves it.
 - `requiredMigrationVersion` becomes the string `0002`.
-- Idempotency primary key is `(user_id, operation, key)`. `ErrInvalid` and `ErrReused` are sentinels compared with `errors.Is`.
+- Idempotency primary key is `(user_id, operation, key)`. An operation is one idempotent `POST` action, not one database outcome. Authenticated `POST` routes that create submissions, Reports, Check-ins, or moderation/audit effects require keys; reads, state-setting `PUT` and `PATCH` routes, and `DELETE` routes do not. A corrected Check-in uses a new key under the same operation. Session 4 assigns no operation names. `ErrInvalid` and `ErrReused` are sentinels compared with `errors.Is`.
 - A row is live while `expires_at` is greater than the supplied `now`. Inserts set `expires_at` to `now` plus 24 hours.
-- `Execute` does not commit or roll back.
-- Each bucket is `rate.NewLimiter(rate.Limit(2), 120)`. The map holds at most 10,000 keys. Idle means last use 3 minutes or more ago. A full map refuses a new key with `Retry-After: 60`.
+- `Execute` hashes `Command` bytes as given. It does not parse or normalize them. The write route passes the normalized validated command.
+- `Execute` does not commit or roll back. Callers commit only when it returns a nil error and a 2xx result. Every other return rolls the transaction back. Later write routes test a callback write followed by an error.
+- `Execute` deletes at most 100 expired rows, including other Users' rows, inside the caller's transaction. A rollback puts those rows back. Session 4 adds no separate cleanup transaction.
+- The advisory lock text is the user ID, ASCII Unit Separator (`0x1F`), operation, Unit Separator, and key. Do not use a NUL byte; PostgreSQL `text` rejects it.
+- Each bucket is `rate.NewLimiter(rate.Limit(2), 120)`. The map holds at most 10,000 keys. Idle means last use 3 minutes or more ago. A full map refuses a new key with `Retry-After: 60`. The public middleware counts every non-exempt request, including one whose handler later replays a stored response. A refusal does not call `Execute`.
 - `TRUSTED_PROXIES` empty or unset means no proxies. Any other failure returns exactly `TRUSTED_PROXIES must be a comma-separated list of CIDRs`.
 - Refusal envelope: status `429`, code `rate_limited`, message `Too many requests.`, no `fields`, `json.Encoder` trailing newline, existing `X-Request-ID` kept.
-- `render.yaml` pins the Cloudflare lists from 14 October 2026 plus `10.0.0.0/8`. `172.16.0.0/12` and `192.168.0.0/16` are absent.
-- Do not run `supabase db push`. Do not mark Session 4 done in `DevSteps.md` before Task 8.
+- `render.yaml` pins the Cloudflare lists from 14 October 2026 plus `10.0.0.0/8`. `172.16.0.0/12` and `192.168.0.0/16` are absent. Do not fetch Cloudflare ranges at startup. A caller that can connect from `10.0.0.0/8` can choose its rate-limit identity through `X-Forwarded-For`. Leave `healthCheckPath` at `/healthz`. Do not point it at `/readyz`.
+- The API process does not apply SQL. Session 4 does not add the release job. The implementer does not run `supabase login`, `supabase link`, or `supabase db push`. After the Task 8 commit, the operator starts the Session 4 binary, confirms local `GET /readyz` returns `migrations_behind`, then runs `supabase db push --workdir infra`. The same process must then return 200. If the first response is already 200, the highest history version decides: `0001` means the Session 3 binary is still running, and `0002` finishes the gate only for the process started from this session after the old listener on port 8080 was stopped. The history row does not identify the binary. Do not mark Session 4 done in `DevSteps.md` before that reply. When Session 14 adds the release job, a release is successful only after the committed migrations are applied and `/readyz` returns 200. Render's `/healthz` success is not that proof.
 - Work on `feature/session-4-api-safety`, targeting `dev` by pull request.
 - Commands in this plan use `git` and `go`. Run `go` commands from `backend/`.
 
@@ -89,9 +92,9 @@ Expected: the branch exists and `infra/supabase/migrations/0002_api_safety.sql` 
 
 **Interfaces:**
 - Consumes: nothing.
-- Produces: `func EmptyURL(t *testing.T) string` and `func MigratedURL(t *testing.T) string`. `MigratedURL` creates `anon` and `authenticated`, schema `auth`, applies every migration file in lexical order, and gives those roles default table and sequence grants so a later `REVOKE` is visible. Both skip with a message that starts `Docker is unavailable:` when Docker fails and `CI` is empty.
+- Produces: `func EmptyURL(t *testing.T) string` and `func MigratedURL(t *testing.T) string`. `MigratedURL` creates `anon` and `authenticated` without `BYPASSRLS`, creates `service_role` with `BYPASSRLS`, creates schema `auth`, applies every migration file in lexical order, and gives those three roles default table and sequence grants so a later `REVOKE` is visible. Both skip with a message that starts `Docker is unavailable:` when Docker fails and `CI` is empty.
 
-The default grants mirror Supabase. Without them, `anon` already lacks `SELECT`, and the Task 2 denial test would pass before migration `0002` exists.
+The default grants mirror Supabase. Without them, `anon` already lacks `SELECT`, and the Task 2 denial test would pass before migration `0002` exists. `service_role` bypasses row-level security, so dropping policies does not deny it; only the `REVOKE` does.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -175,6 +178,9 @@ func MigratedURL(t *testing.T) string {
 			if not exists (select 1 from pg_roles where rolname = 'authenticated') then
 				create role authenticated nologin nosuperuser nobypassrls;
 			end if;
+			if not exists (select 1 from pg_roles where rolname = 'service_role') then
+				create role service_role nologin nosuperuser bypassrls;
+			end if;
 		end
 		$$;
 		create schema if not exists auth;
@@ -184,9 +190,9 @@ func MigratedURL(t *testing.T) string {
 		create or replace function auth.uid() returns uuid as $$
 			select null::uuid
 		$$ language sql stable;
-		grant usage on schema public to anon, authenticated;
-		alter default privileges in schema public grant all on tables to anon, authenticated;
-		alter default privileges in schema public grant all on sequences to anon, authenticated`)
+		grant usage on schema public to anon, authenticated, service_role;
+		alter default privileges in schema public grant all on tables to anon, authenticated, service_role;
+		alter default privileges in schema public grant all on sequences to anon, authenticated, service_role`)
 	for _, path := range migrationFiles(t) {
 		body, err := os.ReadFile(path)
 		if err != nil {
@@ -323,7 +329,7 @@ func TestDataAPIClosed(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(pool.Close)
-	if _, err := pool.Exec(ctx, `grant usage on schema public to anon, authenticated`); err != nil {
+	if _, err := pool.Exec(ctx, `grant usage on schema public to anon, authenticated, service_role`); err != nil {
 		t.Fatal(err)
 	}
 
@@ -346,7 +352,7 @@ func TestDataAPIClosed(t *testing.T) {
 		`delete from idempotency_records where false`,
 		`select nextval('genres_id_seq')`,
 	}
-	for _, role := range []string{"anon", "authenticated"} {
+	for _, role := range []string{"anon", "authenticated", "service_role"} {
 		for _, sql := range statements {
 			conn, err := pool.Acquire(ctx)
 			if err != nil {
@@ -420,6 +426,9 @@ Update its only call site to `readMigration(t, "0001_init.sql")`. Replace the ro
 			if not exists (select 1 from pg_roles where rolname = 'authenticated') then
 				create role authenticated nologin nosuperuser nobypassrls;
 			end if;
+			if not exists (select 1 from pg_roles where rolname = 'service_role') then
+				create role service_role nologin nosuperuser bypassrls;
+			end if;
 		end
 		$$;
 		create schema if not exists auth;
@@ -467,10 +476,10 @@ drop policy "verified venues are public" on venues;
 drop policy "users submit pending venues" on venues;
 drop policy "venue genres follow venue visibility" on venue_genres;
 
-revoke all on table genres from public, anon, authenticated;
-revoke all on table venues from public, anon, authenticated;
-revoke all on table venue_genres from public, anon, authenticated;
-revoke all on sequence genres_id_seq from public, anon, authenticated;
+revoke all on table genres from public, anon, authenticated, service_role;
+revoke all on table venues from public, anon, authenticated, service_role;
+revoke all on table venue_genres from public, anon, authenticated, service_role;
+revoke all on sequence genres_id_seq from public, anon, authenticated, service_role;
 
 create table idempotency_records (
   user_id uuid not null references auth.users (id) on delete cascade,
@@ -488,7 +497,7 @@ create index idempotency_records_expires_at_idx on idempotency_records (expires_
 
 alter table idempotency_records enable row level security;
 
-revoke all on table idempotency_records from public, anon, authenticated;
+revoke all on table idempotency_records from public, anon, authenticated, service_role;
 ```
 
 The key check `[ -~]` is ASCII `0x20` through `0x7E`. Do not add `FORCE ROW LEVEL SECURITY` and do not add a policy.
@@ -510,7 +519,7 @@ git add infra/supabase/migrations/0002_api_safety.sql backend/internal/database
 git commit -m "$(cat <<'EOF'
 feat: close direct Data API access
 
-Catalogue policies and grants no longer let anon or authenticated read or write product rows.
+Catalogue policies and grants no longer let anon, authenticated, or service_role read or write product rows.
 
 EOF
 )"
@@ -1271,7 +1280,7 @@ func Execute(ctx context.Context, tx pgx.Tx, now time.Time, req Request, fn func
 		)`, now); err != nil {
 		return Result{}, err
 	}
-	lockKey := req.UserID + "\x00" + req.Operation + "\x00" + req.Key
+	lockKey := req.UserID + "\x1f" + req.Operation + "\x1f" + req.Key
 	if _, err := tx.Exec(ctx, `select pg_advisory_xact_lock(hashtextextended($1, 0))`, lockKey); err != nil {
 		return Result{}, err
 	}
@@ -2034,7 +2043,7 @@ In `infra/render.yaml`, add this env var after `DOCS_UI_ENABLED`:
         value: "173.245.48.0/20, 103.21.244.0/22, 103.22.200.0/22, 103.31.4.0/22, 141.101.64.0/18, 108.162.192.0/18, 190.93.240.0/20, 188.114.96.0/20, 197.234.240.0/22, 198.41.128.0/17, 162.158.0.0/15, 104.16.0.0/13, 104.24.0.0/14, 172.64.0.0/13, 131.0.72.0/22, 2400:cb00::/32, 2606:4700::/32, 2803:f800::/32, 2405:b500::/32, 2405:8100::/32, 2a06:98c0::/29, 2c0f:f248::/32, 10.0.0.0/8"
 ```
 
-Do not edit `backend/openapi.yaml`.
+Leave `healthCheckPath` at `/healthz`. Do not edit `backend/openapi.yaml`.
 
 - [ ] **Step 4: Run the tests to verify they pass**
 
@@ -2092,8 +2101,9 @@ Add this paragraph after the docs-switch paragraph:
 ```markdown
 `TRUSTED_PROXIES` is a comma-separated CIDR list. Empty or unset means the
 TCP peer is the client. `GET /healthz` and `GET /readyz` are not rate
-limited. Every other route allows 120 requests per minute per resolved
-client IP. A refusal is `429` `rate_limited` with `Retry-After`.
+limited. Every other route uses a token bucket with burst capacity 120 and
+a sustained rate of 2 requests per second per resolved client IP. A refusal
+is `429` `rate_limited` with `Retry-After`.
 ```
 
 In `docs/architecture/backend.md`, add these two lines to the module map after `internal/database`:
@@ -2107,13 +2117,12 @@ Leave `internal/pgtest` out of that map. Delete the transitional bullet that say
 
 ```markdown
 - migration `0002_api_safety.sql` closed direct Data API reads and writes
-  of the catalogue. Creation routes call `idempotency.Execute` inside their
-  own transaction. The public IP limiter lives in `internal/ratelimit`.
+  of the catalogue. Authenticated `POST` routes that require an
+  `Idempotency-Key` call `idempotency.Execute` inside their own transaction.
+  The public IP limiter lives in `internal/ratelimit`.
 ```
 
-In `DevSteps.md`, set the status line to `Sessions 1–4 are done. Session 5 is next. Sessions 6–14 are not started.` Set the session table row for session 4 to `Done`. Set the Session 4 heading status to `Done`.
-
-Do not run `supabase db push`. Hosted `/readyz` stays `migrations_behind` until an operator applies `0002`.
+Do not change the Session 4 status in `DevSteps.md` in this step.
 
 - [ ] **Step 2: Check formatting and the suite**
 
@@ -2130,7 +2139,7 @@ Expected: `gofmt -l .` prints nothing. Vet and tests pass.
 - [ ] **Step 3: Commit**
 
 ```bash
-git add backend/AGENTS.md docs/architecture/backend.md DevSteps.md
+git add backend/AGENTS.md docs/architecture/backend.md
 git commit -m "$(cat <<'EOF'
 docs: describe the API safety boundary
 
@@ -2140,8 +2149,112 @@ EOF
 )"
 ```
 
+Do not send the operator commands until this commit exists. The implementer does not run them.
+
+- [ ] **Step 4: Hand the Supabase commands to the operator**
+
+The project is already linked from Session 3. Do not run `supabase init` or `supabase start`. Do not deploy Render from this handoff. The release job still applies `0002` before it deploys the binary that requires `0002`. After `supabase_migrations.schema_migrations` contains `0002`, do not edit `0002_api_safety.sql`, even if the branch is not merged. A normal failed push leaves neither the `0002` objects nor the version row, so the file may be corrected and pushed again. If those objects exist without the version row, stop and report that state. Do not edit the file to paper over it. A later correction is a new migration. If `db push` reports that the project is not linked, stop and repeat the Session 3 `supabase login` and `supabase link --workdir infra --project-ref YOUR_PROJECT_REF` commands, then push. `supabase link` prompts for the database password. That password stays out of the repo and out of chat.
+
+Stop any API already listening on port 8080. The check has to be this session's binary. From `backend/`, with `DATABASE_URL` set to the session-pooler URL:
+
+```bash
+make run
+```
+
+From another terminal:
+
+```bash
+curl -sS http://localhost:8080/readyz
+```
+
+Expected body before the push: `{"status":"not_ready","reason":"migrations_behind"}`. Leave that process running. If the body is `{"status":"ok"}`, query the hosted history:
+
+```sql
+select version from supabase_migrations.schema_migrations order by version desc limit 1;
+```
+
+`0001` means the Session 3 binary is still running. Stop it and start the binary from this session. `0002` finishes the gate only because that process was started from this session after port 8080 was cleared. The history row does not identify the binary: once `0002` is recorded, the Session 3 binary also returns 200. Any other version stops the handoff. Do not push it, and do not push again when the version is already `0002`.
+
+```bash
+supabase db push --workdir infra
+```
+
+`db push` uses the CLI's linked direct connection. The API's `DATABASE_URL` stays the session-pooler URL, port 5432 on the pooler host. Do not run `supabase db reset --linked`. Do not apply the file in the SQL editor.
+
+If `db push` cannot reach the direct host, run this from the repo root instead. When `DATABASE_URL` is already set in the environment, that value wins, including when it is empty. Otherwise the command reads `backend/.env` with the API's line rule: skip blanks and comments, strip one optional `export ` prefix, and keep everything after the first `=` on the last `DATABASE_URL` line. Quotes stay. The port must be 5432. Do not use port 6543. Do not print the URL.
+
+```bash
+if [ -n "${DATABASE_URL+x}" ]; then
+  url=$DATABASE_URL
+else
+  url=$(awk '
+    {
+      line = $0
+      sub(/^[ \t]+/, "", line)
+      if (line ~ /^#/ || line == "") next
+      sub(/^export /, "", line)
+      n = index(line, "=")
+      if (n == 0) next
+      key = substr(line, 1, n - 1)
+      gsub(/^[ \t]+|[ \t]+$/, "", key)
+      if (key == "DATABASE_URL") value = substr(line, n + 1)
+    }
+    END { print value }
+  ' backend/.env)
+fi
+supabase db push --workdir infra --db-url "$url"
+```
+
+From another terminal, against the same process:
+
+```bash
+curl -sS http://localhost:8080/readyz
+```
+
+Expected body: `{"status":"ok"}`. This curl is the push path. The already-recorded `0002` case finished before the push.
+
+If the body is still `{"status":"not_ready","reason":"migrations_behind"}`, the highest version is missing or below `0002`. If it is `migrations_unavailable`, the history table is missing or the query failed. In the Supabase SQL editor, run:
+
+```sql
+select version from supabase_migrations.schema_migrations;
+```
+
+The expected version is `0002`. If `db push` rejects `0002_api_safety.sql`, stop and report the CLI error. Do not rename the migration in this session.
+
+Wait for the operator to reply with `migrations_behind` before the push and then `{"status":"ok"}` from the same process, or with `{"status":"ok"}` plus a highest history version of `0002` from the process started after stopping the old listener on port 8080. The history row alone is not that proof. That reply is not a commit.
+
+- [ ] **Step 5: Mark Session 4 done after the operator reply**
+
+In `DevSteps.md`, set the status line to `Sessions 1–4 are done. Session 5 is next. Sessions 6–14 are not started.` Set the session table row for session 4 to `Done`. Set the Session 4 heading status to `Done`. Commit the body that matches the operator reply.
+
+Behind, then 200 from the same process:
+
+```bash
+git add DevSteps.md
+git commit -m "$(cat <<'EOF'
+docs: mark session 4 done
+
+The hosted project records migration 0002. The Session 4 process was migrations_behind before the push and /readyz then returned 200.
+
+EOF
+)"
+```
+
+First 200 from the process started after port 8080 was cleared, with highest history version `0002`:
+
+```bash
+git add DevSteps.md
+git commit -m "$(cat <<'EOF'
+docs: mark session 4 done
+
+The hosted project already recorded migration 0002. The Session 4 process, started after port 8080 was cleared, returned 200 on the first /readyz.
+
+EOF
+)"
+```
+
 ## Plan self-check
 
-- Spec coverage: Task 1 is the harness. Task 2 is the migration, revoke, RLS, and readiness constant. Tasks 3 and 4 are `Execute`. Task 5 is `TRUSTED_PROXIES`. Task 6 is the buckets and client-IP walk. Task 7 mounts the middleware and pins Render. Task 8 updates the guides and marks Session 4 done only after the behavior exists.
+- Spec coverage: Task 1 is the harness. Task 2 is the migration, revoke, RLS, and readiness constant. Tasks 3 and 4 are `Execute`. Task 5 is `TRUSTED_PROXIES`. Task 6 is the buckets and client-IP walk. Task 7 mounts the middleware and pins Render. Task 8 updates the guides, hands the operator `supabase db push`, and marks Session 4 done only after the local `/readyz` proof returns 200.
 - The five Review Focus cases each have a test in Task 4 or Task 6.
 - `Execute`, `ErrInvalid`, `ErrReused`, `New`, `Middleware`, and `Config.TrustedProxies` keep one signature from the task that produces them through the task that consumes them.

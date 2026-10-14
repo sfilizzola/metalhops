@@ -9,3 +9,6 @@ product writes as defense in depth; authenticated author-only private reads
 may remain.
 Moderation is performed only through privileged Go API workflows, and there is
 no operator SQL bridge.
+
+ADR 0002 supersedes the allowance above for authenticated author-only Data API
+reads. Those reads go through the Go API.

@@ -145,11 +145,15 @@ the endpoint's stable sort key and resource ID. Clients must not construct or
 interpret them. The small, controlled Genre catalogue is returned in full and
 is not paginated.
 
-Authenticated POST routes that create resources require an `Idempotency-Key`
-header containing 8–128 printable ASCII characters. The key is scoped to the
-User and operation for 24 hours. Reusing it with the same validated command
+Authenticated `POST` routes that create submissions, Reports, Check-ins, or
+moderation/audit effects require an `Idempotency-Key` header containing 8–128
+printable ASCII characters. Reads, state-setting `PUT` and `PATCH` routes,
+and `DELETE` routes do not require the header because repeating them does not
+create another resource or audit effect. The key is scoped to the User and
+operation for 24 hours. Reusing it with the same normalized validated command
 replays the original status and response; reusing it with different input
-returns `409 idempotency_key_reused`.
+returns `409 idempotency_key_reused`. The write route normalizes the command
+before the helper hashes it.
 
 Errors use one envelope:
 
@@ -229,11 +233,12 @@ remains available in every Profile state.
 
 The database connection is server-owned and may bypass RLS, so capability
 modules and their persistence implementation must enforce API visibility
-independently. RLS remains enabled on every table as defense in depth.
-Supabase's Data API does not
-provide anonymous product reads or direct product writes; authenticated Users
-may read only their own private rows. The Go API is the sole public product
-contract.
+independently. The Render `DATABASE_URL` user owns the product tables. Session
+4 does not grant a second API role. RLS remains enabled on every table as
+defense in depth.
+Supabase's Data API does not provide product reads or direct product writes
+for `anon`, `authenticated`, or `service_role`. The Go API is the sole public
+product contract, including author-only reads.
 
 ## Data model
 
@@ -393,17 +398,31 @@ reports without an action are dismissed individually.
 
 ### Idempotency records
 
-`idempotency_records` stores the User, operation, key, hash of the normalized
-validated command, response status and JSON, creation time, and expiration
-time. A unique constraint covers `(user_id, operation, key)`, and User deletion
-cascades records.
+`idempotency_records` stores the User, operation, key, and the lowercase hex
+SHA-256 of the command bytes the write route passed in. That route passes the
+normalized validated command. The helper does not normalize those bytes.
+The record also stores the response status and JSON, creation time, and
+expiration time. A unique constraint covers `(user_id, operation, key)`, and
+User deletion cascades records. An operation is one idempotent `POST` action,
+not one database outcome. Each `POST` route that requires a key uses one
+stable operation name matching `^[a-z0-9_]{1,64}$`. A corrected Check-in uses
+a new key under the same Check-in operation; reusing the original key replays
+the original Check-in. Session 4 assigns no operation names.
 
-Creation and idempotency recording occur in the same transaction. A
+The write and idempotency recording occur in the same transaction. A
 transaction-scoped advisory lock serializes concurrent requests for the same
-User, operation, and key. Expired records are removed opportunistically by
-creation requests in indexed batches of at most 100 rows.
-Only successful `2xx` creation responses are recorded; validation, conflict,
-rate-limit, and server errors may be retried with the same key.
+User, operation, and key. Expired records, including other Users' records, are
+removed opportunistically by write requests in indexed batches of at most 100
+rows. That deletion stays in the caller's transaction, so a rollback puts the
+rows back. There is no separate cleanup transaction.
+Only successful `2xx` write responses are recorded; validation, conflict,
+rate-limit, and server errors may be retried with the same key. The caller
+commits only when the helper returns a nil error and a 2xx result. A callback
+error, a non-2xx result, an invalid request, and a reused key roll the
+transaction back. A replay returns the stored 2xx result, so the caller may
+commit that transaction. Each write route tests a callback that writes and
+then returns an error: neither the domain write nor an idempotency row
+remains.
 
 ### Reviews
 
@@ -498,13 +517,19 @@ materialized views are deferred until measurements justify them.
 
 ### RLS policy intent
 
-Every new table enables RLS in the migration that creates it:
+Every new table enables RLS in the migration that creates it. That migration
+also revokes `PUBLIC`, `anon`, `authenticated`, and `service_role` on the new
+table. A migration that creates a sequence revokes those same roles on that
+sequence after creating it. A table that uses `gen_random_uuid()` adds no sequence
+revoke. It does not try to clear Supabase default privileges owned by another
+role. A table with no Data API grant needs no policy. The Go API serves
+author-only reads.
 
-- Anonymous and authenticated Data API roles have no direct access to genres
-  or the public Venue catalogue.
-- Authenticated Users may read their own Profile, Profile Reports, Venue
+- Anonymous, authenticated, and service-role Data API roles have no direct
+  access to genres, the public Venue catalogue, or later product tables.
+- Authenticated Users read their own Profile, Profile Reports, Venue
   Submissions, Venue Reports, Reviews, Review Reports, and Check-ins through
-  RLS as defense in depth.
+  the Go API.
 - Data API roles cannot insert, update, or delete product rows; all product
   writes go through the Go API.
 - Public Profile fields, Reviews, and aggregate counts are exposed only by the
@@ -569,6 +594,8 @@ verified-Venue, Venue-genre, and direct-submission policies without editing
 `PATCH /v1/me`
 
 - Creates or updates the caller's Profile from `username` and `display_name`.
+- Does not require `Idempotency-Key`; repeating it sets the same Profile
+  fields and cannot create a second Profile.
 - Creation requires both fields; updates require at least one and leave
   omitted fields unchanged.
 - A `rename_required` User must change at least one moderated identity field
@@ -578,6 +605,8 @@ verified-Venue, Venue-genre, and direct-submission policies without editing
 
 - Is available to every authenticated User, including Users without a Profile
   and suspended Users.
+- Does not require `Idempotency-Key`. Successful deletion removes the User's
+  idempotency rows and invalidates subsequent authenticated retries.
 - Requires a JWT whose `session_id` identifies a live Supabase session created
   within the previous 10 minutes, plus JSON confirmation value
   `DELETE MY ACCOUNT`. A refreshed JWT for an older session is not sufficient.
@@ -616,6 +645,9 @@ verified-Venue, Venue-genre, and direct-submission policies without editing
 - Returns `409 duplicate_venue` for a normalized-name match within 100 metres
   of a verified or pending Venue.
 - Enforces 10 new Venue Submissions per User in a rolling 24-hour window.
+  The slot is taken when the row is created, using `created_at`. A correction
+  must not change `created_at`. Rejection, correction, verification, or
+  delisting does not return the slot.
 
 `GET /v1/me/venues`
 
@@ -634,6 +666,8 @@ verified-Venue, Venue-genre, and direct-submission policies without editing
 `PUT /v1/me/venues/{venueID}`
 
 - Allows the original submitter to correct a pending or rejected submission.
+- Does not require `Idempotency-Key`; repeating the complete replacement
+  cannot create another Venue Submission.
 - Requires the complete editable Venue representation accepted by creation.
 - Resets the submission to `pending` in the same transaction as its venue
   genre changes.
@@ -662,6 +696,8 @@ verified-Venue, Venue-genre, and direct-submission policies without editing
 `PUT /v1/venues/{venueID}/reviews/me`
 
 - Creates or replaces the caller's review.
+- Does not require `Idempotency-Key`; the route sets the caller's single
+  Review for that Venue and repeating it cannot create another Review.
 - Requires `rating`; omitted or null `commentary` clears existing commentary.
 - Reviews are allowed only for verified venues.
 - Allows rating updates after commentary moderation but rejects replacement
@@ -671,7 +707,8 @@ verified-Venue, Venue-genre, and direct-submission policies without editing
 
 `DELETE /v1/venues/{venueID}/reviews/me`
 
-- Deletes the caller's review.
+- Deletes the caller's review. It does not require an `Idempotency-Key`;
+  repeating the delete does not create a second Review.
 
 `POST /v1/venues/{venueID}/reviews/{reviewID}/reports`
 
@@ -687,7 +724,9 @@ verified-Venue, Venue-genre, and direct-submission policies without editing
 
 `POST /v1/venues/{venueID}/check-ins`
 
-- Requires `Idempotency-Key`.
+- Requires `Idempotency-Key`. A corrected visit uses a new key under this
+  same operation. Reusing the original key replays the original Check-in and
+  does not record the corrected visit.
 - Records a check-in for a verified venue.
 - Accepts optional `visited_at`; omission means the current server time.
 - Accepts a past visit time no more than 24 hours old. Values up to five
@@ -703,11 +742,13 @@ verified-Venue, Venue-genre, and direct-submission policies without editing
 
 `DELETE /v1/me/check-ins/{checkInID}`
 
-- Deletes one of the caller's Check-ins.
+- Deletes one of the caller's Check-ins. It does not require an
+  `Idempotency-Key`; repeating the delete does not create a second Check-in.
 - Returns `404` when the Check-in does not exist or belongs to another User,
   avoiding disclosure of another User's private history.
 - A correction is made by deleting and recreating a Check-in; visit time and
-  Venue are never edited in place.
+  Venue are never edited in place. The new Check-in uses a new
+  `Idempotency-Key`.
 
 ## Request flow and package boundaries
 
@@ -842,10 +883,36 @@ The API never applies migrations at startup. Pull requests validate all
 migrations from an empty PostGIS database. A protected CI release job applies
 committed Supabase migrations to the target environment before deploying the
 API. Migrations are forward-only; incompatible destructive changes require
-expand-and-contract releases rather than a down migration.
+expand-and-contract releases rather than a down migration. A migration file
+is immutable once its version is recorded on the hosted project. A failed
+push does not freeze it. The file freezes only when
+`supabase_migrations.schema_migrations` contains that version. A normal
+failed push leaves neither the objects nor the version row, so the file may
+be corrected and pushed again. If `0002` objects exist without that version
+row, stop and report that state. Do not edit the file to paper over it.
+`0002` freezes at the Session 4 operator push, even if the branch is not
+merged yet. A later correction is a new migration. The Session 4
+handoff starts the Session 4 binary before the operator push. `/readyz`
+must return `migrations_behind`, then that same process must return 200
+after the push. If the first response is already 200, the highest recorded
+version decides. `0001` means the Session 3 binary is still running. `0002`
+finishes the gate only for the process started from this session after the
+old listener on port 8080 was stopped. The history row does not identify
+the binary.
+The handoff does not deploy Render. The release job still applies `0002` before it deploys the
+binary that requires `0002`. Render's `healthCheckPath` stays `/healthz`.
+Session 4 does not point it at `/readyz` and does not add the release job.
+When Session 14 adds that job, a release is successful only after the
+committed migrations are applied and `/readyz` returns 200. Render's
+`/healthz` success is not that proof.
 
-The API enforces baseline token-bucket limits of 120 requests per minute per
-client IP for public traffic and 60 authenticated writes per minute per User.
+The API enforces a public token bucket with burst capacity 120 and a sustained
+rate of 2 requests per second per client IP. Authenticated writes use a
+separate token bucket with burst capacity 60 and a sustained rate of 1 write
+per second per User. A replay consumes one public token, because that bucket
+runs before the handler, and it does not consume a User write token. Session 4
+implements only the public bucket. A public-limit refusal does not call
+`Execute` and does not change a stored idempotency row.
 Buckets live in memory because the MVP runs one API instance. Idle buckets are
 evicted, and the implementation caps tracked keys so attacker-controlled IPs
 cannot grow memory without bound. Proxy headers are trusted only when the
@@ -853,9 +920,23 @@ request came through the configured Render proxy path.
 
 PostgreSQL enforces durable domain quotas of 10 new Venue Submissions per User
 per rolling 24 hours and 20 combined Profile, Venue, and Review Reports per
-User per rolling 24 hours.
-Idempotent replays do not consume another quota. Limit responses use
-`429 rate_limited` or `429 quota_exceeded` and include `Retry-After`.
+User per rolling 24 hours. A Venue Submission takes its slot when the row is
+created. Rejection, correction, verification, and delisting do not return that
+slot or take another. The quota clock is the row's creation timestamp. For a
+Venue that is `venues.created_at`, and a correction must not change it. A
+Report takes its slot when the row is created. Resolving or dismissing it does
+not return that slot or take another. The combined Report window counts
+Profile, Venue, and Review Reports together, so `Retry-After` uses the oldest
+creation timestamp among those rows. A request that creates no row does not
+take a slot.
+An idempotent replay does not consume a quota. The quota increment runs inside
+the idempotency callback, which a replay skips. A User write token is likewise
+consumed only when that callback runs, or when a write route that does not use
+the helper actually changes state. A `429 quota_exceeded` response sets
+`Retry-After` to the whole seconds until the oldest counted row in that
+rolling 24-hour window falls outside it, and at least 1. Session 4 does not
+implement quotas. `429 rate_limited` keeps the `Retry-After` value from the
+token bucket.
 Quota checks and inserts share a transaction-scoped advisory lock per User and
 quota class so concurrent requests cannot exceed the limit.
 
@@ -913,12 +994,16 @@ operational routes, and has reusable infrastructure for feature slices.
 
 Add the migration that closes direct public reads and writes through
 Supabase's Data API. Add the shared idempotency-record schema and primitives
-used by later authenticated creation routes. Add bounded in-memory
-token-bucket primitives and public per-IP middleware with deterministic-clock
-tests.
+used by later authenticated `POST` routes with duplicate durable effects. Add
+bounded in-memory token-bucket primitives and public per-IP middleware with
+deterministic-clock tests.
 
 **Exit condition:** the Go API is the sole public data contract, retries are
-safe, and baseline abuse limits apply before community writes are added.
+safe, and baseline abuse limits apply before community writes are added. The
+hosted project records migration `0002`. A local `GET /readyz` returns 200
+from the Session 4 process: `migrations_behind` then 200 after the push, or a
+first 200 after port 8080 was cleared when the highest history version is
+already `0002`. The API process does not apply that SQL.
 
 ### Session 5: Authentication and profiles
 
@@ -926,9 +1011,11 @@ safe, and baseline abuse limits apply before community writes are added.
 
 Add JWT/JWKS verification, protected-route middleware, the profile migration,
 base RLS policies, authenticated per-User write limiting, and
-`GET/PATCH/DELETE /v1/me`. This session supports active Profiles only and
-implements the agreed contribution retention for User deletion. The OpenAPI
-document gains the bearer security scheme on those protected routes.
+`GET/PATCH/DELETE /v1/me`. The write limit is a token bucket with burst
+capacity 60 and a sustained rate of 1 write per second per User. This session
+supports active Profiles only and implements the agreed contribution retention
+for User deletion. The OpenAPI document gains the bearer security scheme on
+those protected routes.
 
 **Exit condition:** valid Supabase identities can maintain a profile while
 invalid tokens fail consistently.
@@ -941,7 +1028,9 @@ Add Profile Reports, rename-required and suspended states, public identity
 redaction, moderation audit, expiry behavior, and privileged endpoints that
 list and resolve Profile Reports and apply rename-required and suspension
 actions. The session plan names the routes and how the existing `403` rule
-recognizes an operator. Do not add an operator-provisioning model.
+recognizes an operator. Any `POST` moderation action that appends an audit
+entry requires `Idempotency-Key`; state-setting `PUT`/`PATCH` and `DELETE`
+routes do not. Do not add an operator-provisioning model.
 
 **Exit condition:** Users can report unsafe Profiles, operators can require a
 rename or suspend community writes through those endpoints, and moderated
@@ -975,8 +1064,10 @@ filters.
 
 Implement transactional pending submissions, correction of pending
 submissions, strong duplicate prevention, daily quotas, and the caller's
-submission history. Add any migration required to strengthen Venue constraints
-and RLS read policies without editing the initial migration.
+submission history. `POST /v1/venues` requires `Idempotency-Key`;
+`PUT /v1/me/venues/{venueID}` does not. Add any migration required to
+strengthen Venue constraints and RLS read policies without editing the initial
+migration.
 
 **Exit condition:** a signed-in User can submit a Venue, track its pending
 status, and correct it without creating strong duplicates.
@@ -989,7 +1080,9 @@ Add rejection feedback, correction of rejected submissions, Venue Reports,
 the Delisted Venue lifecycle, append-only moderation audit, and privileged
 endpoints that verify, reject, correct, or delist Venues and resolve Venue
 Reports. The session plan names the routes and how the existing `403` rule
-recognizes an operator. Do not add an operator-provisioning model.
+recognizes an operator. Any `POST` moderation action that appends an audit
+entry requires `Idempotency-Key`; state-setting `PUT`/`PATCH` and `DELETE`
+routes do not. Do not add an operator-provisioning model.
 
 **Exit condition:** operators can verify, reject, correct, or delist Venues
 through those endpoints; Users can report Verified Venue problems; catalogue
@@ -1001,6 +1094,8 @@ history is retained.
 
 Add the review migration, RLS policies, public review list, authenticated
 upsert/delete operations, and venue rating aggregates.
+Neither `PUT` nor `DELETE /v1/venues/{venueID}/reviews/me` requires an
+`Idempotency-Key`; both target the caller's single Review.
 
 **Exit condition:** Android can display, create, edit, and delete ratings and
 reviews.
@@ -1012,7 +1107,9 @@ reviews.
 Add Review Reports, commentary restrictions, the append-only moderation audit
 schema, and privileged endpoints for listing and resolving Review Reports,
 clearing and locking commentary, or deleting the Review. The session plan
-names the routes and how the existing `403` rule recognizes an operator. Do
+names the routes and how the existing `403` rule recognizes an operator. Any
+`POST` moderation action that appends an audit entry requires
+`Idempotency-Key`; state-setting `PUT`/`PATCH` and `DELETE` routes do not. Do
 not add an operator-provisioning model.
 
 **Exit condition:** Users can report unsafe commentary, and trusted operators
@@ -1023,7 +1120,9 @@ can resolve reports through those endpoints without retaining removed text.
 **Status:** Not started.
 
 Add the check-in migration, RLS policies, cooldown rule, check-in creation,
-personal history, User-only deletion, and venue check-in aggregates.
+personal history, User-only deletion, and venue check-in aggregates. A
+corrected Check-in uses a new `Idempotency-Key` under the same operation.
+`DELETE /v1/me/check-ins/{checkInID}` does not require one.
 
 **Exit condition:** Android can record visits and show the user's history
 without duplicate Check-in spam, and a User can remove an incorrect Check-in.
@@ -1034,8 +1133,10 @@ without duplicate Check-in spam, and a User can remove an incorrect Check-in.
 
 Run cross-feature integration scenarios, verify migration-from-empty and RLS,
 close OpenAPI example gaps, confirm error and pagination edge cases, validate
-the migration-before-deploy release workflow and Render configuration,
-document the user-facing and moderation request flows, and document the
+the migration-before-deploy release workflow and Render configuration. A
+release is successful only after the committed migrations are applied and
+`/readyz` returns 200. Render's `/healthz` success is not that proof.
+Document the user-facing and moderation request flows, and document the
 account-deletion flow needed for later Google Play disclosure and support
 pages.
 Do not generate or commit client code, and do not start the admin app.
@@ -1051,7 +1152,10 @@ certifying a beta release.
 - The session plan and code follow
   [the backend architecture guide](docs/architecture/backend.md); any
   deviation updates the guide or adds an ADR in the same pull request.
-- New schema changes use a new numbered migration with RLS and policies.
+- New schema changes use a new numbered migration with RLS. A new product
+  table, and any sequence that migration creates, revokes `PUBLIC`, `anon`,
+  `authenticated`, and `service_role` after the create. A table that uses
+  `gen_random_uuid()` adds no sequence revoke.
 - New endpoints have HTTP, capability, and relevant integration coverage.
 - `backend/openapi.yaml` matches implemented behavior and `/docs` renders it.
 - `gofmt -l .` prints nothing.

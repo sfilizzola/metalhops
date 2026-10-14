@@ -76,9 +76,21 @@ Never drift from it silently.
 ## Shared paths backend work may change
 
 - `infra/supabase/migrations/`: add a new numbered file (`0002_<name>.sql`,
-  and so on). Never edit a migration that is already on `dev` or `main`; add
-  a new one instead. Every new table enables row-level security and defines
-  its policies in the same migration.
+  and so on). Never edit a migration that is already on `dev` or `main`, or
+  whose version is already recorded on the hosted project. A failed push does
+  not count. The file freezes only when
+  `supabase_migrations.schema_migrations` contains that version. A normal
+  failed push leaves neither the objects nor the version row, so the file may
+  be corrected and pushed again. If objects from that migration exist without
+  the version row, stop and report that state. Do not edit the file to paper
+  over it. Add a new file instead. `0002` becomes immutable when the Session 4
+  operator push records it, even if that branch is not merged yet. Every new
+  table enables row-level security and revokes
+  `PUBLIC`, `anon`, `authenticated`, and `service_role` in the same migration.
+  A sequence created in that migration gets the same revoke after it is
+  created. A table that uses `gen_random_uuid()` adds no sequence revoke. Do
+  not try to clear Supabase default privileges owned by another role. A table
+  with no Data API grant needs no policy.
 - `infra/render.yaml`: Render blueprint for this service.
 - `.github/workflows/backend.yml`: backend CI.
 

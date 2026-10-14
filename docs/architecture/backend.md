@@ -43,8 +43,9 @@ Android and future clients
 
 Supabase Auth is the identity provider. The Go HTTP interface is the only
 public product-data interface. The server-owned PostgreSQL connection may
-bypass RLS, so capability modules enforce visibility and authorship. RLS
-remains a separately tested defense.
+bypass RLS, so capability modules enforce visibility and authorship. That
+connection's user owns the product tables. There is no second API database
+role. RLS remains a separately tested defense.
 
 ## Module map
 
@@ -209,9 +210,22 @@ Add a repository-style seam only when a capability has two meaningful
 persistence adapters or a caller needs a stable persistence interface.
 Otherwise, direct private `pgx` implementation keeps the interface smaller.
 
-Migrations are forward-only and immutable after reaching `dev` or `main`.
-Every new table enables RLS and defines its policies in the same migration.
-Expand-and-contract releases handle incompatible schema changes.
+Migrations are forward-only and immutable after reaching `dev` or `main`,
+and immutable once an operator push records the version on the hosted
+project. A failed push does not freeze the file. It freezes only when
+`supabase_migrations.schema_migrations` contains that version. A normal
+failed push leaves neither the objects nor the version row, so the file may
+be corrected and pushed again. If objects from that migration exist without
+the version row, stop and report that state. Do not edit the file to paper
+over it. `0002` freezes at the Session 4 push, even if the branch is not
+merged yet. A later correction is a new migration. Every new table enables
+RLS in the migration that creates it. That migration
+revokes `PUBLIC`, `anon`, `authenticated`, and `service_role` on the table.
+It does the same for any sequence it creates, after the create. A table that
+uses `gen_random_uuid()` adds no sequence revoke. It does not try to clear
+Supabase default privileges owned by another role. A table with no Data API
+grant needs no policy. Expand-and-contract releases handle incompatible
+schema changes.
 
 ## HTTP adaptation
 
@@ -324,8 +338,10 @@ The HTTP adapter decodes the authenticated request and idempotency key. The
 Venue module validates the command, checks Profile contribution eligibility,
 acquires the duplicate-detection lock, checks the durable quota, inserts the
 pending Venue and Genre links, and records idempotency in one transaction. It
-returns a Venue result or a classified domain error. The HTTP adapter maps that
-result to the documented envelope.
+commits that transaction only for a recorded 2xx result and rolls it back when
+the write fails or the idempotency key is reused. It returns a Venue result or
+a classified domain error. The HTTP adapter maps that result to the documented
+envelope.
 
 This is one deep capability module even if the implementation spans several
 files. Do not expose validation, duplicate detection, quota checking, and
