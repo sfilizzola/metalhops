@@ -1,11 +1,14 @@
 package api
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"io"
+	"log/slog"
 	"net"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 )
@@ -19,7 +22,7 @@ func TestServeClosesPoolWhenListenFails(t *testing.T) {
 
 	closed := false
 	srv := &http.Server{Addr: ln.Addr().String(), Handler: http.NewServeMux()}
-	err = Serve(context.Background(), srv, time.Second, func() { closed = true })
+	err = Serve(context.Background(), srv, "v0.1.0-dev", time.Second, func() { closed = true })
 	if err == nil || !closed {
 		t.Fatalf("err %v closed %v", err, closed)
 	}
@@ -45,8 +48,12 @@ func TestServeShutdownTimeoutClosesPool(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	closed := make(chan struct{})
 	done := make(chan error, 1)
+	var logs bytes.Buffer
+	previous := slog.Default()
+	slog.SetDefault(slog.New(slog.NewJSONHandler(&logs, nil)))
+	t.Cleanup(func() { slog.SetDefault(previous) })
 	go func() {
-		done <- Serve(ctx, srv, 50*time.Millisecond, func() { close(closed) })
+		done <- Serve(ctx, srv, "v0.1.0-dev", 50*time.Millisecond, func() { close(closed) })
 	}()
 
 	deadline := time.Now().Add(2 * time.Second)
@@ -82,6 +89,15 @@ func TestServeShutdownTimeoutClosesPool(t *testing.T) {
 	}
 	if !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("err %v", err)
+	}
+	for _, want := range []string{
+		"MetalHops backend is live",
+		`"version":"v0.1.0-dev"`,
+		`"address":"http://` + addr + `"`,
+	} {
+		if !strings.Contains(logs.String(), want) {
+			t.Errorf("startup log %q does not contain %q", logs.String(), want)
+		}
 	}
 	close(release)
 }

@@ -1,7 +1,7 @@
 .PHONY: run test vet build
 
 run:
-	go run ./cmd/api
+	@go run ./cmd/api
 
 test:
 	go test ./...

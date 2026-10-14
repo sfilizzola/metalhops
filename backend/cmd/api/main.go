@@ -16,6 +16,8 @@ import (
 	"github.com/metalhops/metalhops/backend/internal/ratelimit"
 )
 
+const version = "v0.1.0-dev"
+
 func main() {
 	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, nil)))
 
@@ -47,7 +49,7 @@ func main() {
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
-	if err := api.Serve(ctx, srv, 15*time.Second, pool.Close); err != nil {
+	if err := api.Serve(ctx, srv, version, 15*time.Second, pool.Close); err != nil {
 		slog.Error("server", "err", database.Redact(cfg.DatabaseURL, err.Error()))
 		os.Exit(1)
 	}
