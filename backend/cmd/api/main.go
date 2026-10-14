@@ -1,76 +1,48 @@
 package main
 
 import (
-	_ "embed"
-	"encoding/json"
-	"fmt"
-	"log"
+	"context"
+	"log/slog"
 	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/metalhops/metalhops/backend"
+	"github.com/metalhops/metalhops/backend/internal/api"
+	"github.com/metalhops/metalhops/backend/internal/config"
+	"github.com/metalhops/metalhops/backend/internal/database"
 )
 
-//go:embed docs.html
-var docsHTML []byte
-
-const docsCSP = "default-src 'none'; script-src https://cdn.jsdelivr.net; style-src 'unsafe-inline'; font-src https://fonts.scalar.com; img-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'"
-
-func docsUIEnabled(value string) (bool, error) {
-	switch value {
-	case "", "true":
-		return true, nil
-	case "false":
-		return false, nil
-	default:
-		return false, fmt.Errorf("DOCS_UI_ENABLED must be true, false, or empty")
-	}
-}
-
-func newMux(docsEnabled bool) *http.ServeMux {
-	mux := http.NewServeMux()
-	mux.HandleFunc("GET /healthz", healthHandler)
-	mux.HandleFunc("GET /openapi.yaml", openAPIHandler)
-	if docsEnabled {
-		mux.HandleFunc("GET /docs", docsHandler)
-	}
-	return mux
-}
-
-func healthHandler(w http.ResponseWriter, _ *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
-}
-
-func openAPIHandler(w http.ResponseWriter, _ *http.Request) {
-	w.Header().Set("Content-Type", "application/yaml")
-	_, _ = w.Write(contract.OpenAPI)
-}
-
-func docsHandler(w http.ResponseWriter, _ *http.Request) {
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.Header().Set("Content-Security-Policy", docsCSP)
-	_, _ = w.Write(docsHTML)
-}
-
 func main() {
-	port := os.Getenv("PORT")
-	if port == "" {
-		port = "8080"
+	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, nil)))
+
+	cfg, err := config.Load()
+	if err != nil {
+		slog.Error("configuration", "err", err)
+		os.Exit(1)
 	}
 
-	docsEnabled, err := docsUIEnabled(os.Getenv("DOCS_UI_ENABLED"))
+	pool, err := database.Open(context.Background(), cfg.DatabaseURL)
 	if err != nil {
-		log.Fatal(err)
+		slog.Error("database pool", "err", database.Redact(cfg.DatabaseURL, err.Error()))
+		os.Exit(1)
 	}
 
 	srv := &http.Server{
-		Addr:              ":" + port,
-		Handler:           newMux(docsEnabled),
+		Addr:              ":" + cfg.Port,
+		Handler:           api.New(cfg.DocsUIEnabled, contract.OpenAPI, api.ReadinessFunc(pool.Check)),
 		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       10 * time.Second,
+		WriteTimeout:      10 * time.Second,
+		IdleTimeout:       60 * time.Second,
 	}
 
-	log.Printf("MetalHops API listening on :%s", port)
-	log.Fatal(srv.ListenAndServe())
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+	if err := api.Serve(ctx, srv, 15*time.Second, pool.Close); err != nil {
+		slog.Error("server", "err", database.Redact(cfg.DatabaseURL, err.Error()))
+		os.Exit(1)
+	}
 }
