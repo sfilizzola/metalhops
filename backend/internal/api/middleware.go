@@ -14,8 +14,8 @@ type contextKey struct{}
 
 var readRandom = rand.Read
 
-func wrap(logger *slog.Logger, next http.Handler) http.Handler {
-	return accessLog(logger, requestIDs(recoverPanic(logger, next)))
+func wrap(logger *slog.Logger, limit func(http.Handler) http.Handler, next http.Handler) http.Handler {
+	return accessLog(logger, requestIDs(recoverPanic(logger, limit(next))))
 }
 
 func accessLog(logger *slog.Logger, next http.Handler) http.Handler {

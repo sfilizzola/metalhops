@@ -7,18 +7,23 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/metalhops/metalhops/backend"
+	"github.com/metalhops/metalhops/backend/internal/ratelimit"
 )
+
+func allowAll(next http.Handler) http.Handler { return next }
 
 func TestOperationalRoutes(t *testing.T) {
 	var buf bytes.Buffer
 	logger := slog.New(slog.NewJSONHandler(&buf, nil))
 	handler := newServer(true, contract.OpenAPI, ReadinessFunc(func(context.Context) (bool, string) {
 		return true, "ok"
-	}), logger)
+	}), allowAll, logger)
 
 	health := get(handler, "/healthz?token=secret")
 	if health.Code != http.StatusOK || health.Body.String() != "{\"status\":\"ok\"}\n" {
@@ -63,7 +68,7 @@ func TestOperationalRoutes(t *testing.T) {
 		}
 	}
 
-	disabled := newServer(false, contract.OpenAPI, readyOK(), logger)
+	disabled := newServer(false, contract.OpenAPI, readyOK(), allowAll, logger)
 	missing := get(disabled, "/docs")
 	if missing.Code != http.StatusNotFound {
 		t.Fatalf("disabled docs %d", missing.Code)
@@ -79,14 +84,14 @@ func TestOperationalRoutes(t *testing.T) {
 }
 
 func TestReadyz(t *testing.T) {
-	ok := get(newServer(false, contract.OpenAPI, readyOK(), slog.Default()), "/readyz")
+	ok := get(newServer(false, contract.OpenAPI, readyOK(), allowAll, slog.Default()), "/readyz")
 	if ok.Code != http.StatusOK || ok.Body.String() != "{\"status\":\"ok\"}\n" {
 		t.Fatalf("ready %d %s", ok.Code, ok.Body.String())
 	}
 	for _, reason := range []string{"database_unreachable", "migrations_unavailable", "migrations_behind"} {
 		handler := newServer(false, contract.OpenAPI, ReadinessFunc(func(context.Context) (bool, string) {
 			return false, reason
-		}), slog.Default())
+		}), allowAll, slog.Default())
 		rec := get(handler, "/readyz")
 		if rec.Code != http.StatusServiceUnavailable {
 			t.Fatalf("%s status %d", reason, rec.Code)
@@ -100,7 +105,7 @@ func TestReadyz(t *testing.T) {
 func TestPanicEnvelope(t *testing.T) {
 	var buf bytes.Buffer
 	logger := slog.New(slog.NewJSONHandler(&buf, nil))
-	handler := wrap(logger, http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+	handler := wrap(logger, allowAll, http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
 		panic("boom")
 	}))
 	rec := get(handler, "/boom")
@@ -137,7 +142,7 @@ func TestRandomFailure(t *testing.T) {
 	t.Cleanup(func() { readRandom = previous })
 
 	var buf bytes.Buffer
-	handler := newServer(false, nil, readyOK(), slog.New(slog.NewJSONHandler(&buf, nil)))
+	handler := newServer(false, nil, readyOK(), allowAll, slog.New(slog.NewJSONHandler(&buf, nil)))
 	rec := get(handler, "/healthz")
 	if rec.Code != http.StatusInternalServerError || strings.Contains(rec.Body.String(), "goroutine") {
 		t.Fatalf("status %d body %s", rec.Code, rec.Body.String())
@@ -147,6 +152,65 @@ func TestRandomFailure(t *testing.T) {
 	}
 	if !strings.Contains(buf.String(), `"status":500`) {
 		t.Fatalf("log %s", buf.String())
+	}
+}
+
+func TestPublicRateLimit(t *testing.T) {
+	now := time.Date(2026, 10, 14, 12, 0, 0, 0, time.UTC)
+	limiter := ratelimit.New(func() time.Time { return now }, nil)
+	handler := newServer(false, contract.OpenAPI, ReadinessFunc(func(context.Context) (bool, string) {
+		return false, "migrations_behind"
+	}), ratelimit.Middleware(limiter), slog.Default())
+
+	for i := 0; i < 120; i++ {
+		rec := get(handler, "/openapi.yaml")
+		if rec.Code != http.StatusOK {
+			t.Fatalf("allow %d status %d", i, rec.Code)
+		}
+	}
+	denied := get(handler, "/openapi.yaml")
+	if denied.Code != http.StatusTooManyRequests {
+		t.Fatalf("status %d", denied.Code)
+	}
+	if !strings.HasSuffix(denied.Body.String(), "\n") || strings.Contains(denied.Body.String(), `"fields"`) {
+		t.Fatalf("body %s", denied.Body.String())
+	}
+	var got struct {
+		Error struct {
+			Code      string `json:"code"`
+			Message   string `json:"message"`
+			RequestID string `json:"request_id"`
+		} `json:"error"`
+	}
+	if err := json.Unmarshal(denied.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.Error.Code != "rate_limited" || got.Error.Message != "Too many requests." {
+		t.Fatalf("error %#v", got.Error)
+	}
+	if denied.Header().Get("X-Request-ID") != got.Error.RequestID || len(got.Error.RequestID) != 32 {
+		t.Fatalf("request id %q", got.Error.RequestID)
+	}
+	retry, err := strconv.Atoi(denied.Header().Get("Retry-After"))
+	if err != nil || retry < 1 {
+		t.Fatalf("retry %q", denied.Header().Get("Retry-After"))
+	}
+	if get(handler, "/healthz").Code != http.StatusOK {
+		t.Fatal("healthz was limited")
+	}
+	ready := get(handler, "/readyz")
+	if ready.Code != http.StatusServiceUnavailable || ready.Body.String() != "{\"status\":\"not_ready\",\"reason\":\"migrations_behind\"}\n" {
+		t.Fatalf("ready %d %s", ready.Code, ready.Body.String())
+	}
+	post := httptest.NewRequest(http.MethodPost, "/healthz", nil)
+	postRec := httptest.NewRecorder()
+	handler.ServeHTTP(postRec, post)
+	if postRec.Code != http.StatusTooManyRequests {
+		t.Fatalf("post health %d", postRec.Code)
+	}
+	missing := get(handler, "/missing")
+	if missing.Code != http.StatusTooManyRequests {
+		t.Fatalf("missing %d", missing.Code)
 	}
 }
 

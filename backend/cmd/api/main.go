@@ -13,6 +13,7 @@ import (
 	"github.com/metalhops/metalhops/backend/internal/api"
 	"github.com/metalhops/metalhops/backend/internal/config"
 	"github.com/metalhops/metalhops/backend/internal/database"
+	"github.com/metalhops/metalhops/backend/internal/ratelimit"
 )
 
 func main() {
@@ -31,8 +32,13 @@ func main() {
 	}
 
 	srv := &http.Server{
-		Addr:              ":" + cfg.Port,
-		Handler:           api.New(cfg.DocsUIEnabled, contract.OpenAPI, api.ReadinessFunc(pool.Check)),
+		Addr: ":" + cfg.Port,
+		Handler: api.New(
+			cfg.DocsUIEnabled,
+			contract.OpenAPI,
+			api.ReadinessFunc(pool.Check),
+			ratelimit.Middleware(ratelimit.New(time.Now, cfg.TrustedProxies)),
+		),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       10 * time.Second,
 		WriteTimeout:      10 * time.Second,

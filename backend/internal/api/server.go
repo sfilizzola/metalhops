@@ -23,11 +23,11 @@ func (f ReadinessFunc) Check(ctx context.Context) (bool, string) {
 	return f(ctx)
 }
 
-func New(docsEnabled bool, openAPI []byte, ready Readiness) http.Handler {
-	return newServer(docsEnabled, openAPI, ready, slog.Default())
+func New(docsEnabled bool, openAPI []byte, ready Readiness, limit func(http.Handler) http.Handler) http.Handler {
+	return newServer(docsEnabled, openAPI, ready, limit, slog.Default())
 }
 
-func newServer(docsEnabled bool, openAPI []byte, ready Readiness, logger *slog.Logger) http.Handler {
+func newServer(docsEnabled bool, openAPI []byte, ready Readiness, limit func(http.Handler) http.Handler, logger *slog.Logger) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", healthHandler)
 	mux.HandleFunc("GET /readyz", readyHandler(ready))
@@ -38,7 +38,7 @@ func newServer(docsEnabled bool, openAPI []byte, ready Readiness, logger *slog.L
 	if docsEnabled {
 		mux.HandleFunc("GET /docs", docsHandler)
 	}
-	return wrap(logger, mux)
+	return wrap(logger, limit, mux)
 }
 
 func healthHandler(w http.ResponseWriter, _ *http.Request) {
