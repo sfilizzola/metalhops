@@ -16,6 +16,9 @@ PostGIS). Run commands from `backend/`.
 - `cmd/api/`: composition root only (configuration, adapters, and server
   lifecycle).
 - `internal/`: all domain code.
+- `internal/idempotency`: in-transaction retry helper. No HTTP route.
+- `internal/ratelimit`: public per-IP token buckets and client-IP walk.
+- `internal/pgtest`: PostGIS test harness. Production code does not import it.
 - `openapi.yaml`: contract for implemented HTTP routes.
 
 Before adding backend packages or seams, read
@@ -31,11 +34,17 @@ when that file exists. Variables already in the environment win.
 
 `GET /healthz` reports process health and does not check the database.
 `GET /readyz` returns 200 when the database ping succeeds and migration
-`0001` or newer is recorded. Otherwise it returns 503.
+`0002` or newer is recorded. Otherwise it returns 503.
 `GET /openapi.yaml` serves the embedded `openapi.yaml` in every environment.
 `GET /docs` serves the Scalar page when `DOCS_UI_ENABLED` is unset or `true`.
 The exact value `false` leaves `/docs` unregistered. Any other value stops
 the process at startup. Local `.env.example` sets `true`. Render sets `false`.
+
+`TRUSTED_PROXIES` is a comma-separated CIDR list. Empty or unset means the
+TCP peer is the client. `GET /healthz` and `GET /readyz` are not rate
+limited. Every other route uses a token bucket with burst capacity 120 and
+a sustained rate of 2 requests per second per resolved client IP. A refusal
+is `429` `rate_limited` with `Retry-After`.
 
 HTTP behavior lives in `internal/api`. The contract embed remains
 `backend/contract.go`. `docs.html` lives beside the HTTP package.

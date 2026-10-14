@@ -59,6 +59,8 @@ backend/
 │   ├── auth/                # caller resolution and session verification
 │   ├── config/              # environment parsing and validation
 │   ├── database/            # pool lifecycle and database readiness
+│   ├── idempotency/         # shared creation-retry helper
+│   ├── ratelimit/           # in-memory public IP limiter
 │   ├── profile/             # Profile capability
 │   ├── venue/               # Genre, discovery, and Venue capability
 │   ├── review/              # Review and rating capability
@@ -356,9 +358,10 @@ The repository intentionally begins smaller than this target:
   both stay on a Go 1.23 toolchain under `-mod=readonly`, so source, CI
   (`.github/workflows/backend.yml`), and the container build
   (`backend/Dockerfile`) all moved to Go 1.24 together in that session.
-- migration `0001_init.sql` still permits direct catalogue reads and Venue
-  submissions; the API-safety migration must close those policies before
-  product clients are built.
+- migration `0002_api_safety.sql` closed direct Data API reads and writes
+  of the catalogue. Authenticated `POST` routes that require an
+  `Idempotency-Key` call `idempotency.Execute` inside their own transaction.
+  The public IP limiter lives in `internal/ratelimit`.
 - legacy JWT-secret configuration remains until the authentication session
   introduces asymmetric verification.
 
