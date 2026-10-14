@@ -3,7 +3,7 @@
 MetalHops MVP API roadmap. Refer to this document as **DevSteps** across every implementation session.
 
 **Date:** 2026-10-14
-**Status:** Sessions 1–3 are done. Session 4 is next. Sessions 5–14 are not started.
+**Status:** Sessions 1–4 are done. Session 5 is next. Sessions 6–14 are not started.
 
 ## Goal
 
@@ -949,7 +949,7 @@ The Check-in cooldown remains a separate domain rule and returns `409`.
 | 1. Repository boundaries | Done |
 | 2. Browsable API contract | Done |
 | 3. Backend foundation | Done |
-| 4. API safety and data boundary | Next |
+| 4. API safety and data boundary | Done |
 | 5–14 | Not started |
 
 ### Session 1: Repository boundaries
@@ -990,7 +990,7 @@ operational routes, and has reusable infrastructure for feature slices.
 
 ### Session 4: API safety and data boundary
 
-**Status:** Next.
+**Status:** Done.
 
 Add the migration that closes direct public reads and writes through
 Supabase's Data API. Add the shared idempotency-record schema and primitives
