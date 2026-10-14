@@ -137,7 +137,10 @@ pool stops startup.
 `Pool.Check(context.Context) (bool, string)` pings with a 2-second timeout,
 then reads the latest `version` from `supabase_migrations.schema_migrations`. The required version is the
 string `0001`, the Supabase CLI version for
-`infra/supabase/migrations/0001_init.sql`. The latest stored version must be
+`infra/supabase/migrations/0001_init.sql`. The filename stays
+`0001_init.sql` even if the CLI prefers timestamped names. A CLI
+rejection is reported and fixed in a follow-up, and that follow-up
+changes the required version in the same change. The latest stored version must be
 greater than or equal to `0001` in text order. The session that adds a
 migration bumps this constant in the same change.
 
@@ -224,7 +227,9 @@ unknown-field rejection.
    exits before listen. The log line does not contain `DATABASE_URL`.
 3. Open the pool. A failure to build the pool exits the same way.
 4. Build the HTTP server with `ReadinessFunc(pool.Check)`.
-5. Listen, then wait for `SIGINT` or `SIGTERM`.
+5. Listen, then wait for `SIGINT` or `SIGTERM`. The wait, the 15-second
+   drain, and the pool close are `api.Serve`. `cmd/api` calls it and
+   gains no new test.
 
 Server timeouts are 5 seconds for headers, 10 seconds for reading a request,
 10 seconds for writing a response, and 60 seconds of idle keep-alive.
@@ -282,7 +287,9 @@ directory. The composition root passes those bytes into `internal/api`.
 ```
 
 `infra/render.yaml` gains no variables and keeps `/healthz`. DevSteps stays
-the session list; this spec does not mark Session 3 done.
+the session list. Neither this spec nor a later `{"status":"ok"}` from
+`/readyz` marks Session 3 done. That status update waits for a later docs
+commit.
 
 ## Tests
 
@@ -333,10 +340,31 @@ From `backend/`:
 - Profile, Venue, Review, and Check-in packages.
 - Changing the Render health check to `/readyz`.
 
+## Operator handoff
+
+The API process does not apply SQL. Session 3 is still incomplete until
+migration `0001` is recorded on the hosted Supabase project and a local
+`GET /readyz` returns 200.
+
+Commit `infra/supabase/config.toml` from `supabase init --workdir infra`.
+Also commit `infra/supabase/.gitignore` when init creates it. Leave every
+other file init creates untracked, including `seed.sql`. Do not commit
+`.temp`, `.branches`, the database password, or the linked project
+credentials. The implementation plan lists the commands the operator runs
+for install, login, link, and `db push`. `db push` uses the CLI's linked
+direct connection. If that host is unreachable, the operator reruns the
+push with `--db-url` set to the session-pooler URL on port 5432. The
+transaction pooler on port 6543 is not used for the push. `DATABASE_URL`
+for the API remains that same session-pooler URL. This session does not run `supabase start`. Tests keep using the
+temporary PostGIS database. `major_version` stays as `supabase init`
+writes it unless `link` or `db push` reports a mismatch. `project_id` is
+`metalhops`. Ports and enabled services stay as init writes them.
+
 ## Exit condition
 
 The service starts with validated configuration, serves `/healthz`,
 `/readyz`, `/openapi.yaml`, and `/docs`, and exposes the envelope helpers,
 middleware, pool, and readiness check that later sessions call. On an empty
 database the process stays up and `/readyz` returns 503 with
-`migrations_unavailable`.
+`migrations_unavailable`. After the operator handoff, the hosted project
+returns 200.
