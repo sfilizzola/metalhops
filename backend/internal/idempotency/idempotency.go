@@ -13,6 +13,7 @@ import (
 )
 
 var ErrInvalid = errors.New("idempotency: invalid request")
+var ErrReused = errors.New("idempotency: key reused")
 
 var (
 	uuidPattern      = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
@@ -38,19 +39,47 @@ func Execute(ctx context.Context, tx pgx.Tx, now time.Time, req Request, fn func
 	sum := sha256.Sum256(req.Command)
 	hash := hex.EncodeToString(sum[:])
 
+	if _, err := tx.Exec(ctx, `
+		delete from idempotency_records
+		where ctid in (
+			select ctid from idempotency_records
+			where expires_at <= $1
+			order by expires_at
+			limit 100
+			for update skip locked
+		)`, now); err != nil {
+		return Result{}, err
+	}
+	lockKey := req.UserID + "\x1f" + req.Operation + "\x1f" + req.Key
+	if _, err := tx.Exec(ctx, `select pg_advisory_xact_lock(hashtextextended($1, 0))`, lockKey); err != nil {
+		return Result{}, err
+	}
+
+	var storedHash string
 	var status int
 	var body []byte
 	var expires time.Time
 	err := tx.QueryRow(ctx, `
-		select response_status, response_body, expires_at
+		select request_hash, response_status, response_body, expires_at
 		from idempotency_records
-		where user_id = $1 and operation = $2 and key = $3 and request_hash = $4`,
-		req.UserID, req.Operation, req.Key, hash).Scan(&status, &body, &expires)
-	if err == nil && expires.After(now) {
-		return Result{Status: status, Body: body}, nil
-	}
+		where user_id = $1 and operation = $2 and key = $3`,
+		req.UserID, req.Operation, req.Key).Scan(&storedHash, &status, &body, &expires)
 	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 		return Result{}, err
+	}
+	if err == nil {
+		if expires.After(now) {
+			if storedHash == hash {
+				return Result{Status: status, Body: body}, nil
+			}
+			return Result{}, ErrReused
+		}
+		if _, err := tx.Exec(ctx, `
+			delete from idempotency_records
+			where user_id = $1 and operation = $2 and key = $3`,
+			req.UserID, req.Operation, req.Key); err != nil {
+			return Result{}, err
+		}
 	}
 
 	result, err := fn(ctx)
