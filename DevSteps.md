@@ -2,8 +2,8 @@
 
 MetalHops MVP API roadmap. Refer to this document as **DevSteps** across every implementation session.
 
-**Date:** 2026-10-13
-**Status:** Sessions 1 and 2 are done. Session 3 is next. Sessions 4–14 are not started.
+**Date:** 2026-10-14
+**Status:** Sessions 1–3 are done. Session 4 is next. Sessions 5–14 are not started.
 
 ## Goal
 
@@ -93,7 +93,7 @@ Supabase PostgreSQL + PostGIS
 The service continues to use `net/http`. Code under `cmd/api` only loads
 configuration and composes the server. Capability-focused packages under
 `backend/internal/` own HTTP handling, business rules, and persistence.
-Backend source, CI, and container builds use Go 1.23 consistently.
+Backend source, CI, and container builds use Go 1.24 consistently.
 
 The approved dependencies are:
 
@@ -867,8 +867,9 @@ The Check-in cooldown remains a separate domain rule and returns `409`.
 | --- | --- |
 | 1. Repository boundaries | Done |
 | 2. Browsable API contract | Done |
-| 3. Backend foundation | Next |
-| 4–14 | Not started |
+| 3. Backend foundation | Done |
+| 4. API safety and data boundary | Next |
+| 5–14 | Not started |
 
 ### Session 1: Repository boundaries
 
@@ -896,19 +897,19 @@ request builder against the running service.
 
 ### Session 3: Backend foundation
 
-**Status:** Next.
+**Status:** Done.
 
 Introduce configuration, `pgx/v5`, database lifecycle, common envelopes,
 middleware, graceful shutdown, capability-module composition, and only the
 seams justified by real variation. Preserve `/healthz`, add `/readyz`, and
-align `go.mod`, CI, container builds, and backend guidance on Go 1.23.
+align `go.mod`, CI, container builds, and backend guidance on Go 1.24.
 
 **Exit condition:** the service starts with validated configuration, exposes
 operational routes, and has reusable infrastructure for feature slices.
 
 ### Session 4: API safety and data boundary
 
-**Status:** Not started.
+**Status:** Next.
 
 Add the migration that closes direct public reads and writes through
 Supabase's Data API. Add the shared idempotency-record schema and primitives
