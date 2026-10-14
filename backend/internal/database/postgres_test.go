@@ -5,17 +5,13 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
-	"strings"
 	"testing"
-	"time"
 
-	"github.com/testcontainers/testcontainers-go/modules/postgres"
+	"github.com/metalhops/metalhops/backend/internal/pgtest"
 )
 
-// shortcut: harness stays in database tests until a second package needs it.
-
 func TestMigrationVersions(t *testing.T) {
-	url := startPostGIS(t)
+	url := pgtest.EmptyURL(t)
 	ctx := context.Background()
 
 	pool, err := Open(ctx, url)
@@ -72,32 +68,6 @@ func TestMigrationVersions(t *testing.T) {
 	if !ready || reason != "ok" {
 		t.Fatalf("0002 ready %v reason %s", ready, reason)
 	}
-}
-
-func startPostGIS(t *testing.T) string {
-	t.Helper()
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
-	t.Cleanup(cancel)
-	container, err := postgres.Run(ctx, "postgis/postgis:16-3.5",
-		postgres.WithDatabase("metalhops"),
-		postgres.WithUsername("metalhops"),
-		postgres.WithPassword("metalhops"),
-		postgres.BasicWaitStrategies(),
-	)
-	if err != nil {
-		if os.Getenv("CI") == "" && (strings.Contains(err.Error(), "docker") || strings.Contains(err.Error(), "Docker")) {
-			t.Skip("Docker is unavailable: " + err.Error())
-		}
-		t.Fatal(err)
-	}
-	t.Cleanup(func() {
-		_ = container.Terminate(context.Background())
-	})
-	url, err := container.ConnectionString(ctx, "sslmode=disable")
-	if err != nil {
-		t.Fatal(err)
-	}
-	return url
 }
 
 func execSQL(t *testing.T, pool *Pool, sql string) {
