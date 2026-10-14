@@ -5,6 +5,7 @@ go 1.24.0
 require (
 	github.com/jackc/pgx/v5 v5.7.6
 	github.com/testcontainers/testcontainers-go/modules/postgres v0.38.0
+	golang.org/x/time v0.11.0
 )
 
 require (
