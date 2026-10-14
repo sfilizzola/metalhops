@@ -166,3 +166,44 @@ func TestLoadEnvFile(t *testing.T) {
 		t.Fatalf("unreadable err %v", err)
 	}
 }
+
+func TestTrustedProxies(t *testing.T) {
+	dir := t.TempDir()
+	validURL := "postgres://user:s3cret@127.0.0.1:5432/metalhops"
+	loadWith := func(value string, set bool) (Config, error) {
+		return load(func(key string) (string, bool) {
+			if key == "DATABASE_URL" {
+				return validURL, true
+			}
+			if key == "TRUSTED_PROXIES" && set {
+				return value, true
+			}
+			return "", false
+		}, dir)
+	}
+
+	cfg, err := loadWith("", false)
+	if err != nil || len(cfg.TrustedProxies) != 0 {
+		t.Fatalf("unset %#v %v", cfg.TrustedProxies, err)
+	}
+	cfg, err = loadWith("  10.0.0.0/8 , 10.1.0.0/16 , 10.0.0.0/8 ", true)
+	if err != nil || len(cfg.TrustedProxies) != 3 {
+		t.Fatalf("parsed %#v %v", cfg.TrustedProxies, err)
+	}
+	if cfg.TrustedProxies[0].String() != "10.0.0.0/8" || cfg.TrustedProxies[1].String() != "10.1.0.0/16" || cfg.TrustedProxies[2].String() != "10.0.0.0/8" {
+		t.Fatalf("nets %#v", cfg.TrustedProxies)
+	}
+
+	pinned := "173.245.48.0/20, 103.21.244.0/22, 103.22.200.0/22, 103.31.4.0/22, 141.101.64.0/18, 108.162.192.0/18, 190.93.240.0/20, 188.114.96.0/20, 197.234.240.0/22, 198.41.128.0/17, 162.158.0.0/15, 104.16.0.0/13, 104.24.0.0/14, 172.64.0.0/13, 131.0.72.0/22, 2400:cb00::/32, 2606:4700::/32, 2803:f800::/32, 2405:b500::/32, 2405:8100::/32, 2a06:98c0::/29, 2c0f:f248::/32, 10.0.0.0/8"
+	cfg, err = loadWith(pinned, true)
+	if err != nil || len(cfg.TrustedProxies) != 23 {
+		t.Fatalf("pinned %d %v", len(cfg.TrustedProxies), err)
+	}
+
+	for _, bad := range []string{"10.0.0.0/8,", "not-a-cidr", "10.0.0.0/8,,10.1.0.0/16"} {
+		_, err := loadWith(bad, true)
+		if err == nil || err.Error() != "TRUSTED_PROXIES must be a comma-separated list of CIDRs" {
+			t.Fatalf("%q err %v", bad, err)
+		}
+	}
+}

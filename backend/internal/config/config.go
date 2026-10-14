@@ -3,6 +3,7 @@ package config
 import (
 	"bufio"
 	"fmt"
+	"net"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -12,9 +13,10 @@ import (
 )
 
 type Config struct {
-	Port          string
-	DatabaseURL   string
-	DocsUIEnabled bool
+	Port           string
+	DatabaseURL    string
+	DocsUIEnabled  bool
+	TrustedProxies []net.IPNet
 }
 
 func Load() (Config, error) {
@@ -45,7 +47,11 @@ func load(lookup func(string) (string, bool), dir string) (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
-	return Config{Port: port, DatabaseURL: databaseURL, DocsUIEnabled: docs}, nil
+	proxies, err := parseTrustedProxies(value("TRUSTED_PROXIES"))
+	if err != nil {
+		return Config{}, err
+	}
+	return Config{Port: port, DatabaseURL: databaseURL, DocsUIEnabled: docs, TrustedProxies: proxies}, nil
 }
 
 func parsePort(value string) (string, error) {
@@ -78,6 +84,27 @@ func parseDocs(value string) (bool, error) {
 	default:
 		return false, fmt.Errorf("DOCS_UI_ENABLED must be true, false, or empty")
 	}
+}
+
+func parseTrustedProxies(value string) ([]net.IPNet, error) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return nil, nil
+	}
+	parts := strings.Split(value, ",")
+	nets := make([]net.IPNet, 0, len(parts))
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			return nil, fmt.Errorf("TRUSTED_PROXIES must be a comma-separated list of CIDRs")
+		}
+		_, network, err := net.ParseCIDR(part)
+		if err != nil {
+			return nil, fmt.Errorf("TRUSTED_PROXIES must be a comma-separated list of CIDRs")
+		}
+		nets = append(nets, *network)
+	}
+	return nets, nil
 }
 
 func readEnvFile(dir string) (map[string]string, error) {
