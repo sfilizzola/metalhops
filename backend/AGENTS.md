@@ -24,15 +24,21 @@ modules are the primary shape. Handler, service, and repository roles do not
 require separate packages, and a Go interface needs real variation rather than
 layering ceremony.
 
-## Documentation routes
+## Runtime
 
+Go 1.24. `make run` from `backend/` reads `.env` in the current directory
+when that file exists. Variables already in the environment win.
+
+`GET /healthz` reports process health and does not check the database.
+`GET /readyz` returns 200 when the database ping succeeds and migration
+`0001` or newer is recorded. Otherwise it returns 503.
 `GET /openapi.yaml` serves the embedded `openapi.yaml` in every environment.
 `GET /docs` serves the Scalar page when `DOCS_UI_ENABLED` is unset or `true`.
 The exact value `false` leaves `/docs` unregistered. Any other value stops
 the process at startup. Local `.env.example` sets `true`. Render sets `false`.
 
-Both routes live in `cmd/api` until Session 3 moves HTTP behavior. The
-contract embed is `backend/contract.go`.
+HTTP behavior lives in `internal/api`. The contract embed remains
+`backend/contract.go`. `docs.html` lives beside the HTTP package.
 
 ## Planning a session
 

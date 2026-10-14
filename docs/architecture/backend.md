@@ -65,6 +65,11 @@ backend/
 └── openapi.yaml             # implemented HTTP interface
 ```
 
+`openapi.yaml` stays at `backend/openapi.yaml` and is embedded by
+`backend/contract.go`, because `go:embed` cannot reference a parent
+directory. The composition root passes those bytes into `internal/api`.
+`docs.html` is embedded from `internal/api`.
+
 This tree names ownership, not mandatory internal layers. A capability may use
 several files while remaining one Go package and one module. Do not create a
 `handler`, `service`, or `repository` package merely to reproduce this shape
@@ -330,8 +335,6 @@ record insertion as an ordered script that callers must assemble.
 
 The repository intentionally begins smaller than this target:
 
-- `cmd/api` still owns `/healthz`; the backend-foundation session moves HTTP
-  behavior behind the HTTP module.
 - the backend-foundation session raised `go.mod` from Go 1.23 to Go 1.24: pgx
   (database pool) and testcontainers-go (PostGIS integration tests) cannot
   both stay on a Go 1.23 toolchain under `-mod=readonly`, so source, CI
@@ -342,8 +345,5 @@ The repository intentionally begins smaller than this target:
   product clients are built.
 - legacy JWT-secret configuration remains until the authentication session
   introduces asymmetric verification.
-- `backend/contract.go` embeds `openapi.yaml` because `go:embed` cannot
-  reference a parent directory. The backend-foundation session moves that
-  embed with the HTTP routes.
 
 These are named migration steps, not patterns to copy into new code.
