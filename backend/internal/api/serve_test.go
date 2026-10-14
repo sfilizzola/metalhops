@@ -1,13 +1,12 @@
 package api
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"io"
-	"log/slog"
 	"net"
 	"net/http"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -48,10 +47,21 @@ func TestServeShutdownTimeoutClosesPool(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	closed := make(chan struct{})
 	done := make(chan error, 1)
-	var logs bytes.Buffer
-	previous := slog.Default()
-	slog.SetDefault(slog.New(slog.NewJSONHandler(&logs, nil)))
-	t.Cleanup(func() { slog.SetDefault(previous) })
+	reader, writer, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	previous := os.Stdout
+	os.Stdout = writer
+	t.Cleanup(func() { os.Stdout = previous })
+	output := make(chan string, 1)
+	go func() {
+		banner, readErr := io.ReadAll(reader)
+		if readErr != nil {
+			t.Error(readErr)
+		}
+		output <- string(banner)
+	}()
 	go func() {
 		done <- Serve(ctx, srv, "v0.1.0-dev", 50*time.Millisecond, func() { close(closed) })
 	}()
@@ -90,14 +100,12 @@ func TestServeShutdownTimeoutClosesPool(t *testing.T) {
 	if !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("err %v", err)
 	}
-	for _, want := range []string{
-		"MetalHops backend is live",
-		`"version":"v0.1.0-dev"`,
-		`"address":"http://` + addr + `"`,
-	} {
-		if !strings.Contains(logs.String(), want) {
-			t.Errorf("startup log %q does not contain %q", logs.String(), want)
-		}
+	writer.Close()
+	os.Stdout = previous
+	banner := <-output
+	want := "🤘 MetalHops backend\nv0.1.0-dev\nLive at http://" + addr + " — crank it up!\n"
+	if !strings.Contains(banner, want) {
+		t.Errorf("startup banner %q, want %q", banner, want)
 	}
 	close(release)
 }

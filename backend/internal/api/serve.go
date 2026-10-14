@@ -3,9 +3,10 @@ package api
 import (
 	"context"
 	"errors"
-	"log/slog"
+	"fmt"
 	"net"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 )
@@ -23,7 +24,7 @@ func Serve(ctx context.Context, srv *http.Server, version string, timeout time.D
 	if strings.HasPrefix(address, ":") {
 		address = "localhost" + address
 	}
-	slog.Info("🤘 MetalHops backend is live — crank it up!", "version", version, "address", "http://"+address)
+	fmt.Fprint(os.Stdout, "🤘 MetalHops backend\n"+version+"\nLive at http://"+address+" — crank it up!\n")
 
 	errCh := make(chan error, 1)
 	go func() {
