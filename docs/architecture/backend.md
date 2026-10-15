@@ -285,9 +285,11 @@ Shutdown reverses ownership: stop accepting requests, drain active work within
 the configured timeout, and close adapters. Liveness does not depend on the
 database; readiness does.
 
-The current `SUPABASE_JWT_SECRET` setting is transitional scaffolding. The
-authentication session replaces it with issuer, audience, project URL, and
-JWKS configuration before protected routes are implemented.
+Authentication verifies `RS256` and `ES256` tokens against the project's JWKS.
+`SUPABASE_URL` determines the issuer and JWKS URL. There is no symmetric JWT
+secret and no OpenID discovery. A protected request also requires a live
+`auth.sessions` row. `internal/profile` owns Profile changes and hard User
+deletion.
 
 ## Testing strategy
 
@@ -362,7 +364,7 @@ The repository intentionally begins smaller than this target:
   of the catalogue. Authenticated `POST` routes that require an
   `Idempotency-Key` call `idempotency.Execute` inside their own transaction.
   The public IP limiter lives in `internal/ratelimit`.
-- legacy JWT-secret configuration remains until the authentication session
-  introduces asymmetric verification.
+- migration `0003_auth_profiles.sql` adds Profiles. Protected routes verify
+  asymmetric Supabase JWTs through JWKS.
 
 These are named migration steps, not patterns to copy into new code.

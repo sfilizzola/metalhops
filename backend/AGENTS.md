@@ -16,8 +16,10 @@ PostGIS). Run commands from `backend/`.
 - `cmd/api/`: composition root only (configuration, adapters, and server
   lifecycle).
 - `internal/`: all domain code.
+- `internal/auth`: Supabase JWT verification, JWKS cache, and live-session lookup.
+- `internal/profile`: active Profile rules, persistence, and account deletion.
 - `internal/idempotency`: in-transaction retry helper. No HTTP route.
-- `internal/ratelimit`: public per-IP token buckets and client-IP walk.
+- `internal/ratelimit`: public per-IP token buckets, client-IP walk, and the per-User write limiter.
 - `internal/pgtest`: PostGIS test harness. Production code does not import it.
 - `openapi.yaml`: contract for implemented HTTP routes.
 
@@ -34,7 +36,7 @@ when that file exists. Variables already in the environment win.
 
 `GET /healthz` reports process health and does not check the database.
 `GET /readyz` returns 200 when the database ping succeeds and migration
-`0002` or newer is recorded. Otherwise it returns 503.
+`0003` or newer is recorded. Otherwise it returns 503.
 `GET /openapi.yaml` serves the embedded `openapi.yaml` in every environment.
 `GET /docs` serves the Scalar page when `DOCS_UI_ENABLED` is unset or `true`.
 The exact value `false` leaves `/docs` unregistered. Any other value stops
@@ -105,7 +107,18 @@ Never drift from it silently.
 
 ## Auth model
 
-- The apps sign in with Supabase Auth and send the JWT to this API, which
-  verifies it.
-- The Supabase service-role key exists only in server environment variables,
-  never in the repo or the apps.
+- The apps sign in with Supabase Auth and send the JWT to this API.
+- `SUPABASE_URL` derives the issuer, JWKS, and Admin URL. `SUPABASE_JWT_AUDIENCE`
+  is the exact accepted audience. `SUPABASE_SERVICE_ROLE_KEY` is server-only
+  and is used for hard User deletion. Never put it in a client app.
+- Accepted algorithms are `RS256` and `ES256` (P-256). A symmetric JWT secret
+  is not used. JWKS is cached for ten minutes. An unknown `kid` forces one
+  refresh. Every protected request then reads `auth.sessions` for that session
+  and User.
+- `GET`, `PATCH`, and `DELETE /v1/me` are the protected routes. JSON bodies
+  are at most 64 KiB, valid UTF-8, one object, and reject unknown fields.
+- Profile writes and account deletion reserve a per-User bucket of burst 60
+  and one token per second. The reservation is committed only after the state
+  change succeeds and cancelled when it does not. `GET` does not reserve.
+- Deleting a User removes the Profile and idempotency rows. Venue submissions
+  remain with `submitted_by` null.
