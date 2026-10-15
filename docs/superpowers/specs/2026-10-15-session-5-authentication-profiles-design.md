@@ -17,7 +17,7 @@ The session adds:
 - the Profile schema and `GET`, `PATCH`, and `DELETE /v1/me`;
 - authenticated per-User write limiting;
 - shared safe JSON request decoding;
-- account deletion through the Supabase Admin API;
+- User deletion through the Supabase Admin API;
 - bearer authentication and Profile operations in OpenAPI.
 
 Session 6 remains responsible for Profile Reports, moderation actions,
@@ -212,8 +212,15 @@ The middleware:
 3. stores the resolved `Caller` in request context;
 4. dispatches the protected handler.
 
-Public operational and documentation routes never resolve identity. The
-middleware order is:
+Public operational and documentation routes never resolve identity. A missing
+Profile does not block public discovery, and Session 5 adds no catalogue
+route. Future public catalogue routes must not resolve caller identity. A
+request with no token and a valid token see the same catalogue. That
+catalogue contains Verified Venues and pending Venue Submissions whose
+required fields are valid. A pending Venue is visibly not verified. Rejected
+and Delisted Venues are excluded. A Review can target only a Verified Venue.
+A Check-in can target a Verified Venue or a valid pending Venue. Session 5
+protects only `/v1/me`. The middleware order is:
 
 ```text
 access log
@@ -255,7 +262,7 @@ Migration `0003_auth_profiles.sql` creates:
 ```text
 profiles
   id                   uuid primary key
-  username             text not null unique
+  username             text not null
   display_name         text not null
   status               text not null default 'active'
   moderation_reason    text null
@@ -265,13 +272,21 @@ profiles
   updated_at           timestamptz not null default now()
 ```
 
-`id` references `auth.users(id) on delete cascade`. `status` is constrained to
-`active`, `rename_required`, or `suspended`. Username checks require stored
-lowercase ASCII matching `^[a-z0-9_]{3,30}$`. Display name is limited to 80
+`id` references `auth.users(id) on delete cascade`. A unique index on
+`lower(username)` enforces case-insensitive identity. `status` is constrained to
+`active`, `rename_required`, or `suspended`. Username checks require ASCII
+matching `^[A-Za-z0-9_]{3,30}$` for its characters. The stored casing is
+preserved, while uniqueness uses the case-folded value. Display name is limited to 80
 characters. Moderation note is limited to 1,000 characters when present.
 
-Session 5 always writes `status = 'active'` with all moderation fields null.
-The migration includes the full Profile state columns selected during design,
+Session 5 always writes `status = 'active'` with all moderation fields null
+on a real Profile update. An unchanged `PATCH` is a no-op: it leaves a stored
+non-active status and its moderation fields as they are, does not change
+`updated_at`, and does not spend a write token. `GET /v1/me`
+returns the stored status, including a non-active status already in the row,
+and omits moderation reason, note, and suspension expiry. Session 6 must replace that
+write before it creates a `rename_required` or `suspended` Profile. The
+migration includes the full Profile state columns selected during design,
 but Session 6 owns moderation taxonomies, transitions, audit rows, expiry, and
 state-specific constraints. Session 6 may strengthen those constraints in a
 new migration; Session 5 does not guess them.
@@ -291,9 +306,14 @@ Raise the binary's required migration version from `0002` to `0003`.
 
 ### Username
 
-Normalize a Username by converting ASCII letters to lowercase. It must then
-be 3–30 ASCII characters containing only letters, digits, and underscore.
-Store and return the normalized lowercase value.
+Compare identity by ASCII case folding, but store and return the casing the
+User submitted. The stored value must be 3–30 ASCII letters, digits, and
+underscore. `MetalFan` and `metalfan` are the same Username. The owner may
+correct `sfilizZola` to `sfilizzola`; that updates the same handle, changes
+`updated_at`, spends one User write token, and does not return
+`username_taken`. Submitting the exact stored casing is unchanged and spends
+nothing. Another User cannot take any casing of it.
+`metal_fan` and `metalfan` remain different Usernames.
 
 Reject reserved platform identities with `400 username_reserved`. The base
 reserved values are:
@@ -312,18 +332,26 @@ official
 Reservation comparison removes underscores and explores both interpretations
 of `1` (`i` and `l`) while mapping `0→o`, `3→e`, `4→a`, `5→s`, and `7→t`.
 Any resulting skeleton equal to a reserved value, or containing `metalhops`,
-is reserved. This check runs after lowercase normalization and before
-persistence.
+is reserved. This check runs after case folding and before persistence.
+`ad_min` and `adm1n` are reserved. `adminfan` is available. `my_metalhops` is
+reserved because its skeleton contains `metalhops`. Ordinary uniqueness still
+treats an underscore as significant when the resulting handle is not protected.
 
 ### Display name
 
 Validate that the input bytes were UTF-8 in the HTTP adapter. In the Profile
 module, trim Unicode whitespace, normalize to NFC, and require 1–80 Unicode
 characters. Reject null bytes, line feeds, and other non-whitespace control
-characters. A display name is single-line.
+characters. A display name is single-line. It is not checked for uniqueness,
+reservation, or impersonation, so it may copy another Username or a protected
+word.
 
-The normalized values are the values compared for no-op updates, checked for
-uniqueness, stored, returned, and later used by clients.
+The normalized display name is compared for no-op updates. Username no-op
+comparison uses the exact stored casing, so a casing-only change is an update.
+That correction stores `active`, clears moderation fields, changes
+`updated_at`, and spends one write token. Omitted fields stay as stored. When the resulting Username and display name
+match the stored values, the `PATCH` is a no-op even if the stored status is
+not `active`. Both stored values are returned and later used by clients.
 
 ## Profile capability and transactions
 
@@ -339,7 +367,8 @@ does not expose database records, transactions, or HTTP types.
 ### Read
 
 `GET /v1/me` selects by caller User ID. A missing row is a classified
-Profile-not-found result. Session 5 can return only an active Profile.
+Profile-not-found result. The response returns the stored status. A non-active
+row is not refused. Moderation reason, note, and suspension expiry are omitted.
 
 ### Create or update
 
@@ -352,7 +381,8 @@ Profile-not-found result. Session 5 can return only an active Profile.
 }
 ```
 
-Creation requires both non-null fields. Updating an existing Profile requires
+Creating a User requires both non-null fields. A failed creation leaves no
+Profile, so that sign-in is not yet a User. Updating an existing Profile requires
 at least one non-null field and leaves omitted fields unchanged. Explicit
 `null` is invalid. Normalize and validate the complete resulting Profile
 before writing.
@@ -361,7 +391,8 @@ The Profile module owns one transaction:
 
 1. lock the caller's existing Profile row when present;
 2. derive and validate the complete normalized state;
-3. return the current Profile immediately when nothing changes;
+3. return the current Profile immediately when the Username and display name
+   are unchanged, including a stored non-active status;
 4. reserve a per-User write token;
 5. insert or update the Profile and `updated_at`;
 6. commit the transaction;
@@ -408,8 +439,9 @@ the public per-IP bucket, which runs first.
 {"confirmation":"DELETE MY ACCOUNT"}
 ```
 
-Deletion remains available when no Profile exists. Session 6 must preserve
-its availability for moderated Profile states.
+Deletion remains available for an abandoned sign-in with no Profile. That
+sign-in is not a User. The normal creation flow sends both required fields.
+Session 6 must preserve deletion for moderated Profile states.
 
 The Profile capability:
 
@@ -434,7 +466,8 @@ local transaction. Migration `0003` ensures the resulting database behavior:
 
 - Profile rows cascade delete;
 - idempotency rows continue to cascade delete through migration `0002`;
-- Venue Submissions remain and set `submitted_by` to null.
+- Venue Submissions remain and set `submitted_by` to null. No User can
+  correct an unowned submission, and no later signup becomes its Submitter.
 
 Later feature migrations implement the specified cascade or nulling behavior
 for Reviews, Check-ins, Reports, restrictions, and moderation audit rows.
@@ -447,8 +480,14 @@ to protected operations.
 ### `GET /v1/me`
 
 - `200` with `{"data": {"id", "username", "display_name", "status"}}`.
+  `id` is the User id, the system's reference. Username is the public
+  identifier people use. Moderation reason, note, and suspension expiry are
+  omitted. Session 6 adds that feedback when rename and suspension exist.
+  Every Profile created here has status `active`. A stored non-active status
+  is returned when that row already exists.
 - `401 unauthorized` for every missing or invalid authentication result.
-- `404 profile_not_found` until the User creates a Profile.
+- `404 profile_not_found` until the Profile is created. That sign-in is not
+  yet a User.
 - `429 rate_limited` with `Retry-After` when the public per-IP bucket refuses
   the request.
 - `500 internal_error` when live-session storage is unavailable.
@@ -456,7 +495,12 @@ to protected operations.
 
 ### `PATCH /v1/me`
 
-- `200` with the normalized active Profile.
+- `200` with the stored Profile when the Username and display name are
+  unchanged, including a stored non-active status. A real update returns the
+  normalized active Profile and clears moderation fields. A casing-only
+  Username correction is that kind of update. A new Username
+  replaces the previous one immediately and releases it, with no alias or
+  history.
 - `400 validation_error` for malformed fields.
 - `400 username_reserved` for a protected Username.
 - `401 unauthorized`.
@@ -531,7 +575,8 @@ No test contacts Supabase.
 Exercise the capability rather than private helpers:
 
 - create, read, partial update, and unchanged update;
-- username lowercase normalization, shape, reservations, and uniqueness race;
+- username casing, case-insensitive ownership, owner casing correction,
+  shape, reservations, and uniqueness race;
 - display-name trimming, NFC normalization, UTF-8 and control rejection;
 - create requiring both fields and update requiring at least one;
 - timestamp behavior;
@@ -697,7 +742,9 @@ and the `auth.sessions` read. Only then may DevSteps mark Session 5 done.
 - Rename-required and suspended behavior.
 - Operator recognition or privileged moderation routes.
 - Public Profile attribution and redaction.
-- Venue, Review, Report, or Check-in community writes.
+- Venue, Review, Report, Check-in, and public-catalogue routes. The catalogue
+  and report rules decided during this design stay in DevSteps for later
+  sessions.
 - Idempotency-key parsing or new idempotent `POST` operations.
 - Daily contribution quotas.
 - A second API database role or direct author Data API access.

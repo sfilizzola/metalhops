@@ -21,7 +21,8 @@
 - Derive issuer and JWKS/Admin URLs from `SUPABASE_URL`; do not add OpenID discovery.
 - Use a five-second shared HTTP-client timeout and a ten-minute successful JWKS cache.
 - JSON bodies are at most 64 KiB, valid UTF-8, one object, and reject unknown fields.
-- Session 5 creates and updates only active Profiles; Session 6 owns moderation behavior.
+- Session 5 creates and updates only active Profiles; Session 6 owns moderation behavior. `GET /v1/me` returns a stored non-active status and omits moderation feedback. An unchanged `PATCH` leaves that status in place.
+- Session 5 does not add Venue, Review, Check-in, report, or public-catalogue routes. Those rules now live in DevSteps for later sessions.
 - Add no generic repository, service, common, or utility package.
 - Never log bearer tokens, service-role keys, database URLs, full request bodies, or provider response bodies.
 - The API process never applies migrations.
@@ -170,10 +171,8 @@ create table profiles (
   suspended_until timestamptz,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
-  constraint profiles_username_key unique (username),
   constraint profiles_username_format check (
-    username = lower(username)
-    and username ~ '^[a-z0-9_]{3,30}$'
+    username ~ '^[A-Za-z0-9_]{3,30}$'
   ),
   constraint profiles_display_name_length check (
     char_length(display_name) between 1 and 80
@@ -193,6 +192,8 @@ create table profiles (
     )
   )
 );
+
+create unique index profiles_username_identity_key on profiles (lower(username));
 
 alter table profiles enable row level security;
 revoke all on table profiles from public, anon, authenticated, service_role;
@@ -630,10 +631,12 @@ func (e *RateLimitError) Error() string  { return "profile: rate limited" }
 
 - [ ] **Step 1: Write failing Username tests**
 
-Table-test lowercase storage, 3/30 boundaries, invalid punctuation/non-ASCII,
-all reserved bases, underscore removal, digit lookalikes, both `1→i` and
-`1→l`, and skeletons containing `metalhops`. Assert malformed input returns a
-`ValidationError` and reserved input returns `ErrUsernameReserved`.
+Table-test preserved casing, case-insensitive ownership, an owner correction
+from `sfilizZola` to `sfilizzola`, 3/30 boundaries, invalid punctuation and
+non-ASCII, all reserved bases, underscore removal, digit lookalikes, both
+`1→i` and `1→l`, skeletons containing `metalhops`, available `adminfan`, and
+reserved `my_metalhops`. Assert malformed input
+returns a `ValidationError` and reserved input returns `ErrUsernameReserved`.
 
 - [ ] **Step 2: Write failing display-name tests**
 
@@ -772,7 +775,10 @@ func (s *Service) Delete(ctx context.Context, cmd DeleteCommand) error
 - [ ] **Step 1: Write failing create/update integration tests**
 
 Cover absent `Get`, create requiring both fields, read, partial updates,
-explicit unchanged values, `updated_at`, username collision, invalid values
+explicit unchanged values, an unchanged `PATCH` that leaves a stored
+non-active status and its moderation fields in place, a casing-only Username
+correction that stores `active`, clears moderation fields, changes
+`updated_at`, and spends one write token, username collision, invalid values
 before SQL, 61 state changes at one instant, and token restoration after a
 constraint/database failure.
 
@@ -831,7 +837,7 @@ select pg_advisory_xact_lock(
 )
 ```
 
-Map PostgreSQL unique violation on `profiles_username_key` to
+Map PostgreSQL unique violation on `profiles_username_identity_key` to
 `ErrUsernameTaken`; wrap every other database error.
 
 ```go
@@ -1184,7 +1190,7 @@ Document:
   key;
 - every protected request's live `auth.sessions` lookup;
 - burst 60 / one-per-second User write limit and reservation behavior;
-- `/v1/me` routes and account-deletion retention;
+- `/v1/me` routes and User-deletion retention;
 - safe JSON rules.
 
 In the architecture guide, replace the transitional legacy-JWT statement with

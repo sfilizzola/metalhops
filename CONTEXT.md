@@ -6,32 +6,68 @@ rock and metal scene.
 ## Language
 
 **User**:
-A person with a MetalHops identity who may discover Venues and, after creating
-a Profile, contribute to the community.
+A person with a MetalHops identity and a Profile. Creating a User requires a
+Username and a display name. A sign-in that has not supplied both is not a
+User, but that unfinished sign-in can still discover public Venues or be
+removed. It cannot contribute.
 _Avoid_: Account, member
 
+**User id**:
+The system's reference for one User. People do not use it to identify that
+User. A public Review does not carry it.
+_Avoid_: Username, display name
+
+**User deletion**:
+The permanent removal of a User. Their Profile, Reviews, and Check-ins end
+with them. A Venue Submission they created remains, but it no longer has a
+Submitter.
+_Avoid_: Account deletion, Profile deletion
+
 **Profile**:
-A User's public community identity, consisting of a unique Username,
-non-unique display name. A Profile is required before the User can submit,
+A User's public community identity, consisting of a unique Username and a
+non-unique display name. Creating a User creates the Profile, and people
+identify it by its Username. A Profile is required before the User can submit,
 Review, or Check in.
-_Avoid_: Account
+_Avoid_: Account, User id
+
+**Public catalogue**:
+The same Venues everyone can discover, whether or not the person is a User.
+It contains Verified Venues and pending Venue Submissions whose required
+fields are valid, with pending Venues visibly not verified, and it excludes
+rejected and Delisted Venues.
+_Avoid_: Personal catalogue
 
 **Profile Report**:
 A User's request for a Platform Moderator to assess another Profile for abuse,
 impersonation, personal information, or spam. It does not automatically alter
-that Profile.
+that Profile, a change to the Profile leaves a pending report open, and a
+resolved report does not stop a later one.
 _Avoid_: User Report
 
 **Community Suspension**:
 A restriction that prevents a User from contributing while leaving public
-discovery available. It may expire at a set time or remain until a Platform
-Moderator clears it.
+discovery, that User's own Check-in history, Venue Submissions, and Reviews
+available. It may expire at a set time or remain until a Platform Moderator
+clears it.
 _Avoid_: Account deletion, authentication ban
 
 **Username**:
-A User's unique, editable public handle. It is distinct from the non-unique
-display name.
+The unique public handle by which people identify a User. The User may choose
+its letter casing and later correct that casing without creating a different
+handle; a different spelling, including an underscore, replaces the previous
+Username immediately and keeps no history.
+_Avoid_: Display name, User id
+
+**Protected Username**:
+A Username reserved for the platform when its disguise matches a protected
+name exactly, or when it contains MetalHops. Underscores and lookalike digits
+do not make it available, and a display name is never protected.
 _Avoid_: Display name
+
+**Display name**:
+The non-unique name a User chooses to show. It may match another display name,
+another Username, or a protected word, and it does not identify the User.
+_Avoid_: Username, User id
 
 **Venue**:
 A publicly accessible bar, pub, or club where rock or metal is a recurring
@@ -39,8 +75,9 @@ part of the normal experience, not merely an occasional event.
 _Avoid_: Place, location, event venue
 
 **Venue Submission**:
-A User's proposal to add a Venue to the catalogue. A pending or rejected
-Venue Submission can be corrected; a correction returns it to pending review.
+A User's proposal to add a Venue to the catalogue. Only its Submitter can
+correct it while pending or rejected, which returns it to pending review and
+to the public catalogue; after User deletion no User can correct it.
 _Avoid_: Venue claim, listing
 
 **Duplicate Venue Submission**:
@@ -49,8 +86,11 @@ Venue or another active Venue Submission.
 _Avoid_: Similar Venue
 
 **Submitter**:
-The User who created a Venue Submission. This does not imply that the User
-owns or represents the Venue.
+The User who created a Venue Submission, not its owner, and not shown in the
+public catalogue. User deletion leaves the Venue Submission with no Submitter,
+nobody else becomes one, and any User may report that public Venue. The User
+recognizes their own Venue from their submission list, not from the public
+catalogue.
 _Avoid_: Owner
 
 **Verified Venue Owner**:
@@ -64,14 +104,21 @@ does not mean that a Venue owner submitted or claimed it.
 _Avoid_: Approved place
 
 **Delisted Venue**:
-A formerly Verified Venue removed from public discovery because it closed,
-became a duplicate, or no longer qualifies. Its history is retained.
+A formerly Verified Venue removed from the public catalogue because it closed,
+became a duplicate, or no longer qualifies. Reopening restores that same Venue
+and its past Check-ins and Reviews; while Delisted, a User cannot discover it
+or start a new Check-in, and pending Review Reports from the delisting stay
+resolved.
 _Avoid_: Rejected Venue, deleted Venue
 
 **Venue Report**:
 A User's request for a Platform Moderator to assess potentially incorrect or
-outdated information about a Verified Venue. A Venue Report does not
-automatically hide or alter the Venue.
+outdated information about a public Venue that the reporter did not submit.
+The Submitter is not offered a report on their own Venue, a person who is not
+yet a User is not offered one either. A report does not automatically hide or
+alter that Venue, and a resolved report stays resolved if the Venue returns
+to the public catalogue. A resolved report does not stop that User from filing
+a later one.
 _Avoid_: Venue edit, Venue Submission
 
 **Genre**:
@@ -85,9 +132,10 @@ Submission was rejected and what the Submitter may need to correct.
 _Avoid_: Rejection message
 
 **Review**:
-A User's assessment of one Venue, containing a required rating and optional
-written commentary. A rating without commentary is still a complete Review;
-if a Platform Moderator removes commentary, that Review remains rating-only.
+A User's assessment of one Verified Venue, containing a required rating and
+optional written commentary. It cannot target a Venue that is not verified. A
+rating without commentary is still a complete Review; if a Platform Moderator
+removes commentary, that Review remains rating-only.
 _Avoid_: Rating record, comment
 
 **Hidden Commentary**:
@@ -98,16 +146,22 @@ _Avoid_: Deleted Review
 
 **Platform Moderator**:
 A trusted MetalHops operator who decides Venue eligibility and makes final
-Review moderation decisions.
+Review moderation decisions. On every privileged moderation view, that
+moderator sees each involved User's full Profile, without email or raw auth
+metadata.
 _Avoid_: Venue owner
 
 **Review Report**:
-A User's request for a Platform Moderator to assess Review commentary for a
-specific safety reason. A Review Report does not hide or alter the Review.
+A User's request for a Platform Moderator to assess another User's public
+Review commentary for a specific safety reason. It does not hide or alter the
+Review, and a resolved report does not stop the same User from filing a later
+one.
 _Avoid_: Review moderation
 
 **Check-in**:
-A User's declaration that they visited a Venue at a stated time. It may be
+A User's memory of visiting a Verified Venue or a pending Venue in the public
+catalogue at a stated time. It remains in that User's history if the Venue is
+later rejected, closes, or returns to the public catalogue, and it may be
 recorded during the visit or retrospectively within 24 hours.
 _Avoid_: Verified presence, location proof, visit log
 
@@ -132,6 +186,17 @@ review, but the Submitter is not necessarily the Venue's owner.
 
 **Domain expert:** No. They may temporarily hide its commentary for review,
 but the rating stays public and a Platform Moderator makes the final decision.
+
+**Developer:** Should the app show people the User id?
+
+**Domain expert:** No. People identify a User by Username. The User id is only
+the system's reference.
+
+**Developer:** If someone confirms removal of their MetalHops identity, do they
+delete only their Profile?
+
+**Domain expert:** No. That is User deletion. The Profile ends with the User.
+Their Venue Submission remains, but it has no Submitter.
 
 **Developer:** Can someone add yesterday evening's visit this morning?
 

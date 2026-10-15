@@ -33,7 +33,10 @@ that only hosts occasional relevant events is outside the MVP catalogue.
 - Self-service User deletion with defined contribution retention.
 - A Profile containing a unique Username and non-unique display name.
 - Authenticated Profile reporting for abuse or impersonation.
-- Public genre and verified-venue discovery.
+- Public genre and venue discovery. The public catalogue contains Verified
+  Venues and pending Venue Submissions whose required fields are valid.
+  Pending Venues are visibly not verified. Rejected and Delisted Venues stay
+  hidden.
 - Text, genre, radius, city, country, and venue-type filters.
 - Authenticated venue submissions that start in `pending` status.
 - Authenticated Venue reporting for incorrect or outdated listings.
@@ -195,9 +198,9 @@ deletes return `204`.
 
 ## Authentication and authorization
 
-Public read routes do not resolve caller identity and expose verified venues
-only. A user accesses pending submissions through the protected
-`GET /v1/me/venues` route.
+Public read routes do not resolve caller identity and expose the public
+catalogue. A user accesses their own submissions, including those hidden from
+the catalogue, through the protected `GET /v1/me/venues` route.
 
 Protected routes require a bearer token issued by the configured Supabase
 project. Verification checks:
@@ -272,8 +275,9 @@ operator User references to null.
 
 A new Venue Submission starts as `pending`. Moderation can move it to
 `verified` or `rejected`. A Verified Venue can later move to `delisted` and
-back to `verified`; a Delisted Venue is retained but hidden from public
-discovery. Moderation transitions are performed through privileged moderation
+back to `verified`. Reopening restores that same Venue, including its past
+Check-ins and Reviews, rather than creating a new Venue Submission. A Delisted
+Venue is retained but hidden from public discovery. Moderation transitions are performed through privileged moderation
 endpoints.
 A rejected submission carries:
 
@@ -287,10 +291,28 @@ A Delisted Venue carries `delisting_reason` (`permanently_closed`,
 `duplicate`, `no_longer_eligible`, or `other`) and an optional
 `delisting_note`; `other` requires a note.
 
-Delisting retains Reviews and Check-ins. Reviews disappear from public APIs
-and reappear if the Venue returns to `verified`; private Check-in history
-continues to show a minimal Venue summary marked `delisted`. No new Review,
-Check-in, or Venue Report can target a Delisted Venue.
+Delisting retains Reviews and Check-ins. Reviews disappear from public APIs,
+including the author's own Review read, and reappear if the Venue returns to
+`verified`. There is no personal Review list. The author cannot update or
+delete that Review while the Venue is Delisted; both return not found, and
+the Review stays unchanged until the Venue is verified again. Private Check-in history
+continues to show a minimal Venue summary marked `delisted`. That summary is
+the Venue name, city, country code, and status, and it omits the delisting
+reason and note. When the Venue returns to verified, that Check-in shows the
+public Venue summary again. No new Review, Check-in, or Venue Report can target
+a Delisted Venue. Delisting marks every
+pending Review Report for that Venue actioned. Those reports stay resolved if
+the Venue returns to verified, and a User may file a new report once the
+commentary is public again.
+
+Rejecting a Venue retains existing Check-ins. Private Check-in history
+continues to show a minimal Venue summary marked `rejected`. That summary is
+the Venue name, city, country code, and status, and it omits the rejection
+reason and note. No new Check-in
+can target a rejected Venue. If the Submitter corrects it back to pending, the
+same Check-in remains. When that Venue returns to the public catalogue, the
+Check-in shows the public Venue summary again, and its Check-in count includes
+those Check-ins.
 
 When two Verified Venues are found to be duplicates, the operator delists the
 duplicate but does not move its community history. Venue merging belongs to
@@ -299,8 +321,9 @@ the future admin project.
 Rejection fields are non-null only for rejected submissions, and delisting
 fields are non-null only for Delisted Venues. When the Submitter corrects a
 pending or rejected submission, the update atomically sets its status to
-`pending` and clears rejection feedback. A Submitter cannot change a verified
-or Delisted Venue.
+`pending`, clears rejection feedback, and returns it to the public catalogue
+as visibly not verified. A rejected correction leaves the Venue rejected and
+hidden. A Submitter cannot change a verified or Delisted Venue.
 
 `venue_moderation_actions` is an append-only audit log containing the Venue
 Submission, prior and new status, rejection reason and note when applicable,
@@ -311,17 +334,25 @@ It never stores a copy of the full Venue Submission.
 (`pending`, `actioned`, or `dismissed`), creation time, and resolution
 metadata. Reasons are `permanently_closed`, `moved`, `duplicate`,
 `incorrect_details`, `no_longer_eligible`, or `other`; `incorrect_details`
-and `other` require a note. A partial unique constraint permits one pending
-report per User and Venue. Reports are private and never alter Venue
-visibility automatically. The MVP acknowledges submission but exposes no
+and `other` require a note. The same reasons apply to a Verified Venue and a
+valid pending Venue. A partial unique constraint permits one pending
+report per User and Venue. A resolved report does not block a later report by
+the same User. A Submitter correction of a pending Venue leaves its pending
+Venue Reports open. The Platform Moderator assesses the Venue as it is when
+they open it. Rejecting a Venue leaves its reports resolved, and correcting
+that Venue back into the public catalogue does not reopen them. Reports are
+private and never alter Venue visibility automatically. The MVP acknowledges submission but exposes no
 report-history or resolution-status endpoint.
 
 Trusted operators perform the `pending` to `verified` or `rejected` transition
 through a privileged moderation endpoint. The endpoint uses a transaction,
 enforces the same rejection invariants, appends the moderation action, and
 requires the operator and one submission to be identified explicitly. It also
-lists pending Venue Reports, supports correcting a Verified Venue or moving it
-to or from `delisted`, and atomically resolves each handled report. A
+lists pending Venue Reports in one list, whether the reported Venue is
+verified or a valid pending submission, and shows that Venue's current status.
+The moderator sees the full Profile of each involved User who still has one,
+including the reporter and the Submitter. Public redaction does not apply. It supports correcting a Verified Venue or moving it to or from `delisted`,
+and atomically resolves each handled report. A
 moderation action marks all pending Reports for that Venue as `actioned`;
 reports without an action are dismissed individually.
 
@@ -352,10 +383,15 @@ Submitter; another User's pending resource remains private.
 - `created_at timestamptz not null`
 - `updated_at timestamptz not null`
 
-A profile is created lazily on the first authenticated profile update.
-`username` is required, stored lowercase, 3–30 characters long, and contains
-only ASCII letters, digits, and underscore. It is editable when the new value
-is available; a uniqueness conflict returns `409 username_taken`.
+A Profile is created by the first authenticated update, and that creation
+requires both a Username and a display name. A sign-in without a Profile is
+not yet a User.
+`username` is required, 3–30 characters long, and contains only ASCII letters,
+digits, and underscore. It stores the casing the User entered. Identity and
+uniqueness use case-insensitive comparison, so the same User may correct
+`sfilizZola` to `sfilizzola`, while another User cannot take either casing. It
+is editable when the new value is available; a uniqueness conflict returns
+`409 username_taken`.
 `display_name` is required, non-unique, trimmed, and limited to 80 characters.
 Creating a Profile is a prerequisite for Venue Submissions, Reviews, and
 Check-ins.
@@ -371,12 +407,18 @@ identities, if needed later, are provisioned outside self-service flows.
 Only an active Profile can perform community writes. A `rename_required`
 Profile may use `PATCH /v1/me` but cannot contribute until it changes its
 Username or display name, which returns it to active. A suspended Profile can
-read public data but cannot modify its Profile or contribute. Suspension may
+read public data but cannot modify its Profile or contribute. Both can read
+their own Check-ins, Venue Submissions, including rejection feedback, and
+their own Review while its Venue is verified. Creating, correcting, or
+deleting a Check-in, Venue Submission, or Review stays blocked until the
+Profile can contribute again. Suspension may
 have an explicit expiry or be indefinite; an expired suspension is treated as
 active and normalized on the next authenticated request.
 
 Public attribution for a `rename_required` or suspended Profile uses the
-generic display name `MetalHops User` and no Username. Existing ratings remain
+generic display name `MetalHops User` and no Username. That public Review list
+is the same for every viewer, including the author. The author's own Review
+read shows that User's current Username and display name. Existing ratings remain
 in aggregates; content-specific removal uses the Review moderation workflow.
 
 `profile_reports` stores reporter and target Users, a reason, optional note,
@@ -384,7 +426,17 @@ status, creation time, and resolution metadata. Reasons are `abusive_name`,
 `hate_or_discrimination`, `impersonation`, `personal_information`, `spam`, or
 `other`; `impersonation`, `personal_information`, and `other` require a note.
 A partial unique constraint permits one pending report per reporter and target.
-Users cannot report themselves.
+A resolved report does not block a later report by the same User. A change to
+the target User's Username or display name leaves a pending Profile Report
+open. The Platform Moderator assesses the Profile as it is when they open it.
+On every privileged moderation view, the moderator sees the full Profile of
+each involved User who still has one: User id, Username, display name, status,
+moderation reason, note, suspension expiry, and the Profile's created and
+updated times. That includes reports, Venue eligibility decisions, Review
+moderation, and Profile moderation. The list omits email and raw auth
+metadata. Public redaction does not apply. A deleted User has no Profile to
+show. These views belong to the later moderation sessions and the admin
+service. Session 5 does not add them. Users cannot report themselves.
 
 `profile_moderation_actions` is an append-only log of rename requirements,
 suspensions, renames, restorations, actor type (`operator`, `user`, or
@@ -440,7 +492,9 @@ remains.
 
 A user can upsert or delete only their own review. Public review responses show
 the author's Username and display name, never an email address or raw auth
-metadata. Responses include creation and update timestamps and indicate
+metadata. A `rename_required` or suspended author is shown as `MetalHops User`
+with no Username on that public response, including to that author. Public
+review responses omit the User id. Responses include creation and update timestamps and indicate
 whether commentary was removed. After removal, the reviewer may still update
 the rating but cannot add replacement commentary; an attempt returns
 `409 commentary_locked`.
@@ -462,8 +516,19 @@ restriction. Clearing restrictions belongs to a future appeal workflow.
 optional note, status (`pending`, `actioned`, or `dismissed`), creation time,
 and resolution metadata. Report reasons use the same safety taxonomy as
 moderation actions, and `other` requires a note. A partial unique constraint
-permits one pending report per User and Review; a resolved report does not
-block a later report about changed commentary. Reports never copy Review
+permits one pending report per User and Review. A resolved report does not
+block a later report by the same User, even when the commentary is unchanged.
+A User cannot report their own Review. A Review Report requires commentary
+that is currently public. A rating-only Review, including one whose commentary
+a Platform Moderator already removed, cannot be reported. When the author
+deletes the Review, its pending Review Reports close with it. Clearing the
+commentary dismisses them. Replacing the commentary leaves a pending Review
+Report open. The Platform Moderator assesses the commentary that is public
+when they open it. A Review created
+later is a different Review and can be reported on its own. Delisting a Venue
+marks every pending Review Report for that Venue actioned. Those reports stay
+resolved if the Venue returns to verified.
+Reports never copy Review
 commentary, do not change public visibility, and are private to the reporter
 and Platform Moderators.
 The MVP exposes no report-history or resolution-status endpoint.
@@ -473,7 +538,10 @@ commentary while preserving the rating, or record the action and delete the
 entire Review. Both actions require a reason and operator User ID and create
 the User–Venue commentary restriction. The endpoints also list pending Review
 Reports and atomically mark each handled report as `actioned` or `dismissed`.
-A moderation action marks all pending Reports for that Review as `actioned`;
+The moderator sees the full Profile of each involved User who still has one,
+including the reporter and the Review author, on the report list and on a
+Review moderation action. Public redaction does not apply. A moderation action
+marks all pending Reports for that Review as `actioned`;
 reports without an action are dismissed individually.
 
 ### Check-ins
@@ -492,6 +560,9 @@ six hours apart. `visited_at` cannot be more than 24 hours before the request's
 server time or beyond the allowed clock-skew window. The six-hour cooldown is
 configurable as a Go duration through `CHECKIN_COOLDOWN`, without changing API
 behavior or schema. A cooldown conflict identifies the conflicting Check-in.
+Rejection or delisting does not reset that cooldown. A Check-in retained from
+before the Venue left the public catalogue still blocks another Check-in
+within six hours after the Venue returns.
 
 To tolerate device clock skew, a supplied `visited_at` up to five minutes
 ahead is accepted and stored as the current server time. A value further in
@@ -508,9 +579,11 @@ Concurrent requests therefore cannot create duplicate Check-ins.
 Venue list and detail responses include:
 
 - Average rating rounded half up to one decimal place, or `null` when no
-  Reviews exist.
-- Review count.
-- Check-in count.
+  Reviews exist. A pending Venue has no rating.
+- Review count. A pending Venue has a review count of zero.
+- Check-in count, including Check-ins on a pending Venue. Check-ins made
+  before a Venue was rejected count again when it returns to the public
+  catalogue.
 
 These values are computed in SQL for the MVP. Persisted counters or
 materialized views are deferred until measurements justify them.
@@ -550,7 +623,11 @@ verified-Venue, Venue-genre, and direct-submission policies without editing
 
 `GET /v1/venues`
 
-- Returns verified venues only.
+- Returns Verified Venues and pending Venue Submissions that have the required
+  creation fields. A submission missing one of those fields is never stored.
+  A pending result is visibly not verified. Rejected and Delisted
+  Venues are excluded. Public results do not include the Submitter or a
+  caller-specific submission flag.
 - Supports `query`, repeated `genre_id`, `city`, `country_code`, `venue_type`,
   `latitude`, `longitude`, `radius_km`, `limit`, and `cursor`.
 - Multiple `genre_id` values use OR semantics: a Venue matches when it has any
@@ -574,14 +651,21 @@ verified-Venue, Venue-genre, and direct-submission policies without editing
 
 `GET /v1/venues/{venueID}`
 
-- Returns one verified venue, its genres, and review/check-in aggregates.
-- Returns `404` for pending, rejected, or Delisted Venues.
+- Returns one Verified Venue or one pending Venue Submission whose required
+  fields are valid, plus its genres and review/check-in aggregates. A pending
+  Venue is visibly not verified. The response does not include the Submitter
+  or a caller-specific submission flag. The app hides the report control when
+  the Venue id is in the signed-in User's own submission list.
+- Returns `404` for a rejected or Delisted Venue, and for a pending Venue
+  whose required fields are not valid.
 
 `GET /v1/venues/{venueID}/reviews`
 
 - Returns reviews by original creation time newest first with opaque cursor
   pagination; editing does not move a Review to the top.
-- Returns author Username and display name.
+- Returns author Username and display name. A `rename_required` or suspended
+  author is `MetalHops User` with no Username, for every viewer, including
+  that author. The response omits the User id.
 
 ### Authenticated endpoints
 
@@ -589,7 +673,9 @@ verified-Venue, Venue-genre, and direct-submission policies without editing
 
 - Returns the caller's profile.
 - Returns `404` until the caller creates a profile.
-- Returns moderation status and feedback to that User.
+- Returns moderation status and feedback to that User. Session 5 returns the
+  stored status, including a non-active status already in the row, and omits
+  moderation reason, note, and suspension expiry.
 
 `PATCH /v1/me`
 
@@ -600,11 +686,14 @@ verified-Venue, Venue-genre, and direct-submission policies without editing
   omitted fields unchanged.
 - A `rename_required` User must change at least one moderated identity field
   to return to active; a suspended User cannot update the Profile.
+- Changing the Username or display name leaves a pending Profile Report open.
+  The Platform Moderator assesses the Profile as it is when they open it.
 
 `DELETE /v1/me`
 
-- Is available to every authenticated User, including Users without a Profile
-  and suspended Users.
+- Is available to every authenticated caller, including an abandoned sign-in
+  with no Profile and a suspended User. A sign-in without a Profile is not yet
+  a User.
 - Does not require `Idempotency-Key`. Successful deletion removes the User's
   idempotency rows and invalidates subsequent authenticated retries.
 - Requires a JWT whose `session_id` identifies a live Supabase session created
@@ -636,7 +725,8 @@ verified-Venue, Venue-genre, and direct-submission policies without editing
 - Accepts name, description, latitude, longitude, address, city,
   `country_code`, venue type, and a non-empty set of genre IDs.
 - Name, coordinates, address, city, country code, Venue type, and Genres are
-  required; description is optional.
+  required; description is optional. A submission missing any required field
+  is rejected and no Venue is stored.
 - The API field is `country_code`, stored uppercase as a valid ISO 3166-1
   alpha-2 code; clients localize the country display name.
 - Creates the venue with `pending` status and the caller as `submitted_by`.
@@ -653,13 +743,16 @@ verified-Venue, Venue-genre, and direct-submission policies without editing
 
 - Returns the caller's submissions in every status ordered by `updated_at`
   descending and UUID descending, with cursor pagination. Moderation activity
-  moves a submission to the top.
+  moves a submission to the top. A `rename_required` or suspended caller can
+  read this list, including rejection feedback. Creating or correcting a
+  submission stays blocked until that Profile can contribute again.
 - Includes rejection reason and note for rejected submissions.
 
 `GET /v1/me/venues/{venueID}`
 
 - Returns the caller's complete Venue Submission, its Genres, current status,
-  and applicable rejection or delisting feedback.
+  and applicable rejection or delisting feedback. A `rename_required` or
+  suspended caller can read it.
 - Returns `404` when the Venue Submission does not exist or belongs to another
   User.
 
@@ -669,16 +762,25 @@ verified-Venue, Venue-genre, and direct-submission policies without editing
 - Does not require `Idempotency-Key`; repeating the complete replacement
   cannot create another Venue Submission.
 - Requires the complete editable Venue representation accepted by creation.
+  A correction missing a required field is rejected and the stored Venue
+  remains unchanged. Description may be cleared.
 - Resets the submission to `pending` in the same transaction as its venue
   genre changes.
 - Returns `404` for a different Submitter and `409` for a verified or Delisted
   Venue.
 - Re-runs strong duplicate detection while excluding the submission itself.
+- A correction of a pending Venue leaves pending Venue Reports open. The
+  Platform Moderator assesses the Venue as it is when they open it.
 
 `POST /v1/venues/{venueID}/reports`
 
 - Requires a Profile and `Idempotency-Key`.
-- Accepts Reports for Verified Venues only.
+- Accepts Reports for any Venue in the public catalogue, including a valid
+  pending Venue. The app shows the report control only to a User who did not
+  submit that Venue. If a report is submitted anyway, the API returns `400`. A missing
+  token returns `401`, and an authenticated caller without a Profile returns
+  `409 profile_required`. A public Venue with no Submitter can be reported by
+  any User. Rejected and Delisted Venues cannot be reported.
 - Accepts a Venue-report reason and optional note limited to 1,000 characters;
   `incorrect_details` and `other` require a note.
 - Returns `201` without changing Venue visibility.
@@ -690,8 +792,14 @@ verified-Venue, Venue-genre, and direct-submission policies without editing
 `GET /v1/venues/{venueID}/reviews/me`
 
 - Returns the caller's Review for a Verified Venue without scanning the public
-  Review list.
-- Returns `404` when the caller has no Review or the Venue is not verified.
+  Review list. A `rename_required` or suspended caller can read it. Creating,
+  updating, or deleting that Review stays blocked until the Profile can
+  contribute again. That read shows the caller's current Username and display
+  name, including when public attribution uses `MetalHops User`. It includes
+  the caller's User id.
+- Returns `404` when the caller has no Review or the Venue is not verified,
+  including while it is Delisted. The Review reappears when the Venue is
+  verified again. There is no personal Review list.
 
 `PUT /v1/venues/{venueID}/reviews/me`
 
@@ -699,7 +807,11 @@ verified-Venue, Venue-genre, and direct-submission policies without editing
 - Does not require `Idempotency-Key`; the route sets the caller's single
   Review for that Venue and repeating it cannot create another Review.
 - Requires `rating`; omitted or null `commentary` clears existing commentary.
-- Reviews are allowed only for verified venues.
+  Clearing the commentary dismisses pending Review Reports for that Review. If
+  the author adds commentary again later, a User may file a new report.
+  Replacing the commentary leaves a pending Review Report open.
+- Reviews are allowed only for verified venues. A Delisted Venue returns
+  `404`, and an existing Review stays unchanged.
 - Allows rating updates after commentary moderation but rejects replacement
   commentary with `409 commentary_locked`.
 - Applies the same restriction if the moderated Review was deleted and later
@@ -708,12 +820,18 @@ verified-Venue, Venue-genre, and direct-submission policies without editing
 `DELETE /v1/venues/{venueID}/reviews/me`
 
 - Deletes the caller's review. It does not require an `Idempotency-Key`;
-  repeating the delete does not create a second Review.
+  repeating the delete does not create a second Review. A Delisted Venue
+  returns `404`, and the Review stays unchanged. Pending Review Reports
+  for that Review end with it. A Review created later is a different Review
+  and can be reported on its own.
 
 `POST /v1/venues/{venueID}/reviews/{reviewID}/reports`
 
 - Requires a Profile and `Idempotency-Key`.
-- Requires a currently visible Review on that Verified Venue.
+- Requires another User's Review with currently public commentary on that
+  Verified Venue. The app shows the report control only on that Review. A
+  report of the caller's own Review, or of a rating-only Review, returns
+  `400`.
 - Accepts a safety reason and optional note limited to 1,000 characters;
   `other` requires a note.
 - Returns `201` without changing Review visibility.
@@ -727,23 +845,40 @@ verified-Venue, Venue-genre, and direct-submission policies without editing
 - Requires `Idempotency-Key`. A corrected visit uses a new key under this
   same operation. Reusing the original key replays the original Check-in and
   does not record the corrected visit.
-- Records a check-in for a verified venue.
+- Records a Check-in for a Verified Venue or a pending Venue Submission whose
+  required fields are valid.
 - Accepts optional `visited_at`; omission means the current server time.
 - Accepts a past visit time no more than 24 hours old. Values up to five
   minutes ahead are clamped to server time; later values are rejected.
 - Returns `409` when another Check-in at that Venue falls within six hours of
-  the requested visit time.
+  the requested visit time. A Check-in retained through rejection or delisting
+  still counts.
 
 `GET /v1/me/check-ins`
 
-- Returns the caller's check-ins by visit time newest first with venue summary
-  data and cursor pagination.
-- Retains history for Delisted Venues and marks their summary as `delisted`.
+- Returns the caller's check-ins by visit time newest first with cursor
+  pagination. A `rename_required` or suspended caller can read this history.
+  Creating or deleting a Check-in stays blocked until that Profile can
+  contribute again.
+- A pending or verified Venue uses the public Check-in summary: name, city,
+  country code, Venue type, and status. Status is `pending` or `verified`, and
+  a pending Venue is visibly not verified. Rating, review count, and Check-in
+  count stay on the Venue detail.
+- A rejected or Delisted Venue uses a summary of name, city, country code, and
+  status `rejected` or `delisted`. It omits the moderator's reason and note
+  and does not open a Venue detail page. When the Venue is pending or verified
+  again, the Check-in shows the public summary and can open that Venue. The
+  visit remains a memory if the Venue is rejected, closes, or later returns to
+  the public catalogue.
 
 `DELETE /v1/me/check-ins/{checkInID}`
 
 - Deletes one of the caller's Check-ins. It does not require an
   `Idempotency-Key`; repeating the delete does not create a second Check-in.
+  The caller can delete their own Check-in while its Venue is rejected or
+  Delisted. That removes the memory and its six-hour cooldown block. It does
+  not change the Venue, and a new Check-in still cannot target that Venue
+  while it is rejected or Delisted.
 - Returns `404` when the Check-in does not exist or belongs to another User,
   avoiding disclosure of another User's private history.
 - A correction is made by deleting and recreating a Check-in; visit time and
@@ -924,10 +1059,11 @@ User per rolling 24 hours. A Venue Submission takes its slot when the row is
 created. Rejection, correction, verification, and delisting do not return that
 slot or take another. The quota clock is the row's creation timestamp. For a
 Venue that is `venues.created_at`, and a correction must not change it. A
-Report takes its slot when the row is created. Resolving or dismissing it does
-not return that slot or take another. The combined Report window counts
-Profile, Venue, and Review Reports together, so `Retry-After` uses the oldest
-creation timestamp among those rows. A request that creates no row does not
+Report takes its slot when the row is created. Resolving it, dismissing it,
+or removing it because its Review or a User was deleted does not return that
+slot or take another. The combined Report window counts Profile, Venue, and
+Review Reports together, so `Retry-After` uses the oldest submission time still
+inside the window, including a Report whose row was later removed. A request that creates no row does not
 take a slot.
 An idempotent replay does not consume a quota. The quota increment runs inside
 the idempotency callback, which a replay skips. A User write token is likewise
@@ -1014,8 +1150,12 @@ base RLS policies, authenticated per-User write limiting, and
 `GET/PATCH/DELETE /v1/me`. The write limit is a token bucket with burst
 capacity 60 and a sustained rate of 1 write per second per User. This session
 supports active Profiles only and implements the agreed contribution retention
-for User deletion. The OpenAPI document gains the bearer security scheme on
-those protected routes.
+for User deletion. `GET /v1/me` returns a stored non-active status and omits
+moderation feedback. An unchanged `PATCH` leaves a stored non-active status
+in place. A casing-only Username correction is a real update and stores
+`active`. The OpenAPI document gains the bearer security scheme on
+those protected routes. It does not add Venue, Review, Check-in, report, or
+public-catalogue routes.
 
 **Exit condition:** valid Supabase identities can maintain a profile while
 invalid tokens fail consistently.
@@ -1040,8 +1180,10 @@ identities are not exposed publicly.
 
 **Status:** Not started.
 
-Implement genre listing, verified-venue listing, venue detail, aggregates,
-and cursor pagination without the optional discovery filters.
+Implement genre listing, the public catalogue, venue detail, aggregates,
+and cursor pagination without the optional discovery filters. The catalogue
+includes Verified Venues and pending Venue Submissions whose required fields
+are valid.
 
 **Exit condition:** Android can render a paginated venue catalogue and venue
 detail screen.
@@ -1085,8 +1227,8 @@ entry requires `Idempotency-Key`; state-setting `PUT`/`PATCH` and `DELETE`
 routes do not. Do not add an operator-provisioning model.
 
 **Exit condition:** operators can verify, reject, correct, or delist Venues
-through those endpoints; Users can report Verified Venue problems; catalogue
-history is retained.
+through those endpoints; Users can report a Venue in the public catalogue;
+catalogue history is retained.
 
 ### Session 11: Reviews and ratings
 
