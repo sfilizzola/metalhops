@@ -4,12 +4,14 @@ import (
 	"context"
 	"crypto"
 	"errors"
+	"fmt"
 	"net/http"
 	"regexp"
 	"strings"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -78,6 +80,27 @@ func (v *Verifier) identity(ctx context.Context, encoded string) (string, string
 		return "", "", ErrUnauthorized
 	}
 	return claims.Subject, claims.SessionID, nil
+}
+
+func (v *Verifier) Authenticate(ctx context.Context, encoded string) (Caller, error) {
+	userID, sessionID, err := v.identity(ctx, encoded)
+	if err != nil {
+		return Caller{}, err
+	}
+	queryCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	var created time.Time
+	err = v.pool.QueryRow(queryCtx, `
+		select created_at
+		from auth.sessions
+		where id = $1::uuid and user_id = $2::uuid`, sessionID, userID).Scan(&created)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return Caller{}, ErrUnauthorized
+	}
+	if err != nil {
+		return Caller{}, fmt.Errorf("auth: session lookup: %w", err)
+	}
+	return Caller{UserID: userID, SessionID: sessionID, SessionCreatedAt: created}, nil
 }
 
 func (v *Verifier) publicKey(ctx context.Context, kid, alg string) (crypto.PublicKey, error) {
