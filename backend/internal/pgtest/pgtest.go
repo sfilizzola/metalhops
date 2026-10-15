@@ -46,6 +46,12 @@ func MigratedURL(t *testing.T) string {
 		create table if not exists auth.users (
 			id uuid primary key
 		);
+		create table if not exists auth.sessions (
+			id         uuid primary key,
+			user_id    uuid not null references auth.users (id) on delete cascade,
+			created_at timestamptz not null
+		);
+		create index if not exists auth_sessions_user_id_idx on auth.sessions (user_id);
 		create or replace function auth.uid() returns uuid as $$
 			select null::uuid
 		$$ language sql stable;

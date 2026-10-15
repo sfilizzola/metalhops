@@ -59,6 +59,12 @@ func TestMigrationVersions(t *testing.T) {
 		create table auth.users (
 			id uuid primary key
 		);
+		create table auth.sessions (
+			id         uuid primary key,
+			user_id    uuid not null references auth.users (id) on delete cascade,
+			created_at timestamptz not null
+		);
+		create index auth_sessions_user_id_idx on auth.sessions (user_id);
 		create function auth.uid() returns uuid as $$
 			select null::uuid
 		$$ language sql stable`)
@@ -72,8 +78,15 @@ func TestMigrationVersions(t *testing.T) {
 	execSQL(t, pool, readMigration(t, "0002_api_safety.sql"))
 	execSQL(t, pool, `insert into supabase_migrations.schema_migrations (version) values ('0002')`)
 	ready, reason = pool.Check(ctx)
-	if !ready || reason != "ok" {
+	if ready || reason != "migrations_behind" {
 		t.Fatalf("0002 ready %v reason %s", ready, reason)
+	}
+
+	execSQL(t, pool, readMigration(t, "0003_auth_profiles.sql"))
+	execSQL(t, pool, `insert into supabase_migrations.schema_migrations (version) values ('0003')`)
+	ready, reason = pool.Check(ctx)
+	if !ready || reason != "ok" {
+		t.Fatalf("0003 ready %v reason %s", ready, reason)
 	}
 }
 

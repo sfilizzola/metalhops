@@ -39,6 +39,12 @@ func TestDataAPIClosed(t *testing.T) {
 		`update idempotency_records set operation = 'access_test' where false`,
 		`delete from idempotency_records where false`,
 		`select nextval('genres_id_seq')`,
+		`select * from profiles`,
+		`insert into profiles (id, username, display_name) values (
+		  '00000000-0000-4000-8000-000000000001', 'blocked', 'Blocked'
+		)`,
+		`update profiles set display_name = 'Blocked' where false`,
+		`delete from profiles where false`,
 	}
 	for _, role := range []string{"anon", "authenticated", "service_role"} {
 		for _, sql := range statements {
@@ -69,7 +75,9 @@ func TestDataAPIClosed(t *testing.T) {
 	if _, err := pool.Exec(ctx, `insert into auth.users (id) values ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa')`); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := pool.Exec(ctx, `insert into venues (name, location) values ('Access', ST_MakePoint(0, 0)::geography)`); err != nil {
+	if _, err := pool.Exec(ctx, `
+		insert into venues (name, location, submitted_by)
+		values ('Access', ST_MakePoint(0, 0)::geography, 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa')`); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := pool.Exec(ctx, `
@@ -80,5 +88,25 @@ func TestDataAPIClosed(t *testing.T) {
 			repeat('ab', 32), 200, '{"ok":true}', now() + interval '1 hour'
 		)`); err != nil {
 		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `
+		insert into profiles (id, username, display_name)
+		values ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'accessuser', 'Access User')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `delete from auth.users where id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'`); err != nil {
+		t.Fatal(err)
+	}
+	var n int
+	if err := pool.QueryRow(ctx, `select count(*) from profiles`).Scan(&n); err != nil || n != 0 {
+		t.Fatalf("profiles %d %v", n, err)
+	}
+	if err := pool.QueryRow(ctx, `select count(*) from idempotency_records`).Scan(&n); err != nil || n != 0 {
+		t.Fatalf("idempotency %d %v", n, err)
+	}
+	var venues int
+	var submittedBy *string
+	if err := pool.QueryRow(ctx, `select count(*), max(submitted_by::text) from venues`).Scan(&venues, &submittedBy); err != nil || venues != 1 || submittedBy != nil {
+		t.Fatalf("venues %d submitted_by %v err %v", venues, submittedBy, err)
 	}
 }
