@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"fmt"
 	"net"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -13,10 +14,13 @@ import (
 )
 
 type Config struct {
-	Port           string
-	DatabaseURL    string
-	DocsUIEnabled  bool
-	TrustedProxies []net.IPNet
+	Port                   string
+	DatabaseURL            string
+	DocsUIEnabled          bool
+	TrustedProxies         []net.IPNet
+	SupabaseURL            string
+	SupabaseJWTAudience    string
+	SupabaseServiceRoleKey string
 }
 
 func Load() (Config, error) {
@@ -51,7 +55,53 @@ func load(lookup func(string) (string, bool), dir string) (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
-	return Config{Port: port, DatabaseURL: databaseURL, DocsUIEnabled: docs, TrustedProxies: proxies}, nil
+	supabaseURL, err := parseSupabaseURL(value("SUPABASE_URL"))
+	if err != nil {
+		return Config{}, err
+	}
+	audience := strings.TrimSpace(value("SUPABASE_JWT_AUDIENCE"))
+	if audience == "" {
+		return Config{}, fmt.Errorf("SUPABASE_JWT_AUDIENCE is required")
+	}
+	serviceRoleKey := strings.TrimSpace(value("SUPABASE_SERVICE_ROLE_KEY"))
+	if serviceRoleKey == "" {
+		return Config{}, fmt.Errorf("SUPABASE_SERVICE_ROLE_KEY is required")
+	}
+	return Config{
+		Port:                   port,
+		DatabaseURL:            databaseURL,
+		DocsUIEnabled:          docs,
+		TrustedProxies:         proxies,
+		SupabaseURL:            supabaseURL,
+		SupabaseJWTAudience:    audience,
+		SupabaseServiceRoleKey: serviceRoleKey,
+	}, nil
+}
+
+func parseSupabaseURL(value string) (string, error) {
+	value = strings.TrimRight(strings.TrimSpace(value), "/")
+	if value == "" {
+		return "", fmt.Errorf("SUPABASE_URL is required")
+	}
+	parsed, err := url.Parse(value)
+	if err != nil || parsed.Scheme == "" || parsed.Host == "" || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
+		return "", fmt.Errorf("SUPABASE_URL must be an absolute HTTPS URL or a loopback HTTP URL")
+	}
+	if parsed.Scheme == "https" {
+		return value, nil
+	}
+	if parsed.Scheme == "http" && loopbackHost(parsed.Hostname()) {
+		return value, nil
+	}
+	return "", fmt.Errorf("SUPABASE_URL must be an absolute HTTPS URL or a loopback HTTP URL")
+}
+
+func loopbackHost(host string) bool {
+	if host == "localhost" {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
 }
 
 func parsePort(value string) (string, error) {

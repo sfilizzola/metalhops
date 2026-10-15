@@ -10,7 +10,10 @@ import (
 func TestLoadEnvironment(t *testing.T) {
 	dir := t.TempDir()
 	lookup := map[string]string{
-		"DATABASE_URL": "postgres://user:s3cret@127.0.0.1:5432/metalhops",
+		"DATABASE_URL":              "postgres://user:s3cret@127.0.0.1:5432/metalhops",
+		"SUPABASE_URL":              "https://project.supabase.co/",
+		"SUPABASE_JWT_AUDIENCE":     "authenticated",
+		"SUPABASE_SERVICE_ROLE_KEY": "service-secret",
 	}
 	getenv := func(key string) (string, bool) {
 		value, ok := lookup[key]
@@ -27,16 +30,19 @@ func TestLoadEnvironment(t *testing.T) {
 	if cfg.DatabaseURL != lookup["DATABASE_URL"] {
 		t.Fatalf("url %q", cfg.DatabaseURL)
 	}
+	if cfg.SupabaseURL != "https://project.supabase.co" || cfg.SupabaseJWTAudience != "authenticated" || cfg.SupabaseServiceRoleKey != "service-secret" {
+		t.Fatalf("supabase %#v", cfg)
+	}
 
 	lookup["PORT"] = "9090"
 	lookup["DOCS_UI_ENABLED"] = "false"
-	lookup["SUPABASE_JWT_SECRET"] = "legacy-secret"
+	lookup["SUPABASE_URL"] = "http://127.0.0.1:54321"
 	cfg, err = load(getenv, dir)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.Port != "9090" || cfg.DocsUIEnabled {
-		t.Fatalf("port %q docs %v", cfg.Port, cfg.DocsUIEnabled)
+	if cfg.Port != "9090" || cfg.DocsUIEnabled || cfg.SupabaseURL != "http://127.0.0.1:54321" {
+		t.Fatalf("port %q docs %v url %q", cfg.Port, cfg.DocsUIEnabled, cfg.SupabaseURL)
 	}
 }
 
@@ -53,6 +59,14 @@ func TestLoadRejectsEnvironment(t *testing.T) {
 		{name: "port zero", env: map[string]string{"DATABASE_URL": validURL, "PORT": "0"}, errText: "PORT must be an integer from 1 through 65535"},
 		{name: "port high", env: map[string]string{"DATABASE_URL": validURL, "PORT": "65536"}, errText: "PORT must be an integer from 1 through 65535"},
 		{name: "port padded", env: map[string]string{"DATABASE_URL": validURL, "PORT": " 8080"}, errText: "PORT must be an integer from 1 through 65535"},
+		{name: "missing supabase url", env: map[string]string{"DATABASE_URL": validURL, "SUPABASE_JWT_AUDIENCE": "authenticated", "SUPABASE_SERVICE_ROLE_KEY": "service-secret"}, errText: "SUPABASE_URL is required"},
+		{name: "relative supabase url", env: map[string]string{"DATABASE_URL": validURL, "SUPABASE_URL": "project.supabase.co", "SUPABASE_JWT_AUDIENCE": "authenticated", "SUPABASE_SERVICE_ROLE_KEY": "service-secret"}, errText: "SUPABASE_URL must be an absolute HTTPS URL or a loopback HTTP URL"},
+		{name: "supabase credentials", env: map[string]string{"DATABASE_URL": validURL, "SUPABASE_URL": "https://user:service-secret@project.supabase.co", "SUPABASE_JWT_AUDIENCE": "authenticated", "SUPABASE_SERVICE_ROLE_KEY": "service-secret"}, errText: "SUPABASE_URL must be an absolute HTTPS URL or a loopback HTTP URL"},
+		{name: "public http", env: map[string]string{"DATABASE_URL": validURL, "SUPABASE_URL": "http://project.supabase.co", "SUPABASE_JWT_AUDIENCE": "authenticated", "SUPABASE_SERVICE_ROLE_KEY": "service-secret"}, errText: "SUPABASE_URL must be an absolute HTTPS URL or a loopback HTTP URL"},
+		{name: "supabase query", env: map[string]string{"DATABASE_URL": validURL, "SUPABASE_URL": "https://project.supabase.co?x=service-secret", "SUPABASE_JWT_AUDIENCE": "authenticated", "SUPABASE_SERVICE_ROLE_KEY": "service-secret"}, errText: "SUPABASE_URL must be an absolute HTTPS URL or a loopback HTTP URL"},
+		{name: "supabase fragment", env: map[string]string{"DATABASE_URL": validURL, "SUPABASE_URL": "https://project.supabase.co#service-secret", "SUPABASE_JWT_AUDIENCE": "authenticated", "SUPABASE_SERVICE_ROLE_KEY": "service-secret"}, errText: "SUPABASE_URL must be an absolute HTTPS URL or a loopback HTTP URL"},
+		{name: "missing audience", env: map[string]string{"DATABASE_URL": validURL, "SUPABASE_URL": "https://project.supabase.co", "SUPABASE_SERVICE_ROLE_KEY": "service-secret"}, errText: "SUPABASE_JWT_AUDIENCE is required"},
+		{name: "missing service key", env: map[string]string{"DATABASE_URL": validURL, "SUPABASE_URL": "https://project.supabase.co", "SUPABASE_JWT_AUDIENCE": "authenticated"}, errText: "SUPABASE_SERVICE_ROLE_KEY is required"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -63,10 +77,30 @@ func TestLoadRejectsEnvironment(t *testing.T) {
 			if err == nil || err.Error() != tc.errText {
 				t.Fatalf("err %v", err)
 			}
-			if strings.Contains(err.Error(), "s3cret") {
+			if strings.Contains(err.Error(), "s3cret") || strings.Contains(err.Error(), "service-secret") {
 				t.Fatalf("error contains secret: %s", err.Error())
 			}
 		})
+	}
+
+	for _, supabaseURL := range []string{"http://127.0.0.1:54321", "http://localhost:54321", "http://[::1]:54321"} {
+		cfg, err := load(func(key string) (string, bool) {
+			switch key {
+			case "DATABASE_URL":
+				return validURL, true
+			case "SUPABASE_URL":
+				return supabaseURL, true
+			case "SUPABASE_JWT_AUDIENCE":
+				return "authenticated", true
+			case "SUPABASE_SERVICE_ROLE_KEY":
+				return "service-secret", true
+			default:
+				return "", false
+			}
+		}, dir)
+		if err != nil || cfg.SupabaseURL != supabaseURL {
+			t.Fatalf("loopback %s %#v %v", supabaseURL, cfg, err)
+		}
 	}
 
 	for _, value := range []string{"TRUE", "1", " true"} {
@@ -90,7 +124,10 @@ func TestLoadEnvFile(t *testing.T) {
 	body := "  # comment\n" +
 		"export PORT=9090\n" +
 		"DATABASE_URL=postgres://user:p=a=ss@127.0.0.1:5432/metalhops\n" +
-		"DOCS_UI_ENABLED=false\n"
+		"DOCS_UI_ENABLED=false\n" +
+		"SUPABASE_URL=https://project.supabase.co/\n" +
+		"SUPABASE_JWT_AUDIENCE=authenticated\n" +
+		"SUPABASE_SERVICE_ROLE_KEY=service-secret\n"
 	if err := os.WriteFile(filepath.Join(dir, ".env"), []byte(body), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -104,6 +141,9 @@ func TestLoadEnvFile(t *testing.T) {
 	}
 	if cfg.DatabaseURL != "postgres://user:p=a=ss@127.0.0.1:5432/metalhops" {
 		t.Fatalf("url %q", cfg.DatabaseURL)
+	}
+	if cfg.SupabaseURL != "https://project.supabase.co" || cfg.SupabaseJWTAudience != "authenticated" || cfg.SupabaseServiceRoleKey != "service-secret" {
+		t.Fatalf("supabase %#v", cfg)
 	}
 
 	cfg, err = load(func(key string) (string, bool) {
@@ -130,10 +170,18 @@ func TestLoadEnvFile(t *testing.T) {
 
 	missing := t.TempDir()
 	_, err = load(func(key string) (string, bool) {
-		if key == "DATABASE_URL" {
+		switch key {
+		case "DATABASE_URL":
 			return "postgres://user:s3cret@127.0.0.1:5432/metalhops", true
+		case "SUPABASE_URL":
+			return "https://project.supabase.co", true
+		case "SUPABASE_JWT_AUDIENCE":
+			return "authenticated", true
+		case "SUPABASE_SERVICE_ROLE_KEY":
+			return "service-secret", true
+		default:
+			return "", false
 		}
-		return "", false
 	}, missing)
 	if err != nil {
 		t.Fatal(err)
@@ -172,11 +220,19 @@ func TestTrustedProxies(t *testing.T) {
 	validURL := "postgres://user:s3cret@127.0.0.1:5432/metalhops"
 	loadWith := func(value string, set bool) (Config, error) {
 		return load(func(key string) (string, bool) {
-			if key == "DATABASE_URL" {
+			switch key {
+			case "DATABASE_URL":
 				return validURL, true
-			}
-			if key == "TRUSTED_PROXIES" && set {
-				return value, true
+			case "SUPABASE_URL":
+				return "https://project.supabase.co", true
+			case "SUPABASE_JWT_AUDIENCE":
+				return "authenticated", true
+			case "SUPABASE_SERVICE_ROLE_KEY":
+				return "service-secret", true
+			case "TRUSTED_PROXIES":
+				if set {
+					return value, true
+				}
 			}
 			return "", false
 		}, dir)
