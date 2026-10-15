@@ -18,10 +18,14 @@ import (
 
 func allowAll(next http.Handler) http.Handler { return next }
 
+func testServer(docs bool, spec []byte, ready Readiness, limit func(http.Handler) http.Handler, logger *slog.Logger) http.Handler {
+	return New(Options{DocsEnabled: docs, OpenAPI: spec, Readiness: ready, PublicLimit: limit, Logger: logger})
+}
+
 func TestOperationalRoutes(t *testing.T) {
 	var buf bytes.Buffer
 	logger := slog.New(slog.NewJSONHandler(&buf, nil))
-	handler := newServer(true, contract.OpenAPI, ReadinessFunc(func(context.Context) (bool, string) {
+	handler := testServer(true, contract.OpenAPI, ReadinessFunc(func(context.Context) (bool, string) {
 		return true, "ok"
 	}), allowAll, logger)
 
@@ -38,7 +42,7 @@ func TestOperationalRoutes(t *testing.T) {
 	if spec.Body.String() != string(contract.OpenAPI) {
 		t.Fatal("spec bytes differ")
 	}
-	for _, banned := range []string{"/v1", "bearer", `{"data":`} {
+	for _, banned := range []string{`{"data":`} {
 		if strings.Contains(spec.Body.String(), banned) {
 			t.Fatalf("contract contains %q", banned)
 		}
@@ -68,7 +72,7 @@ func TestOperationalRoutes(t *testing.T) {
 		}
 	}
 
-	disabled := newServer(false, contract.OpenAPI, readyOK(), allowAll, logger)
+	disabled := testServer(false, contract.OpenAPI, readyOK(), allowAll, logger)
 	missing := get(disabled, "/docs")
 	if missing.Code != http.StatusNotFound {
 		t.Fatalf("disabled docs %d", missing.Code)
@@ -84,12 +88,12 @@ func TestOperationalRoutes(t *testing.T) {
 }
 
 func TestReadyz(t *testing.T) {
-	ok := get(newServer(false, contract.OpenAPI, readyOK(), allowAll, slog.Default()), "/readyz")
+	ok := get(testServer(false, contract.OpenAPI, readyOK(), allowAll, slog.Default()), "/readyz")
 	if ok.Code != http.StatusOK || ok.Body.String() != "{\"status\":\"ok\"}\n" {
 		t.Fatalf("ready %d %s", ok.Code, ok.Body.String())
 	}
 	for _, reason := range []string{"database_unreachable", "migrations_unavailable", "migrations_behind"} {
-		handler := newServer(false, contract.OpenAPI, ReadinessFunc(func(context.Context) (bool, string) {
+		handler := testServer(false, contract.OpenAPI, ReadinessFunc(func(context.Context) (bool, string) {
 			return false, reason
 		}), allowAll, slog.Default())
 		rec := get(handler, "/readyz")
@@ -142,7 +146,7 @@ func TestRandomFailure(t *testing.T) {
 	t.Cleanup(func() { readRandom = previous })
 
 	var buf bytes.Buffer
-	handler := newServer(false, nil, readyOK(), allowAll, slog.New(slog.NewJSONHandler(&buf, nil)))
+	handler := testServer(false, nil, readyOK(), allowAll, slog.New(slog.NewJSONHandler(&buf, nil)))
 	rec := get(handler, "/healthz")
 	if rec.Code != http.StatusInternalServerError || strings.Contains(rec.Body.String(), "goroutine") {
 		t.Fatalf("status %d body %s", rec.Code, rec.Body.String())
@@ -158,7 +162,7 @@ func TestRandomFailure(t *testing.T) {
 func TestPublicRateLimit(t *testing.T) {
 	now := time.Date(2026, 10, 14, 12, 0, 0, 0, time.UTC)
 	limiter := ratelimit.New(func() time.Time { return now }, nil)
-	handler := newServer(false, contract.OpenAPI, ReadinessFunc(func(context.Context) (bool, string) {
+	handler := testServer(false, contract.OpenAPI, ReadinessFunc(func(context.Context) (bool, string) {
 		return false, "migrations_behind"
 	}), ratelimit.Middleware(limiter), slog.Default())
 

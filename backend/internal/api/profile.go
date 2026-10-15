@@ -1,0 +1,171 @@
+package api
+
+import (
+	"context"
+	"errors"
+	"log/slog"
+	"net/http"
+	"strconv"
+
+	"github.com/metalhops/metalhops/backend/internal/profile"
+)
+
+type Profiles interface {
+	Get(context.Context, string) (profile.Profile, error)
+	Patch(context.Context, string, profile.Patch) (profile.Profile, error)
+	Delete(context.Context, profile.DeleteCommand) error
+}
+
+type profileView struct {
+	ID          string `json:"id"`
+	Username    string `json:"username"`
+	DisplayName string `json:"display_name"`
+	Status      string `json:"status"`
+}
+
+type profilePatchRequest struct {
+	Username    optionalString `json:"username"`
+	DisplayName optionalString `json:"display_name"`
+}
+
+type deleteRequest struct {
+	Confirmation optionalString `json:"confirmation"`
+}
+
+func profileRoutes(profiles Profiles, logger *slog.Logger) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet:
+			getMe(w, r, profiles, logger)
+		case http.MethodPatch:
+			patchMe(w, r, profiles, logger)
+		case http.MethodDelete:
+			deleteMe(w, r, profiles, logger)
+		default:
+			http.NotFound(w, r)
+		}
+	})
+}
+
+func getMe(w http.ResponseWriter, r *http.Request, profiles Profiles, logger *slog.Logger) {
+	caller, ok := CallerFrom(r.Context())
+	if !ok {
+		writeProfileError(logger, w, r, errors.New("missing caller"))
+		return
+	}
+	got, err := profiles.Get(r.Context(), caller.UserID)
+	if err != nil {
+		writeProfileError(logger, w, r, err)
+		return
+	}
+	WriteData(w, http.StatusOK, view(got))
+}
+
+func patchMe(w http.ResponseWriter, r *http.Request, profiles Profiles, logger *slog.Logger) {
+	caller, ok := CallerFrom(r.Context())
+	if !ok {
+		writeProfileError(logger, w, r, errors.New("missing caller"))
+		return
+	}
+	var req profilePatchRequest
+	if err := DecodeJSON(w, r, &req); err != nil {
+		writeDecodeError(w, r, err)
+		return
+	}
+	fields := map[string]string{}
+	if req.Username.Null {
+		fields["username"] = "must not be null"
+	}
+	if req.DisplayName.Null {
+		fields["display_name"] = "must not be null"
+	}
+	if len(fields) > 0 {
+		WriteError(w, http.StatusBadRequest, "validation_error", "The request is invalid.", requestID(r.Context()), fields)
+		return
+	}
+	var patch profile.Patch
+	if req.Username.Set {
+		patch.Username = &req.Username.Value
+	}
+	if req.DisplayName.Set {
+		patch.DisplayName = &req.DisplayName.Value
+	}
+	got, err := profiles.Patch(r.Context(), caller.UserID, patch)
+	if err != nil {
+		writeProfileError(logger, w, r, err)
+		return
+	}
+	WriteData(w, http.StatusOK, view(got))
+}
+
+func deleteMe(w http.ResponseWriter, r *http.Request, profiles Profiles, logger *slog.Logger) {
+	caller, ok := CallerFrom(r.Context())
+	if !ok {
+		writeProfileError(logger, w, r, errors.New("missing caller"))
+		return
+	}
+	var req deleteRequest
+	if err := DecodeJSON(w, r, &req); err != nil {
+		writeDecodeError(w, r, err)
+		return
+	}
+	if req.Confirmation.Null {
+		WriteError(w, http.StatusBadRequest, "validation_error", "The request is invalid.", requestID(r.Context()), map[string]string{
+			"confirmation": "must not be null",
+		})
+		return
+	}
+	err := profiles.Delete(r.Context(), profile.DeleteCommand{
+		UserID:           caller.UserID,
+		SessionCreatedAt: caller.SessionCreatedAt,
+		Confirmation:     req.Confirmation.Value,
+	})
+	if err != nil {
+		writeProfileError(logger, w, r, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func view(got profile.Profile) profileView {
+	return profileView{ID: got.ID, Username: got.Username, DisplayName: got.DisplayName, Status: got.Status}
+}
+
+func writeDecodeError(w http.ResponseWriter, r *http.Request, err error) {
+	id := requestID(r.Context())
+	switch {
+	case errors.Is(err, ErrUnsupportedMediaType):
+		WriteError(w, http.StatusUnsupportedMediaType, "unsupported_media_type", "Content-Type must be application/json.", id, nil)
+	case errors.Is(err, ErrBodyTooLarge):
+		WriteError(w, http.StatusRequestEntityTooLarge, "body_too_large", "The request body is too large.", id, nil)
+	default:
+		WriteError(w, http.StatusBadRequest, "validation_error", "The request is invalid.", id, nil)
+	}
+}
+
+func writeProfileError(logger *slog.Logger, w http.ResponseWriter, r *http.Request, err error) {
+	id := requestID(r.Context())
+	var validation *profile.ValidationError
+	var limited *profile.RateLimitError
+	switch {
+	case errors.As(err, &validation):
+		WriteError(w, http.StatusBadRequest, "validation_error", "The request is invalid.", id, validation.Fields)
+	case errors.Is(err, profile.ErrUsernameReserved):
+		WriteError(w, http.StatusBadRequest, "username_reserved", "That username is reserved.", id, nil)
+	case errors.Is(err, profile.ErrNotFound):
+		WriteError(w, http.StatusNotFound, "profile_not_found", "Profile not found.", id, nil)
+	case errors.Is(err, profile.ErrUsernameTaken):
+		WriteError(w, http.StatusConflict, "username_taken", "That username is taken.", id, nil)
+	case errors.Is(err, profile.ErrRecentAuthenticationRequired):
+		WriteError(w, http.StatusForbidden, "recent_authentication_required", "Sign in again to delete your account.", id, nil)
+	case errors.As(err, &limited):
+		w.Header().Set("Retry-After", strconv.Itoa(limited.RetryAfter))
+		WriteError(w, http.StatusTooManyRequests, "rate_limited", "Too many requests.", id, nil)
+	case errors.Is(err, profile.ErrAuthProvider):
+		logger.Error("profile", "request_id", id, "err", err)
+		WriteError(w, http.StatusBadGateway, "auth_provider_error", "The authentication provider is unavailable.", id, nil)
+	default:
+		logger.Error("profile", "request_id", id, "err", err)
+		WriteError(w, http.StatusInternalServerError, "internal_error", "The server could not complete the request.", id, nil)
+	}
+}

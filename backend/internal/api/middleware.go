@@ -37,6 +37,11 @@ func accessLog(logger *slog.Logger, next http.Handler) http.Handler {
 	})
 }
 
+func requestID(ctx context.Context) string {
+	id, _ := ctx.Value(contextKey{}).(string)
+	return id
+}
+
 func requestIDs(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		id, err := newRequestID(readRandom)

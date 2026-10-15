@@ -23,22 +23,38 @@ func (f ReadinessFunc) Check(ctx context.Context) (bool, string) {
 	return f(ctx)
 }
 
-func New(docsEnabled bool, openAPI []byte, ready Readiness, limit func(http.Handler) http.Handler) http.Handler {
-	return newServer(docsEnabled, openAPI, ready, limit, slog.Default())
+type Options struct {
+	DocsEnabled bool
+	OpenAPI     []byte
+	Readiness   Readiness
+	PublicLimit func(http.Handler) http.Handler
+	Auth        Authenticator
+	Profiles    Profiles
+	Logger      *slog.Logger
 }
 
-func newServer(docsEnabled bool, openAPI []byte, ready Readiness, limit func(http.Handler) http.Handler, logger *slog.Logger) http.Handler {
+func New(options Options) http.Handler {
+	if options.Logger == nil {
+		options.Logger = slog.Default()
+	}
+	if options.PublicLimit == nil {
+		options.PublicLimit = func(next http.Handler) http.Handler { return next }
+	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", healthHandler)
-	mux.HandleFunc("GET /readyz", readyHandler(ready))
+	mux.HandleFunc("GET /readyz", readyHandler(options.Readiness))
 	mux.HandleFunc("GET /openapi.yaml", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/yaml")
-		_, _ = w.Write(openAPI)
+		_, _ = w.Write(options.OpenAPI)
 	})
-	if docsEnabled {
+	if options.DocsEnabled {
 		mux.HandleFunc("GET /docs", docsHandler)
 	}
-	return wrap(logger, limit, mux)
+	protected := requireAuth(options.Auth, options.Logger, profileRoutes(options.Profiles, options.Logger))
+	mux.Handle("GET /v1/me", protected)
+	mux.Handle("PATCH /v1/me", protected)
+	mux.Handle("DELETE /v1/me", protected)
+	return wrap(options.Logger, options.PublicLimit, mux)
 }
 
 func healthHandler(w http.ResponseWriter, _ *http.Request) {
