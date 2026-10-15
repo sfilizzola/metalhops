@@ -449,6 +449,10 @@ to protected operations.
 - `200` with `{"data": {"id", "username", "display_name", "status"}}`.
 - `401 unauthorized` for every missing or invalid authentication result.
 - `404 profile_not_found` until the User creates a Profile.
+- `429 rate_limited` with `Retry-After` when the public per-IP bucket refuses
+  the request.
+- `500 internal_error` when live-session storage is unavailable.
+- `502 auth_provider_error` when a required JWKS refresh is unavailable.
 
 ### `PATCH /v1/me`
 
@@ -460,6 +464,8 @@ to protected operations.
 - `413` for a body above 64 KiB.
 - `415` for unsupported content type.
 - `429 rate_limited` with `Retry-After`.
+- `500 internal_error`.
+- `502 auth_provider_error` when a required JWKS refresh is unavailable.
 
 The route does not require `Idempotency-Key`; repeating the normalized state
 cannot create a second Profile.
@@ -473,6 +479,7 @@ cannot create a second Profile.
 - `413` for a body above 64 KiB.
 - `415` for unsupported content type.
 - `429 rate_limited` with `Retry-After`.
+- `500 internal_error`.
 - `502 auth_provider_error`.
 
 The route does not require `Idempotency-Key`.
