@@ -5,6 +5,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"testing"
 	"time"
 )
@@ -152,6 +153,140 @@ func TestLimiterCapacity(t *testing.T) {
 	now = now.Add(3 * time.Minute)
 	if hit(handler, "198.51.100.50:1", "").Code != http.StatusNoContent {
 		t.Fatal("idle keys were not evicted")
+	}
+}
+
+func TestUserLimiterReservations(t *testing.T) {
+	now := time.Date(2026, 10, 15, 12, 0, 0, 0, time.UTC)
+	clock := func() time.Time { return now }
+	limiter := NewUserLimiter(clock)
+	const user = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+	for i := 0; i < 60; i++ {
+		reservation, retry, ok := limiter.Reserve(user)
+		if !ok || retry != 0 || reservation == nil {
+			t.Fatalf("reserve %d ok %v retry %d", i, ok, retry)
+		}
+		reservation.Commit()
+	}
+	if _, retry, ok := limiter.Reserve(user); ok || retry != 1 {
+		t.Fatalf("61st ok %v retry %d", ok, retry)
+	}
+	now = now.Add(time.Second)
+	reservation, _, ok := limiter.Reserve(user)
+	if !ok {
+		t.Fatal("refill")
+	}
+	reservation.Commit()
+
+	other, _, ok := limiter.Reserve("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb")
+	if !ok {
+		t.Fatal("other user")
+	}
+	other.Cancel()
+	other.Cancel()
+	for i := 0; i < 60; i++ {
+		next, _, ok := limiter.Reserve("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb")
+		if !ok {
+			t.Fatalf("cancel did not restore %d", i)
+		}
+		next.Commit()
+	}
+	if _, _, ok := limiter.Reserve("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"); ok {
+		t.Fatal("double cancel exceeded burst")
+	}
+
+	fresh := NewUserLimiter(clock)
+	held, _, ok := fresh.Reserve(user)
+	if !ok {
+		t.Fatal("held")
+	}
+	held.Cancel()
+	for i := 0; i < 60; i++ {
+		next, _, ok := fresh.Reserve(user)
+		if !ok {
+			t.Fatalf("after cancel %d", i)
+		}
+		if i == 59 {
+			next.Cancel()
+			next.Cancel()
+			again, _, ok := fresh.Reserve(user)
+			if !ok {
+				t.Fatal("cancel did not restore the last token")
+			}
+			again.Commit()
+			if _, _, ok := fresh.Reserve(user); ok {
+				t.Fatal("idempotent cancel restored twice")
+			}
+			continue
+		}
+		next.Commit()
+	}
+}
+
+func TestUserLimiterCapacity(t *testing.T) {
+	now := time.Date(2026, 10, 15, 12, 0, 0, 0, time.UTC)
+	clock := func() time.Time { return now }
+	limiter := NewUserLimiter(clock)
+	for i := 0; i < 10000; i++ {
+		reservation, _, ok := limiter.Reserve(fmt.Sprintf("user-%d", i))
+		if !ok {
+			t.Fatalf("fill %d", i)
+		}
+		reservation.Commit()
+	}
+	if _, retry, ok := limiter.Reserve("new-user"); ok || retry != 60 {
+		t.Fatalf("full ok %v retry %d", ok, retry)
+	}
+	existing, _, ok := limiter.Reserve("user-0")
+	if !ok {
+		t.Fatal("fresh key was evicted")
+	}
+	existing.Commit()
+
+	now = now.Add(3 * time.Minute)
+	evicted, _, ok := limiter.Reserve("after-idle")
+	if !ok {
+		t.Fatal("idle keys were not evicted")
+	}
+	evicted.Commit()
+}
+
+func TestUserLimiterConcurrent(t *testing.T) {
+	limiter := NewUserLimiter(time.Now)
+	const user = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+	held := 0
+	for i := 0; i < 200; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			reservation, _, ok := limiter.Reserve(user)
+			if !ok {
+				return
+			}
+			mu.Lock()
+			held++
+			if held > 60 {
+				t.Errorf("held %d", held)
+			}
+			mu.Unlock()
+			reservation.Cancel()
+			mu.Lock()
+			held--
+			mu.Unlock()
+		}()
+	}
+	wg.Wait()
+	for i := 0; i < 60; i++ {
+		reservation, _, ok := limiter.Reserve(user)
+		if !ok {
+			t.Fatalf("capacity after cancel %d", i)
+		}
+		reservation.Commit()
+	}
+	if _, _, ok := limiter.Reserve(user); ok {
+		t.Fatal("burst exceeded 60")
 	}
 }
 
