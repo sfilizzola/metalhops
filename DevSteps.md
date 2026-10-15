@@ -3,7 +3,7 @@
 MetalHops MVP API roadmap. Refer to this document as **DevSteps** across every implementation session.
 
 **Date:** 2026-10-14
-**Status:** Sessions 1–4 are done. Session 5 is next. Sessions 6–14 are not started.
+**Status:** Sessions 1–5 are done. Session 6 is next. Sessions 7–14 are not started.
 
 ## Goal
 
@@ -1086,7 +1086,8 @@ The Check-in cooldown remains a separate domain rule and returns `409`.
 | 2. Browsable API contract | Done |
 | 3. Backend foundation | Done |
 | 4. API safety and data boundary | Done |
-| 5–14 | Not started |
+| 5. Authentication and profiles | Done |
+| 6–14 | Not started |
 
 ### Session 1: Repository boundaries
 
@@ -1143,7 +1144,7 @@ already `0002`. The API process does not apply that SQL.
 
 ### Session 5: Authentication and profiles
 
-**Status:** Not started.
+**Status:** Done.
 
 Add JWT/JWKS verification, protected-route middleware, the profile migration,
 base RLS policies, authenticated per-User write limiting, and
