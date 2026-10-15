@@ -35,6 +35,10 @@ func (p *Pool) Close() {
 	p.pool.Close()
 }
 
+func (p *Pool) Raw() *pgxpool.Pool {
+	return p.pool
+}
+
 func (p *Pool) Check(ctx context.Context) (bool, string) {
 	pingCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()

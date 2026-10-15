@@ -61,3 +61,281 @@ paths:
               example:
                 status: not_ready
                 reason: migrations_unavailable
+  /v1/me:
+    get:
+      operationId: getMe
+      summary: Read the caller's profile
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: The stored profile.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProfileResponse"
+              example:
+                data:
+                  id: 00000000-0000-4000-8000-000000000001
+                  username: metal_fan
+                  display_name: Metal Fan
+                  status: active
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          description: This sign-in has no profile yet.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                error:
+                  code: profile_not_found
+                  message: Profile not found.
+                  request_id: abc
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/Internal"
+        "502":
+          $ref: "#/components/responses/AuthProvider"
+    patch:
+      operationId: patchMe
+      summary: Create or update the caller's active profile
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProfilePatch"
+            example:
+              username: metal_fan
+              display_name: Metal Fan
+      responses:
+        "200":
+          description: The stored profile. An unchanged profile is returned as stored.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProfileResponse"
+        "400":
+          description: The profile was invalid or the username is reserved.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                validation:
+                  value:
+                    error:
+                      code: validation_error
+                      message: The request is invalid.
+                      request_id: abc
+                reserved:
+                  value:
+                    error:
+                      code: username_reserved
+                      message: That username is reserved.
+                      request_id: abc
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          description: Another profile already uses that username.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                error:
+                  code: username_taken
+                  message: That username is taken.
+                  request_id: abc
+        "413":
+          $ref: "#/components/responses/BodyTooLarge"
+        "415":
+          $ref: "#/components/responses/UnsupportedMedia"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/Internal"
+        "502":
+          $ref: "#/components/responses/AuthProvider"
+    delete:
+      operationId: deleteMe
+      summary: Permanently delete the caller's account
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [confirmation]
+              properties:
+                confirmation:
+                  const: DELETE MY ACCOUNT
+            example:
+              confirmation: DELETE MY ACCOUNT
+      responses:
+        "204":
+          description: The account was deleted.
+        "400":
+          description: The confirmation did not match.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: The live session is older than ten minutes.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                error:
+                  code: recent_authentication_required
+                  message: Sign in again to delete your account.
+                  request_id: abc
+        "413":
+          $ref: "#/components/responses/BodyTooLarge"
+        "415":
+          $ref: "#/components/responses/UnsupportedMedia"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/Internal"
+        "502":
+          description: The authentication provider could not delete the account.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                error:
+                  code: auth_provider_error
+                  message: The authentication provider is unavailable.
+                  request_id: abc
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    Profile:
+      type: object
+      additionalProperties: false
+      required: [id, username, display_name, status]
+      properties:
+        id:
+          type: string
+          format: uuid
+        username:
+          type: string
+        display_name:
+          type: string
+        status:
+          type: string
+          enum: [active, rename_required, suspended]
+    ProfileResponse:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          $ref: "#/components/schemas/Profile"
+    ProfilePatch:
+      type: object
+      additionalProperties: false
+      properties:
+        username:
+          type: string
+        display_name:
+          type: string
+    Error:
+      type: object
+      additionalProperties: false
+      required: [error]
+      properties:
+        error:
+          type: object
+          additionalProperties: false
+          required: [code, message, request_id]
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+            request_id:
+              type: string
+            fields:
+              type: object
+              additionalProperties:
+                type: string
+  responses:
+    Unauthorized:
+      description: The bearer token or live session was rejected.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          example:
+            error:
+              code: unauthorized
+              message: Authentication is required.
+              request_id: abc
+    RateLimited:
+      description: The public or per-user write limit refused the request.
+      headers:
+        Retry-After:
+          schema:
+            type: integer
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          example:
+            error:
+              code: rate_limited
+              message: Too many requests.
+              request_id: abc
+    Internal:
+      description: Live-session storage or another internal dependency failed.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          example:
+            error:
+              code: internal_error
+              message: The server could not complete the request.
+              request_id: abc
+    AuthProvider:
+      description: A required JWKS refresh is unavailable.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          example:
+            error:
+              code: auth_provider_error
+              message: The authentication provider is unavailable.
+              request_id: abc
+    BodyTooLarge:
+      description: The JSON body is larger than 64 KiB.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    UnsupportedMedia:
+      description: Content-Type is not application/json.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"

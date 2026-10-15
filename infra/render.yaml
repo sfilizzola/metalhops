@@ -9,7 +9,11 @@ services:
     envVars:
       - key: DATABASE_URL
         sync: false
-      - key: SUPABASE_JWT_SECRET
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_JWT_AUDIENCE
+        value: authenticated
+      - key: SUPABASE_SERVICE_ROLE_KEY
         sync: false
       - key: DOCS_UI_ENABLED
         value: "false"
