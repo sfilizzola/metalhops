@@ -169,7 +169,7 @@ type storedAction struct {
 
 func (s *Service) Moderate(ctx context.Context, cmd ModerationCommand) (ModerationResult, error) {
 	now := s.clock()
-	state, err := normalizeAction(cmd, now)
+	state, err := normalizeAction(cmd)
 	if err != nil {
 		return ModerationResult{}, err
 	}
@@ -215,6 +215,9 @@ func (s *Service) Moderate(ctx context.Context, cmd ModerationCommand) (Moderati
 			return ModerationResult{}, fmt.Errorf("profile: commit: %w", err)
 		}
 		return result, nil
+	}
+	if state.until != nil && !state.until.After(now) {
+		return ModerationResult{}, &ValidationError{Fields: map[string]string{"suspended_until": "must be after the current time"}}
 	}
 	if sameModeration(current, state) {
 		if err := tx.Commit(txCtx); err != nil {
@@ -363,13 +366,13 @@ func (s *Service) DismissReport(ctx context.Context, actorID, reportID string) (
 	return item, nil
 }
 
-func normalizeAction(cmd ModerationCommand, now time.Time) (actionState, error) {
+func normalizeAction(cmd ModerationCommand) (actionState, error) {
 	if !canonicalUserID.MatchString(cmd.TargetID) {
 		return actionState{}, &ValidationError{Fields: map[string]string{"user_id": "must be a canonical uuid"}}
 	}
 	switch cmd.Action {
 	case "rename_required", "suspended":
-		return normalizeRestrictive(cmd, now)
+		return normalizeRestrictive(cmd)
 	case "restored":
 		fields := map[string]string{}
 		if cmd.ReasonSet {
@@ -392,7 +395,7 @@ func normalizeAction(cmd ModerationCommand, now time.Time) (actionState, error) 
 	}
 }
 
-func normalizeRestrictive(cmd ModerationCommand, now time.Time) (actionState, error) {
+func normalizeRestrictive(cmd ModerationCommand) (actionState, error) {
 	if !cmd.ReasonSet || !ValidReason(cmd.Reason) {
 		message := "must be a known reason"
 		if !cmd.ReasonSet {
@@ -418,9 +421,6 @@ func normalizeRestrictive(cmd ModerationCommand, now time.Time) (actionState, er
 		}
 	} else if cmd.SuspendedUntil != nil {
 		at := cmd.SuspendedUntil.UTC()
-		if !at.After(now) {
-			return actionState{}, &ValidationError{Fields: map[string]string{"suspended_until": "must be after the current time"}}
-		}
 		until = &at
 	}
 	reason := cmd.Reason

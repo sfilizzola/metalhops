@@ -220,6 +220,51 @@ func TestModerationReplayIgnoresCurrentMatch(t *testing.T) {
 	}
 }
 
+func TestModerationReplayAfterSuspensionExpiry(t *testing.T) {
+	ctx := context.Background()
+	pool := testPool(t)
+	now := time.Date(2026, 10, 16, 18, 0, 0, 0, time.UTC)
+	current := now
+	clock := func() time.Time { return current }
+	service := New(pool, ratelimit.NewUserLimiter(clock), nil, clock)
+	actor := "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa17"
+	target := "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbb17"
+	insertActor(t, pool, actor)
+	insertProfile(t, pool, target, "tgt_expire", "Expiry Target", "active", nil, now)
+	until := now.Add(time.Hour)
+	cmd := ModerationCommand{
+		ActorID: actor, TargetID: target, Action: "suspended",
+		Reason: "spam", ReasonSet: true,
+		SuspendedUntil: &until, UntilSet: true,
+		Key: "short-suspend",
+	}
+	first, err := service.Moderate(ctx, cmd)
+	if err != nil || !first.Created || first.ActionID == nil {
+		t.Fatalf("first %#v %v", first, err)
+	}
+	current = until.Add(time.Minute)
+	second, err := service.Moderate(ctx, cmd)
+	if err != nil || !second.Created || second.ActionID == nil || *second.ActionID != *first.ActionID {
+		t.Fatalf("replay %#v %v", second, err)
+	}
+	if actions := countRows(t, pool, `select count(*) from profile_moderation_actions where subject_user_id = $1`, target); actions != 1 {
+		t.Fatalf("audit rows %d", actions)
+	}
+	fresh := cmd
+	fresh.Key = "past-expiry"
+	_, err = service.Moderate(ctx, fresh)
+	var validation *ValidationError
+	if !errors.As(err, &validation) || validation.Fields["suspended_until"] == "" {
+		t.Fatalf("new key %v", err)
+	}
+	if actions := countRows(t, pool, `select count(*) from profile_moderation_actions where subject_user_id = $1`, target); actions != 1 {
+		t.Fatalf("past key audit rows %d", actions)
+	}
+	if records := countRows(t, pool, `select count(*) from idempotency_records where user_id = $1 and operation = 'profile_moderation_action' and key = 'past-expiry'`, actor); records != 0 {
+		t.Fatalf("past key stored %d", records)
+	}
+}
+
 func TestModerationTransitions(t *testing.T) {
 	ctx := context.Background()
 	pool := testPool(t)
