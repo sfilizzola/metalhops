@@ -88,7 +88,7 @@ func TestPatchKeepsStoredModerationUntilChange(t *testing.T) {
 	if _, err := pool.Exec(ctx, `
 		insert into profiles (
 			id, username, display_name, status, moderation_reason, moderation_note, created_at, updated_at
-		) values ($1, 'keptname', 'Kept', 'rename_required', 'name', 'note', $2, $2)`, userID, now); err != nil {
+		) values ($1, 'keptname', 'Kept', 'rename_required', 'abusive_name', 'note', $2, $2)`, userID, now); err != nil {
 		t.Fatal(err)
 	}
 	limiter := ratelimit.NewUserLimiter(clock)
@@ -99,7 +99,7 @@ func TestPatchKeepsStoredModerationUntilChange(t *testing.T) {
 		t.Fatalf("noop %#v %v", got, err)
 	}
 	var reason, note *string
-	if err := pool.QueryRow(ctx, `select moderation_reason, moderation_note from profiles where id = $1`, userID).Scan(&reason, &note); err != nil || reason == nil || *reason != "name" {
+	if err := pool.QueryRow(ctx, `select moderation_reason, moderation_note from profiles where id = $1`, userID).Scan(&reason, &note); err != nil || reason == nil || *reason != "abusive_name" {
 		t.Fatalf("moderation %v %v %v", reason, note, err)
 	}
 

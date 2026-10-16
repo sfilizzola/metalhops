@@ -85,8 +85,15 @@ func TestMigrationVersions(t *testing.T) {
 	execSQL(t, pool, readMigration(t, "0003_auth_profiles.sql"))
 	execSQL(t, pool, `insert into supabase_migrations.schema_migrations (version) values ('0003')`)
 	ready, reason = pool.Check(ctx)
-	if !ready || reason != "ok" {
+	if ready || reason != "migrations_behind" {
 		t.Fatalf("0003 ready %v reason %s", ready, reason)
+	}
+
+	execSQL(t, pool, readMigration(t, "0004_profile_safety.sql"))
+	execSQL(t, pool, `insert into supabase_migrations.schema_migrations (version) values ('0004')`)
+	ready, reason = pool.Check(ctx)
+	if !ready || reason != "ok" {
+		t.Fatalf("0004 ready %v reason %s", ready, reason)
 	}
 }
 

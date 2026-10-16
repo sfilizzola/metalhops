@@ -45,6 +45,22 @@ func TestDataAPIClosed(t *testing.T) {
 		)`,
 		`update profiles set display_name = 'Blocked' where false`,
 		`delete from profiles where false`,
+		`select * from platform_operators`,
+		`insert into platform_operators (user_id) values ('00000000-0000-4000-8000-000000000001')`,
+		`update platform_operators set created_at = now() where false`,
+		`delete from platform_operators where false`,
+		`select * from profile_reports`,
+		`insert into profile_reports (reporter_user_id, target_user_id, reason) values ('00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000002', 'spam')`,
+		`update profile_reports set status = 'pending' where false`,
+		`delete from profile_reports where false`,
+		`select * from report_quota_events`,
+		`insert into report_quota_events (user_id) values ('00000000-0000-4000-8000-000000000001')`,
+		`update report_quota_events set created_at = now() where false`,
+		`delete from report_quota_events where false`,
+		`select * from profile_moderation_actions`,
+		`insert into profile_moderation_actions (action, actor_type, reason) values ('suspended', 'system', 'spam')`,
+		`update profile_moderation_actions set reason = 'spam' where false`,
+		`delete from profile_moderation_actions where false`,
 	}
 	for _, role := range []string{"anon", "authenticated", "service_role"} {
 		for _, sql := range statements {
