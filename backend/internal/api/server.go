@@ -57,6 +57,12 @@ func New(options Options) http.Handler {
 	mux.Handle("POST /v1/profiles/{username}/reports", requireApp(options.Auth, options.Logger, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		createReport(w, r, options.Profiles, options.Logger)
 	})))
+	mux.Handle("GET /v1/moderation/profile-reports", requireOperator(options.Auth, options.Logger, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		listProfileReports(w, r, options.Profiles, options.Logger)
+	})))
+	mux.Handle("GET /v1/moderation/profiles/{userID}", requireOperator(options.Auth, options.Logger, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		getModerationProfile(w, r, options.Profiles, options.Logger)
+	})))
 	return wrap(options.Logger, options.PublicLimit, mux)
 }
 

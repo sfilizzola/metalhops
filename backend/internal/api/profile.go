@@ -17,6 +17,8 @@ type Profiles interface {
 	Patch(context.Context, string, profile.Patch) (profile.Profile, error)
 	Delete(context.Context, profile.DeleteCommand) error
 	Report(context.Context, profile.ReportCommand) (profile.Report, error)
+	ListReports(context.Context, int, string) (profile.ReportPage, error)
+	GetModerationProfile(context.Context, string) (profile.Profile, error)
 }
 
 type profileView struct {

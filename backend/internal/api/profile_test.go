@@ -52,6 +52,12 @@ func (s *scriptProfiles) Report(_ context.Context, cmd profile.ReportCommand) (p
 	s.reportCmd = cmd
 	return s.report, s.reportErr
 }
+func (s *scriptProfiles) ListReports(context.Context, int, string) (profile.ReportPage, error) {
+	return profile.ReportPage{}, nil
+}
+func (s *scriptProfiles) GetModerationProfile(context.Context, string) (profile.Profile, error) {
+	return profile.Profile{}, nil
+}
 
 type rejectingProfiles struct{}
 
@@ -66,6 +72,12 @@ func (rejectingProfiles) Delete(context.Context, profile.DeleteCommand) error {
 }
 func (rejectingProfiles) Report(context.Context, profile.ReportCommand) (profile.Report, error) {
 	return profile.Report{}, errors.New("unexpected")
+}
+func (rejectingProfiles) ListReports(context.Context, int, string) (profile.ReportPage, error) {
+	return profile.ReportPage{}, errors.New("unexpected")
+}
+func (rejectingProfiles) GetModerationProfile(context.Context, string) (profile.Profile, error) {
+	return profile.Profile{}, errors.New("unexpected")
 }
 
 func TestProfileRoutes(t *testing.T) {
