@@ -11,16 +11,22 @@ import (
 )
 
 type fakeAuth struct {
-	calls  int
-	token  string
-	caller auth.Caller
-	err    error
+	calls       int
+	token       string
+	caller      auth.Caller
+	err         error
+	operator    bool
+	operatorErr error
 }
 
 func (f *fakeAuth) Authenticate(_ context.Context, token string) (auth.Caller, error) {
 	f.calls++
 	f.token = token
 	return f.caller, f.err
+}
+
+func (f *fakeAuth) IsOperator(context.Context, string) (bool, error) {
+	return f.operator, f.operatorErr
 }
 
 func TestAuthMiddleware(t *testing.T) {

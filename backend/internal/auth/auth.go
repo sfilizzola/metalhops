@@ -103,6 +103,18 @@ func (v *Verifier) Authenticate(ctx context.Context, encoded string) (Caller, er
 	return Caller{UserID: userID, SessionID: sessionID, SessionCreatedAt: created}, nil
 }
 
+func (v *Verifier) IsOperator(ctx context.Context, userID string) (bool, error) {
+	queryCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	var operator bool
+	err := v.pool.QueryRow(queryCtx, `
+		select exists(select 1 from platform_operators where user_id = $1::uuid)`, userID).Scan(&operator)
+	if err != nil {
+		return false, fmt.Errorf("auth: operator lookup: %w", err)
+	}
+	return operator, nil
+}
+
 func (v *Verifier) publicKey(ctx context.Context, kid, alg string) (crypto.PublicKey, error) {
 	if kid == "" || (alg != "RS256" && alg != "ES256") {
 		return nil, ErrUnauthorized

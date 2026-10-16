@@ -23,16 +23,22 @@ type scriptProfiles struct {
 	deleteErr error
 	patch     profile.Patch
 	command   profile.DeleteCommand
+	gets      int
+	patches   int
+	deletes   int
 }
 
 func (s *scriptProfiles) Get(context.Context, string) (profile.Profile, error) {
+	s.gets++
 	return s.got, s.getErr
 }
 func (s *scriptProfiles) Patch(_ context.Context, _ string, patch profile.Patch) (profile.Profile, error) {
+	s.patches++
 	s.patch = patch
 	return s.patched, s.patchErr
 }
 func (s *scriptProfiles) Delete(_ context.Context, cmd profile.DeleteCommand) error {
+	s.deletes++
 	s.command = cmd
 	return s.deleteErr
 }
@@ -180,6 +186,73 @@ func TestProfileRoutes(t *testing.T) {
 	assertCode(t, denied, http.StatusTooManyRequests, "rate_limited")
 	if authenticator.calls != calls {
 		t.Fatal("public limit ran after authentication")
+	}
+}
+
+func TestOperatorCannotCreateProfile(t *testing.T) {
+	caller := auth.Caller{
+		UserID:           "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+		SessionID:        "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+		SessionCreatedAt: time.Date(2026, 10, 15, 12, 0, 0, 0, time.UTC),
+	}
+	profiles := &scriptProfiles{}
+	authenticator := &fakeAuth{caller: caller, operator: true}
+	handler := New(Options{
+		Readiness:   readyOK(),
+		PublicLimit: allowAll,
+		Auth:        authenticator,
+		Profiles:    profiles,
+	})
+
+	patch := authed(handler, http.MethodPatch, "/v1/me", "", []byte(`{"username":"metal_fan","display_name":"Metal Fan"}`))
+	assertForbidden(t, patch)
+	if profiles.patches != 0 {
+		t.Fatalf("patch calls %d", profiles.patches)
+	}
+
+	got := authed(handler, http.MethodGet, "/v1/me", "", nil)
+	assertForbidden(t, got)
+	if profiles.gets != 0 {
+		t.Fatalf("get calls %d", profiles.gets)
+	}
+
+	deleted := authed(handler, http.MethodDelete, "/v1/me", "", []byte(`{"confirmation":"DELETE MY ACCOUNT"}`))
+	assertForbidden(t, deleted)
+	if profiles.deletes != 0 {
+		t.Fatalf("delete calls %d", profiles.deletes)
+	}
+}
+
+func TestOperatorLookupError(t *testing.T) {
+	profiles := &scriptProfiles{}
+	authenticator := &fakeAuth{
+		caller:      auth.Caller{UserID: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"},
+		operatorErr: errors.New("auth: operator lookup: db down"),
+	}
+	var logs bytes.Buffer
+	handler := New(Options{
+		Readiness:   readyOK(),
+		PublicLimit: allowAll,
+		Auth:        authenticator,
+		Profiles:    profiles,
+		Logger:      slog.New(slog.NewJSONHandler(&logs, nil)),
+	})
+
+	rec := authed(handler, http.MethodGet, "/v1/me", "", nil)
+	assertCode(t, rec, http.StatusInternalServerError, "internal_error")
+	if profiles.gets != 0 {
+		t.Fatalf("get calls %d", profiles.gets)
+	}
+	if !bytes.Contains(logs.Bytes(), []byte("auth: operator lookup: db down")) || bytes.Contains(logs.Bytes(), []byte("test-token")) {
+		t.Fatalf("log %s", logs.String())
+	}
+}
+
+func assertForbidden(t *testing.T, rec *httptest.ResponseRecorder) {
+	t.Helper()
+	assertCode(t, rec, http.StatusForbidden, "forbidden")
+	if !bytes.Contains(rec.Body.Bytes(), []byte(`This action is unavailable for this account.`)) {
+		t.Fatalf("message %s", rec.Body.String())
 	}
 }
 

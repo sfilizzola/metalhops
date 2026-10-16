@@ -64,6 +64,36 @@ func TestSessionAuthentication(t *testing.T) {
 	}
 }
 
+func TestOperatorLookup(t *testing.T) {
+	ctx := context.Background()
+	pool, err := pgxpool.New(ctx, pgtest.MigratedURL(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(pool.Close)
+
+	const (
+		operatorID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+		otherID    = "cccccccc-cccc-4ccc-8ccc-cccccccccccc"
+	)
+	if _, err := pool.Exec(ctx, `insert into auth.users (id) values ($1), ($2)`, operatorID, otherID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `insert into platform_operators (user_id) values ($1)`, operatorID); err != nil {
+		t.Fatal(err)
+	}
+
+	verifier := New("http://example.test", "authenticated", pool, http.DefaultClient, time.Now)
+	operator, err := verifier.IsOperator(ctx, operatorID)
+	if err != nil || !operator {
+		t.Fatalf("operator %v err %v", operator, err)
+	}
+	operator, err = verifier.IsOperator(ctx, otherID)
+	if err != nil || operator {
+		t.Fatalf("app user %v err %v", operator, err)
+	}
+}
+
 func TestSessionStorageFailure(t *testing.T) {
 	ctx := context.Background()
 	pool, err := pgxpool.New(ctx, pgtest.MigratedURL(t))

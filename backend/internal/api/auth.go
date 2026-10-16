@@ -12,6 +12,7 @@ import (
 
 type Authenticator interface {
 	Authenticate(context.Context, string) (auth.Caller, error)
+	IsOperator(context.Context, string) (bool, error)
 }
 
 type callerKey struct{}
@@ -53,4 +54,25 @@ func requireAuth(authenticator Authenticator, logger *slog.Logger, next http.Han
 		}
 		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), callerKey{}, caller)))
 	})
+}
+
+func requireApp(authenticator Authenticator, logger *slog.Logger, next http.Handler) http.Handler {
+	if logger == nil {
+		logger = slog.Default()
+	}
+	return requireAuth(authenticator, logger, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		id := requestID(r.Context())
+		caller, _ := CallerFrom(r.Context())
+		operator, err := authenticator.IsOperator(r.Context(), caller.UserID)
+		if err != nil {
+			logger.Error("authentication", "request_id", id, "err", err)
+			WriteError(w, http.StatusInternalServerError, "internal_error", "The server could not complete the request.", id, nil)
+			return
+		}
+		if operator {
+			WriteError(w, http.StatusForbidden, "forbidden", "This action is unavailable for this account.", id, nil)
+			return
+		}
+		next.ServeHTTP(w, r)
+	}))
 }

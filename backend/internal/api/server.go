@@ -50,7 +50,7 @@ func New(options Options) http.Handler {
 	if options.DocsEnabled {
 		mux.HandleFunc("GET /docs", docsHandler)
 	}
-	protected := requireAuth(options.Auth, options.Logger, profileRoutes(options.Profiles, options.Logger))
+	protected := requireApp(options.Auth, options.Logger, profileRoutes(options.Profiles, options.Logger))
 	mux.Handle("GET /v1/me", protected)
 	mux.Handle("PATCH /v1/me", protected)
 	mux.Handle("DELETE /v1/me", protected)
