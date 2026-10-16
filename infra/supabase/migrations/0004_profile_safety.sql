@@ -63,8 +63,8 @@ create table profile_moderation_actions (
     action in ('rename_required', 'suspended', 'restored')
   ),
   constraint profile_moderation_actions_actor_check check (
-    (actor_type in ('operator', 'user') and actor_user_id is not null)
-    or (actor_type = 'system' and actor_user_id is null)
+    actor_type in ('operator', 'user', 'system')
+    and (actor_type <> 'system' or actor_user_id is null)
   ),
   constraint profile_moderation_actions_reason_check check (
     (action = 'restored' and (reason is null or reason in ('abusive_name', 'hate_or_discrimination', 'impersonation', 'personal_information', 'spam', 'other')))
@@ -124,6 +124,19 @@ end $$;
 create trigger profile_moderation_actions_append_only
   before update or delete on profile_moderation_actions
   for each row execute function reject_moderation_action_mutation();
+
+create function reject_moderation_action_without_actor() returns trigger
+language plpgsql as $$
+begin
+  if new.actor_type in ('operator', 'user') and new.actor_user_id is null then
+    raise exception 'operator and user actors require an actor id' using errcode = '23514';
+  end if;
+  return new;
+end $$;
+
+create trigger profile_moderation_actions_actor_required
+  before insert on profile_moderation_actions
+  for each row execute function reject_moderation_action_without_actor();
 
 alter table profiles add constraint profiles_moderation_reason_check check (
   moderation_reason is null or moderation_reason in (

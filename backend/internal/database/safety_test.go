@@ -43,6 +43,11 @@ func TestProfileSafetyConstraints(t *testing.T) {
 		values ($1, $1, 'spam')`, user); err == nil {
 		t.Fatal("self-report accepted")
 	}
+	if _, err := pool.Exec(ctx, `
+		insert into profile_moderation_actions (action, actor_type, reason)
+		values ('suspended', 'operator', 'spam')`); err == nil {
+		t.Fatal("operator action accepted a null actor")
+	}
 	var action string
 	if err := pool.QueryRow(ctx, `
 		insert into profile_moderation_actions (subject_user_id, action, actor_type, actor_user_id, reason)
@@ -59,5 +64,12 @@ func TestProfileSafetyConstraints(t *testing.T) {
 	var subject *string
 	if err := pool.QueryRow(ctx, `select subject_user_id::text from profile_moderation_actions`).Scan(&subject); err != nil || subject != nil {
 		t.Fatalf("audit subject %v %v", subject, err)
+	}
+	if _, err := pool.Exec(ctx, `delete from auth.users where id = $1`, other); err != nil {
+		t.Fatal(err)
+	}
+	var actor *string
+	if err := pool.QueryRow(ctx, `select actor_user_id::text from profile_moderation_actions`).Scan(&actor); err != nil || actor != nil {
+		t.Fatalf("audit actor %v %v", actor, err)
 	}
 }
