@@ -41,7 +41,22 @@ func normalizeDisplayName(value string) (string, error) {
 }
 
 func lineOrControl(value string) bool {
+	return disallowedControl(value, false)
+}
+
+func controlText(value string) bool {
+	return lineOrControl(value)
+}
+
+func noteControl(value string) bool {
+	return disallowedControl(value, true)
+}
+
+func disallowedControl(value string, allowLineFeed bool) bool {
 	for _, r := range value {
+		if allowLineFeed && r == '\n' {
+			continue
+		}
 		if r == '\n' || r == '\r' || r == 0 || (unicode.IsControl(r) && !unicode.IsSpace(r)) {
 			return true
 		}
@@ -49,8 +64,38 @@ func lineOrControl(value string) bool {
 	return false
 }
 
-func controlText(value string) bool {
-	return lineOrControl(value)
+var moderationReasons = map[string]struct{}{
+	"abusive_name":           {},
+	"hate_or_discrimination": {},
+	"impersonation":          {},
+	"personal_information":   {},
+	"spam":                   {},
+	"other":                  {},
+}
+
+func ValidReason(reason string) bool {
+	_, ok := moderationReasons[reason]
+	return ok
+}
+
+func NoteRequired(reason string, report bool) bool {
+	if reason == "other" {
+		return true
+	}
+	return report && (reason == "impersonation" || reason == "personal_information")
+}
+
+func NormalizeNote(value string) (string, error) {
+	if !utf8.ValidString(value) || noteControl(value) {
+		return "", &ValidationError{Fields: map[string]string{"note": "must be valid text"}}
+	}
+	value = norm.NFC.String(strings.TrimSpace(value))
+	if value == "" || utf8.RuneCountInString(value) > 1000 || noteControl(value) {
+		return "", &ValidationError{Fields: map[string]string{
+			"note": "must be 1 to 1000 characters",
+		}}
+	}
+	return value, nil
 }
 
 func reservedUsername(value string) bool {

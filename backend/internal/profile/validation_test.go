@@ -78,3 +78,22 @@ func TestDisplayNameValidation(t *testing.T) {
 		}
 	}
 }
+
+func TestModerationText(t *testing.T) {
+	if !ValidReason("spam") || ValidReason("nope") {
+		t.Fatal("reason")
+	}
+	if !NoteRequired("other", false) || NoteRequired("spam", false) {
+		t.Fatal("action note")
+	}
+	if !NoteRequired("impersonation", true) || NoteRequired("spam", true) {
+		t.Fatal("report note")
+	}
+	note, err := NormalizeNote("  café\nline  ")
+	if err != nil || note != "café\nline" {
+		t.Fatalf("%q %v", note, err)
+	}
+	if _, err := NormalizeNote("bad\x00"); err == nil {
+		t.Fatal("control")
+	}
+}
