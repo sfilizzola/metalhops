@@ -6,6 +6,11 @@ import (
 )
 
 func (s *Service) Delete(ctx context.Context, cmd DeleteCommand) error {
+	expireCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	if err := s.commitExpiry(expireCtx, cmd.UserID); err != nil {
+		return err
+	}
 	if cmd.Confirmation != "DELETE MY ACCOUNT" {
 		return &ValidationError{Fields: map[string]string{
 			"confirmation": "must equal DELETE MY ACCOUNT",

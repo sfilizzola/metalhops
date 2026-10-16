@@ -88,6 +88,7 @@ func TestDeleteUser(t *testing.T) {
 	}
 
 	fail = false
+	service = New(pool, ratelimit.NewUserLimiter(clock), NewAdminClient(server.URL, "service-secret", server.Client()), clock)
 	if err := service.Delete(ctx, cmd); err != nil {
 		t.Fatal(err)
 	}

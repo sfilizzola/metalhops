@@ -166,6 +166,153 @@ func TestPatchUsernameTakenAndLimit(t *testing.T) {
 	}
 }
 
+func TestExpiredSuspensionNormalizesBeforePatch(t *testing.T) {
+	ctx := context.Background()
+	pool := testPool(t)
+	now := time.Date(2026, 10, 15, 12, 0, 0, 0, time.UTC)
+	clock := func() time.Time { return now }
+	userID := "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+	other := "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+	if _, err := pool.Exec(ctx, `insert into auth.users (id) values ($1), ($2)`, userID, other); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `
+		insert into profiles (
+			id, username, display_name, status, moderation_reason, moderation_note, suspended_until, created_at, updated_at
+		) values
+			($1, 'expired_user', 'Old Name', 'suspended', 'spam', 'bulk mail', $3, $3, $3),
+			($2, 'reader_user', 'Reader', 'suspended', 'spam', 'bulk mail', $3, $3, $3)`, userID, other, now); err != nil {
+		t.Fatal(err)
+	}
+	limiter := ratelimit.NewUserLimiter(clock)
+	service := New(pool, limiter, nil, clock)
+	display := "New Name"
+	got, err := service.Patch(ctx, userID, Patch{DisplayName: &display})
+	if err != nil || got.Status != "active" || got.DisplayName != "New Name" || got.ModerationReason != nil || got.ModerationNote != nil || got.SuspendedUntil != nil {
+		t.Fatalf("normalized %#v %v", got, err)
+	}
+	var n int
+	var action, actorType string
+	var actorID, reason, note *string
+	if err := pool.QueryRow(ctx, `select count(*) from profile_moderation_actions where subject_user_id = $1`, userID).Scan(&n); err != nil || n != 1 {
+		t.Fatalf("actions %d %v", n, err)
+	}
+	if err := pool.QueryRow(ctx, `
+		select action, actor_type, actor_user_id::text, reason, note
+		from profile_moderation_actions
+		where subject_user_id = $1`, userID).Scan(&action, &actorType, &actorID, &reason, &note); err != nil || action != "restored" || actorType != "system" || actorID != nil || reason == nil || *reason != "spam" || note == nil || *note != "bulk mail" {
+		t.Fatalf("audit %s %s %v %v %v %v", action, actorType, actorID, reason, note, err)
+	}
+	if left := drain(limiter, userID); left != 59 {
+		t.Fatalf("patch tokens left %d", left)
+	}
+
+	read, err := service.Get(ctx, other)
+	if err != nil || read.Status != "active" || read.ModerationReason != nil || read.ModerationNote != nil || read.SuspendedUntil != nil {
+		t.Fatalf("get %#v %v", read, err)
+	}
+	if left := drain(limiter, other); left != 60 {
+		t.Fatalf("get tokens left %d", left)
+	}
+}
+
+func TestIndefiniteSuspensionRejectsChange(t *testing.T) {
+	ctx := context.Background()
+	pool := testPool(t)
+	now := time.Date(2026, 10, 15, 12, 0, 0, 0, time.UTC)
+	clock := func() time.Time { return now }
+	userID := "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+	if _, err := pool.Exec(ctx, `insert into auth.users (id) values ($1)`, userID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `
+		insert into profiles (
+			id, username, display_name, status, moderation_reason, created_at, updated_at
+		) values ($1, 'keptname', 'Kept', 'suspended', 'spam', $2, $2)`, userID, now); err != nil {
+		t.Fatal(err)
+	}
+	limiter := ratelimit.NewUserLimiter(clock)
+	service := New(pool, limiter, nil, clock)
+	display := "New Name"
+	_, err := service.Patch(ctx, userID, Patch{DisplayName: &display})
+	var suspended *SuspendedError
+	if !errors.As(err, &suspended) || suspended.Until != nil {
+		t.Fatalf("suspended %v", err)
+	}
+	var status, name string
+	if err := pool.QueryRow(ctx, `select status, display_name from profiles where id = $1`, userID).Scan(&status, &name); err != nil || status != "suspended" || name != "Kept" {
+		t.Fatalf("row %s %s %v", status, name, err)
+	}
+	if left := drain(limiter, userID); left != 60 {
+		t.Fatalf("tokens left %d", left)
+	}
+}
+
+func TestSuspendedUnchangedPatchReturnsStored(t *testing.T) {
+	ctx := context.Background()
+	pool := testPool(t)
+	now := time.Date(2026, 10, 15, 12, 0, 0, 0, time.UTC)
+	clock := func() time.Time { return now }
+	userID := "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+	if _, err := pool.Exec(ctx, `insert into auth.users (id) values ($1)`, userID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `
+		insert into profiles (
+			id, username, display_name, status, moderation_reason, created_at, updated_at
+		) values ($1, 'keptname', 'Kept', 'suspended', 'spam', $2, $2)`, userID, now); err != nil {
+		t.Fatal(err)
+	}
+	limiter := ratelimit.NewUserLimiter(clock)
+	service := New(pool, limiter, nil, clock)
+	username, display := "keptname", "Kept"
+	got, err := service.Patch(ctx, userID, Patch{Username: &username, DisplayName: &display})
+	if err != nil || got.Status != "suspended" || got.Username != "keptname" || got.DisplayName != "Kept" || got.ModerationReason == nil || *got.ModerationReason != "spam" || got.SuspendedUntil != nil {
+		t.Fatalf("stored %#v %v", got, err)
+	}
+	if left := drain(limiter, userID); left != 60 {
+		t.Fatalf("tokens left %d", left)
+	}
+}
+
+func TestRenameRequiredCasingAppendsUserRestore(t *testing.T) {
+	ctx := context.Background()
+	pool := testPool(t)
+	now := time.Date(2026, 10, 15, 12, 0, 0, 0, time.UTC)
+	clock := func() time.Time { return now }
+	userID := "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+	if _, err := pool.Exec(ctx, `insert into auth.users (id) values ($1)`, userID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `
+		insert into profiles (
+			id, username, display_name, status, moderation_reason, moderation_note, created_at, updated_at
+		) values ($1, 'keptname', 'Kept', 'rename_required', 'abusive_name', 'old label', $2, $2)`, userID, now); err != nil {
+		t.Fatal(err)
+	}
+	limiter := ratelimit.NewUserLimiter(clock)
+	service := New(pool, limiter, nil, clock)
+	corrected := "KeptName"
+	got, err := service.Patch(ctx, userID, Patch{Username: &corrected})
+	if err != nil || got.Status != "active" || got.Username != "KeptName" || got.ModerationReason != nil || got.ModerationNote != nil || got.SuspendedUntil != nil {
+		t.Fatalf("restored %#v %v", got, err)
+	}
+	var n int
+	var action, actorType, actorID, reason, note string
+	if err := pool.QueryRow(ctx, `select count(*) from profile_moderation_actions where subject_user_id = $1`, userID).Scan(&n); err != nil || n != 1 {
+		t.Fatalf("actions %d %v", n, err)
+	}
+	if err := pool.QueryRow(ctx, `
+		select action, actor_type, actor_user_id::text, reason, note
+		from profile_moderation_actions
+		where subject_user_id = $1`, userID).Scan(&action, &actorType, &actorID, &reason, &note); err != nil || action != "restored" || actorType != "user" || actorID != userID || reason != "abusive_name" || note != "old label" {
+		t.Fatalf("audit %s %s %s %s %s %v", action, actorType, actorID, reason, note, err)
+	}
+	if left := drain(limiter, userID); left != 59 {
+		t.Fatalf("tokens left %d", left)
+	}
+}
+
 func TestConcurrentProfileCreate(t *testing.T) {
 	ctx := context.Background()
 	pool := testPool(t)

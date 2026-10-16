@@ -12,7 +12,7 @@ import (
 	"github.com/metalhops/metalhops/backend/internal/ratelimit"
 )
 
-const profileColumns = `id::text, username, display_name, status, created_at, updated_at`
+const profileColumns = `id::text, username, display_name, status, moderation_reason, moderation_note, suspended_until, created_at, updated_at`
 
 type Service struct {
 	pool   *pgxpool.Pool
@@ -32,6 +32,9 @@ type rowScanner interface {
 func (s *Service) Get(ctx context.Context, userID string) (Profile, error) {
 	queryCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
+	if err := s.commitExpiry(queryCtx, userID); err != nil {
+		return Profile{}, err
+	}
 	profile, err := scanProfile(s.pool.QueryRow(queryCtx, `
 		select `+profileColumns+`
 		from profiles
@@ -48,6 +51,9 @@ func (s *Service) Get(ctx context.Context, userID string) (Profile, error) {
 func (s *Service) Patch(ctx context.Context, userID string, patch Patch) (Profile, error) {
 	txCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
+	if err := s.commitExpiry(txCtx, userID); err != nil {
+		return Profile{}, err
+	}
 	tx, err := s.pool.Begin(txCtx)
 	if err != nil {
 		return Profile{}, fmt.Errorf("profile: begin: %w", err)
@@ -104,6 +110,9 @@ func (s *Service) Patch(ctx context.Context, userID string, patch Patch) (Profil
 	if !missing && username == current.Username && display == current.DisplayName {
 		return current, nil
 	}
+	if !missing && current.Status == "suspended" {
+		return Profile{}, &SuspendedError{Until: current.SuspendedUntil}
+	}
 
 	reservation, retryAfter, ok := s.writes.Reserve(userID)
 	if !ok {
@@ -140,6 +149,15 @@ func (s *Service) Patch(ctx context.Context, userID string, patch Patch) (Profil
 	if err != nil {
 		return Profile{}, writeError(err)
 	}
+	if !missing && current.Status == "rename_required" {
+		if _, err := tx.Exec(txCtx, `
+			insert into profile_moderation_actions (
+				subject_user_id, action, actor_type, actor_user_id, reason, note
+			) values ($1::uuid, 'restored', 'user', $1::uuid, $2, $3)`,
+			userID, current.ModerationReason, current.ModerationNote); err != nil {
+			return Profile{}, fmt.Errorf("profile: write: %w", err)
+		}
+	}
 	if err := tx.Commit(txCtx); err != nil {
 		return Profile{}, writeError(err)
 	}
@@ -148,9 +166,65 @@ func (s *Service) Patch(ctx context.Context, userID string, patch Patch) (Profil
 	return stored, nil
 }
 
+func (s *Service) commitExpiry(ctx context.Context, userID string) error {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("profile: begin: %w", err)
+	}
+	defer func() { _ = tx.Rollback(context.Background()) }()
+	if err := s.normalizeExpiry(ctx, tx, userID); err != nil {
+		return err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("profile: commit: %w", err)
+	}
+	return nil
+}
+
+func (s *Service) normalizeExpiry(ctx context.Context, tx pgx.Tx, userID string) error {
+	var status string
+	var reason, note *string
+	var until *time.Time
+	err := tx.QueryRow(ctx, `
+		select status, moderation_reason, moderation_note, suspended_until
+		from profiles
+		where id = $1::uuid
+		for update`, userID).Scan(&status, &reason, &note, &until)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("profile: normalize: %w", err)
+	}
+	if status != "suspended" || until == nil || until.After(s.clock()) {
+		return nil
+	}
+	if _, err := tx.Exec(ctx, `
+		insert into profile_moderation_actions (
+			subject_user_id, action, actor_type, actor_user_id, reason, note
+		) values ($1::uuid, 'restored', 'system', null, $2, $3)`, userID, reason, note); err != nil {
+		return fmt.Errorf("profile: normalize: %w", err)
+	}
+	if _, err := tx.Exec(ctx, `
+		update profiles
+		set status = 'active',
+			moderation_reason = null,
+			moderation_note = null,
+			suspended_until = null,
+			updated_at = $2
+		where id = $1::uuid`, userID, s.clock()); err != nil {
+		return fmt.Errorf("profile: normalize: %w", err)
+	}
+	return nil
+}
+
 func scanProfile(row rowScanner) (Profile, error) {
 	var profile Profile
-	err := row.Scan(&profile.ID, &profile.Username, &profile.DisplayName, &profile.Status, &profile.CreatedAt, &profile.UpdatedAt)
+	err := row.Scan(
+		&profile.ID, &profile.Username, &profile.DisplayName, &profile.Status,
+		&profile.ModerationReason, &profile.ModerationNote, &profile.SuspendedUntil,
+		&profile.CreatedAt, &profile.UpdatedAt,
+	)
 	return profile, err
 }
 

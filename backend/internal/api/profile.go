@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/metalhops/metalhops/backend/internal/profile"
 )
@@ -17,10 +18,13 @@ type Profiles interface {
 }
 
 type profileView struct {
-	ID          string `json:"id"`
-	Username    string `json:"username"`
-	DisplayName string `json:"display_name"`
-	Status      string `json:"status"`
+	ID               string     `json:"id"`
+	Username         string     `json:"username"`
+	DisplayName      string     `json:"display_name"`
+	Status           string     `json:"status"`
+	ModerationReason *string    `json:"moderation_reason"`
+	ModerationNote   *string    `json:"moderation_note"`
+	SuspendedUntil   *time.Time `json:"suspended_until"`
 }
 
 type profilePatchRequest struct {
@@ -128,7 +132,10 @@ func deleteMe(w http.ResponseWriter, r *http.Request, profiles Profiles, logger 
 }
 
 func view(got profile.Profile) profileView {
-	return profileView{ID: got.ID, Username: got.Username, DisplayName: got.DisplayName, Status: got.Status}
+	return profileView{
+		ID: got.ID, Username: got.Username, DisplayName: got.DisplayName, Status: got.Status,
+		ModerationReason: got.ModerationReason, ModerationNote: got.ModerationNote, SuspendedUntil: got.SuspendedUntil,
+	}
 }
 
 func writeDecodeError(w http.ResponseWriter, r *http.Request, err error) {
@@ -147,6 +154,7 @@ func writeProfileError(logger *slog.Logger, w http.ResponseWriter, r *http.Reque
 	id := requestID(r.Context())
 	var validation *profile.ValidationError
 	var limited *profile.RateLimitError
+	var suspended *profile.SuspendedError
 	switch {
 	case errors.As(err, &validation):
 		WriteError(w, http.StatusBadRequest, "validation_error", "The request is invalid.", id, validation.Fields)
@@ -158,6 +166,12 @@ func writeProfileError(logger *slog.Logger, w http.ResponseWriter, r *http.Reque
 		WriteError(w, http.StatusConflict, "username_taken", "That username is taken.", id, nil)
 	case errors.Is(err, profile.ErrRecentAuthenticationRequired):
 		WriteError(w, http.StatusForbidden, "recent_authentication_required", "Sign in again to delete your account.", id, nil)
+	case errors.As(err, &suspended):
+		var details map[string]any
+		if suspended.Until != nil {
+			details = map[string]any{"suspended_until": suspended.Until.UTC().Format(time.RFC3339)}
+		}
+		WriteErrorDetails(w, http.StatusForbidden, "profile_suspended", "This profile is suspended.", id, nil, details)
 	case errors.As(err, &limited):
 		w.Header().Set("Retry-After", strconv.Itoa(limited.RetryAfter))
 		WriteError(w, http.StatusTooManyRequests, "rate_limited", "Too many requests.", id, nil)

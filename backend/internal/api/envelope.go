@@ -27,6 +27,7 @@ type errorDetail struct {
 	Message   string            `json:"message"`
 	RequestID string            `json:"request_id"`
 	Fields    map[string]string `json:"fields,omitempty"`
+	Details   map[string]any    `json:"details,omitempty"`
 }
 
 func WriteData(w http.ResponseWriter, status int, value any) {
@@ -40,6 +41,12 @@ func WriteList(w http.ResponseWriter, status int, items any, nextCursor *string)
 func WriteError(w http.ResponseWriter, status int, code, message, requestID string, fields map[string]string) {
 	writeJSON(w, status, errorBody{Error: errorDetail{
 		Code: code, Message: message, RequestID: requestID, Fields: fields,
+	}})
+}
+
+func WriteErrorDetails(w http.ResponseWriter, status int, code, message, requestID string, fields map[string]string, details map[string]any) {
+	writeJSON(w, status, errorBody{Error: errorDetail{
+		Code: code, Message: message, RequestID: requestID, Fields: fields, Details: details,
 	}})
 }
 

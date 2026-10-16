@@ -75,7 +75,7 @@ func TestProfileRoutes(t *testing.T) {
 	if ok.Code != http.StatusOK || bytes.Contains(ok.Body.Bytes(), []byte("created_at")) {
 		t.Fatalf("get %d %s", ok.Code, ok.Body.String())
 	}
-	if ok.Body.String() != `{"data":{"id":"`+caller.UserID+`","username":"metal_fan","display_name":"Metal Fan","status":"active"}}`+"\n" {
+	if ok.Body.String() != `{"data":{"id":"`+caller.UserID+`","username":"metal_fan","display_name":"Metal Fan","status":"active","moderation_reason":null,"moderation_note":null,"suspended_until":null}}`+"\n" {
 		t.Fatalf("body %s", ok.Body.String())
 	}
 
@@ -120,6 +120,19 @@ func TestProfileRoutes(t *testing.T) {
 	assertCode(t, limited, http.StatusTooManyRequests, "rate_limited")
 	if limited.Header().Get("Retry-After") != "3" {
 		t.Fatalf("retry %q", limited.Header().Get("Retry-After"))
+	}
+	until := time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC)
+	profiles.patchErr = &profile.SuspendedError{Until: &until}
+	suspended := authed(handler, http.MethodPatch, "/v1/me", "", []byte(`{"display_name":"Metal Fan"}`))
+	assertCode(t, suspended, http.StatusForbidden, "profile_suspended")
+	if !bytes.Contains(suspended.Body.Bytes(), []byte(`"details":{"suspended_until":"2026-11-01T00:00:00Z"}`)) {
+		t.Fatalf("details %s", suspended.Body.String())
+	}
+	profiles.patchErr = &profile.SuspendedError{}
+	open := authed(handler, http.MethodPatch, "/v1/me", "", []byte(`{"display_name":"Metal Fan"}`))
+	assertCode(t, open, http.StatusForbidden, "profile_suspended")
+	if bytes.Contains(open.Body.Bytes(), []byte(`"details"`)) {
+		t.Fatalf("nil until %s", open.Body.String())
 	}
 	profiles.patchErr = nil
 	plain := authed(handler, http.MethodPatch, "/v1/me", "text/plain", []byte(`{}`))

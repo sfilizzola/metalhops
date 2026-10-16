@@ -6,12 +6,15 @@ import (
 )
 
 type Profile struct {
-	ID          string    `json:"id"`
-	Username    string    `json:"username"`
-	DisplayName string    `json:"display_name"`
-	Status      string    `json:"status"`
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
+	ID               string     `json:"id"`
+	Username         string     `json:"username"`
+	DisplayName      string     `json:"display_name"`
+	Status           string     `json:"status"`
+	ModerationReason *string    `json:"moderation_reason"`
+	ModerationNote   *string    `json:"moderation_note"`
+	SuspendedUntil   *time.Time `json:"suspended_until"`
+	CreatedAt        time.Time  `json:"created_at"`
+	UpdatedAt        time.Time  `json:"updated_at"`
 }
 
 type Patch struct {
