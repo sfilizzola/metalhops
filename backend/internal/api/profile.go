@@ -19,6 +19,8 @@ type Profiles interface {
 	Report(context.Context, profile.ReportCommand) (profile.Report, error)
 	ListReports(context.Context, int, string) (profile.ReportPage, error)
 	GetModerationProfile(context.Context, string) (profile.Profile, error)
+	Moderate(context.Context, profile.ModerationCommand) (profile.ModerationResult, error)
+	DismissReport(context.Context, string, string) (profile.ReportItem, error)
 }
 
 type profileView struct {
@@ -225,6 +227,10 @@ func writeProfileError(logger *slog.Logger, w http.ResponseWriter, r *http.Reque
 		WriteError(w, http.StatusBadRequest, "username_reserved", "That username is reserved.", id, nil)
 	case errors.Is(err, profile.ErrNotFound):
 		WriteError(w, http.StatusNotFound, "profile_not_found", "Profile not found.", id, nil)
+	case errors.Is(err, profile.ErrReportNotFound):
+		WriteError(w, http.StatusNotFound, "profile_report_not_found", "Report not found.", id, nil)
+	case errors.Is(err, profile.ErrReportResolved):
+		WriteError(w, http.StatusConflict, "report_already_resolved", "That report is already resolved.", id, nil)
 	case errors.Is(err, profile.ErrSelfReport):
 		WriteError(w, http.StatusBadRequest, "self_report", "You cannot report yourself.", id, nil)
 	case errors.Is(err, profile.ErrReportPending):

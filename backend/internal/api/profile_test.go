@@ -58,6 +58,12 @@ func (s *scriptProfiles) ListReports(context.Context, int, string) (profile.Repo
 func (s *scriptProfiles) GetModerationProfile(context.Context, string) (profile.Profile, error) {
 	return profile.Profile{}, nil
 }
+func (s *scriptProfiles) Moderate(context.Context, profile.ModerationCommand) (profile.ModerationResult, error) {
+	return profile.ModerationResult{}, errors.New("unexpected")
+}
+func (s *scriptProfiles) DismissReport(context.Context, string, string) (profile.ReportItem, error) {
+	return profile.ReportItem{}, errors.New("unexpected")
+}
 
 type rejectingProfiles struct{}
 
@@ -78,6 +84,12 @@ func (rejectingProfiles) ListReports(context.Context, int, string) (profile.Repo
 }
 func (rejectingProfiles) GetModerationProfile(context.Context, string) (profile.Profile, error) {
 	return profile.Profile{}, errors.New("unexpected")
+}
+func (rejectingProfiles) Moderate(context.Context, profile.ModerationCommand) (profile.ModerationResult, error) {
+	return profile.ModerationResult{}, errors.New("unexpected")
+}
+func (rejectingProfiles) DismissReport(context.Context, string, string) (profile.ReportItem, error) {
+	return profile.ReportItem{}, errors.New("unexpected")
 }
 
 func TestProfileRoutes(t *testing.T) {

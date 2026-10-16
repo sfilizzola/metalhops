@@ -33,12 +33,41 @@ type Result struct {
 }
 
 func Execute(ctx context.Context, tx pgx.Tx, now time.Time, req Request, fn func(context.Context) (Result, error)) (Result, error) {
-	if !uuidPattern.MatchString(req.UserID) || !operationPattern.MatchString(req.Operation) || !validKey(req.Key) || len(req.Command) == 0 || len(req.Command) > 65536 {
+	stored, found, err := Lookup(ctx, tx, now, req)
+	if err != nil || found {
+		return stored, err
+	}
+	result, err := fn(ctx)
+	if err != nil {
+		return Result{}, err
+	}
+	if result.Status < 200 || result.Status > 299 {
+		return result, nil
+	}
+	if !json.Valid(result.Body) {
 		return Result{}, ErrInvalid
 	}
-	sum := sha256.Sum256(req.Command)
-	hash := hex.EncodeToString(sum[:])
+	var body []byte
+	if err := tx.QueryRow(ctx, `
+		insert into idempotency_records (
+			user_id, operation, key, request_hash, response_status, response_body, expires_at
+		) values ($1, $2, $3, $4, $5, $6, $7)
+		returning response_body`,
+		req.UserID, req.Operation, req.Key, hashCommand(req.Command), result.Status, result.Body, now.Add(24*time.Hour),
+	).Scan(&body); err != nil {
+		return Result{}, err
+	}
+	return Result{Status: result.Status, Body: body}, nil
+}
 
+// Lookup reads an idempotency record with Execute's validation, expiry cleanup, and key lock.
+// found is true when an unexpired row matches the command. A different live hash returns ErrReused.
+// found is false when the caller may insert, including after this call removes an expired row.
+func Lookup(ctx context.Context, tx pgx.Tx, now time.Time, req Request) (Result, bool, error) {
+	if !uuidPattern.MatchString(req.UserID) || !operationPattern.MatchString(req.Operation) || !validKey(req.Key) || len(req.Command) == 0 || len(req.Command) > 65536 {
+		return Result{}, false, ErrInvalid
+	}
+	hash := hashCommand(req.Command)
 	if _, err := tx.Exec(ctx, `
 		delete from idempotency_records
 		where ctid in (
@@ -48,11 +77,11 @@ func Execute(ctx context.Context, tx pgx.Tx, now time.Time, req Request, fn func
 			limit 100
 			for update skip locked
 		)`, now); err != nil {
-		return Result{}, err
+		return Result{}, false, err
 	}
 	lockKey := req.UserID + "\x1f" + req.Operation + "\x1f" + req.Key
 	if _, err := tx.Exec(ctx, `select pg_advisory_xact_lock(hashtextextended($1, 0))`, lockKey); err != nil {
-		return Result{}, err
+		return Result{}, false, err
 	}
 
 	var storedHash string
@@ -64,45 +93,30 @@ func Execute(ctx context.Context, tx pgx.Tx, now time.Time, req Request, fn func
 		from idempotency_records
 		where user_id = $1 and operation = $2 and key = $3`,
 		req.UserID, req.Operation, req.Key).Scan(&storedHash, &status, &body, &expires)
-	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
-		return Result{}, err
+	if errors.Is(err, pgx.ErrNoRows) {
+		return Result{}, false, nil
 	}
-	if err == nil {
-		if expires.After(now) {
-			if storedHash == hash {
-				return Result{Status: status, Body: body}, nil
-			}
-			return Result{}, ErrReused
-		}
-		if _, err := tx.Exec(ctx, `
-			delete from idempotency_records
-			where user_id = $1 and operation = $2 and key = $3`,
-			req.UserID, req.Operation, req.Key); err != nil {
-			return Result{}, err
-		}
-	}
-
-	result, err := fn(ctx)
 	if err != nil {
-		return Result{}, err
+		return Result{}, false, err
 	}
-	if result.Status < 200 || result.Status > 299 {
-		return result, nil
+	if expires.After(now) {
+		if storedHash == hash {
+			return Result{Status: status, Body: body}, true, nil
+		}
+		return Result{}, false, ErrReused
 	}
-	if !json.Valid(result.Body) {
-		return Result{}, ErrInvalid
+	if _, err := tx.Exec(ctx, `
+		delete from idempotency_records
+		where user_id = $1 and operation = $2 and key = $3`,
+		req.UserID, req.Operation, req.Key); err != nil {
+		return Result{}, false, err
 	}
-	var stored []byte
-	if err := tx.QueryRow(ctx, `
-		insert into idempotency_records (
-			user_id, operation, key, request_hash, response_status, response_body, expires_at
-		) values ($1, $2, $3, $4, $5, $6, $7)
-		returning response_body`,
-		req.UserID, req.Operation, req.Key, hash, result.Status, result.Body, now.Add(24*time.Hour),
-	).Scan(&stored); err != nil {
-		return Result{}, err
-	}
-	return Result{Status: result.Status, Body: stored}, nil
+	return Result{}, false, nil
+}
+
+func hashCommand(command []byte) string {
+	sum := sha256.Sum256(command)
+	return hex.EncodeToString(sum[:])
 }
 
 func validKey(key string) bool {

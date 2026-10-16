@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/metalhops/metalhops/backend/internal/auth"
+	"github.com/metalhops/metalhops/backend/internal/idempotency"
 	"github.com/metalhops/metalhops/backend/internal/profile"
 )
 
@@ -182,4 +183,161 @@ func (p *readProfiles) GetModerationProfile(_ context.Context, userID string) (p
 	p.gets++
 	p.userID = userID
 	return p.got, p.profileErr
+}
+func (p *readProfiles) Moderate(context.Context, profile.ModerationCommand) (profile.ModerationResult, error) {
+	return profile.ModerationResult{}, errors.New("unexpected")
+}
+func (p *readProfiles) DismissReport(context.Context, string, string) (profile.ReportItem, error) {
+	return profile.ReportItem{}, errors.New("unexpected")
+}
+
+func TestModerationWrites(t *testing.T) {
+	now := time.Date(2026, 10, 16, 17, 0, 0, 0, time.UTC)
+	until := now.Add(2 * time.Hour)
+	actionID := "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee"
+	reporter := profile.Profile{
+		ID: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", Username: "reporter", DisplayName: "Reporter", Status: "active",
+		CreatedAt: now, UpdatedAt: now,
+	}
+	target := profile.Profile{
+		ID: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", Username: "target", DisplayName: "Target", Status: "suspended",
+		CreatedAt: now, UpdatedAt: now,
+	}
+	reportID := "cccccccc-cccc-4ccc-8ccc-cccccccccccc"
+	profiles := &actionProfiles{
+		result: profile.ModerationResult{Created: true, ActionID: &actionID, Profile: target},
+		item: profile.ReportItem{
+			ID: reportID, Reason: "spam", Status: "dismissed", CreatedAt: now,
+			Reporter: reporter, Target: target,
+		},
+	}
+	caller := auth.Caller{UserID: reporter.ID, SessionID: "dddddddd-dddd-4ddd-8ddd-dddddddddddd"}
+	authenticator := &fakeAuth{caller: caller}
+	handler := New(Options{
+		Readiness: readyOK(), PublicLimit: allowAll, Auth: authenticator, Profiles: profiles,
+		Logger: slog.New(slog.NewJSONHandler(&bytes.Buffer{}, nil)),
+	})
+	actionPath := "/v1/moderation/profiles/" + target.ID + "/actions"
+	dismissPath := "/v1/moderation/profile-reports/" + reportID
+	actionBody := []byte(`{"action":"suspended","reason":"spam","note":"see","suspended_until":"` + until.Format(time.RFC3339) + `"}`)
+
+	for _, call := range []struct {
+		method string
+		path   string
+		body   []byte
+	}{
+		{http.MethodPost, actionPath, actionBody},
+		{http.MethodPatch, dismissPath, []byte(`{"status":"dismissed"}`)},
+	} {
+		rec := requestWith(handler, call.method, call.path, "Bearer test-token", call.body, map[string]string{
+			"Content-Type": "application/json", "Idempotency-Key": "action-key",
+		})
+		assertCode(t, rec, http.StatusForbidden, "forbidden")
+		if !bytes.Contains(rec.Body.Bytes(), []byte(`This action requires a moderator account.`)) {
+			t.Fatalf("message %s", rec.Body.String())
+		}
+	}
+	if profiles.moderates != 0 || profiles.dismisses != 0 {
+		t.Fatalf("app user reached writes moderates %d dismisses %d", profiles.moderates, profiles.dismisses)
+	}
+	authenticator.operator = true
+
+	missing := requestWith(handler, http.MethodPost, actionPath, "Bearer test-token", actionBody, map[string]string{
+		"Content-Type": "application/json",
+	})
+	assertCode(t, missing, http.StatusBadRequest, "validation_error")
+	if !bytes.Contains(missing.Body.Bytes(), []byte(`"idempotency_key"`)) || profiles.moderates != 0 {
+		t.Fatalf("missing key %s", missing.Body.String())
+	}
+
+	created := requestWith(handler, http.MethodPost, actionPath, "Bearer test-token", actionBody, map[string]string{
+		"Content-Type": "application/json", "Idempotency-Key": "action-key",
+	})
+	if created.Code != http.StatusCreated || profiles.moderates != 1 || profiles.cmd.ActorID != caller.UserID || profiles.cmd.TargetID != target.ID || profiles.cmd.Action != "suspended" || !profiles.cmd.ReasonSet || profiles.cmd.Reason != "spam" || !profiles.cmd.NoteSet || profiles.cmd.Note == nil || *profiles.cmd.Note != "see" || !profiles.cmd.UntilSet || profiles.cmd.SuspendedUntil == nil || !profiles.cmd.SuspendedUntil.Equal(until) || profiles.cmd.Key != "action-key" {
+		t.Fatalf("created %d cmd %#v body %s", created.Code, profiles.cmd, created.Body.String())
+	}
+	if !bytes.Contains(created.Body.Bytes(), []byte(`"action_id":"`+actionID+`"`)) || !bytes.Contains(created.Body.Bytes(), []byte(`"id":"`+target.ID+`"`)) {
+		t.Fatalf("created body %s", created.Body.String())
+	}
+
+	nullUntil := requestWith(handler, http.MethodPost, actionPath, "Bearer test-token", []byte(`{"action":"rename_required","suspended_until":null}`), map[string]string{
+		"Content-Type": "application/json", "Idempotency-Key": "null-until",
+	})
+	if nullUntil.Code != http.StatusCreated || !profiles.cmd.UntilSet || profiles.cmd.SuspendedUntil != nil || profiles.cmd.ReasonSet || profiles.cmd.NoteSet || profiles.cmd.Action != "rename_required" {
+		t.Fatalf("null until %d %#v %s", nullUntil.Code, profiles.cmd, nullUntil.Body.String())
+	}
+
+	profiles.result = profile.ModerationResult{Created: false, Profile: target}
+	unchanged := requestWith(handler, http.MethodPost, actionPath, "Bearer test-token", []byte(`{"action":"suspended","reason":"spam"}`), map[string]string{
+		"Content-Type": "application/json", "Idempotency-Key": "noop-key",
+	})
+	if unchanged.Code != http.StatusOK || !bytes.Contains(unchanged.Body.Bytes(), []byte(`"action_id":null`)) {
+		t.Fatalf("noop %d %s", unchanged.Code, unchanged.Body.String())
+	}
+
+	profiles.moderateErr = idempotency.ErrReused
+	assertCode(t, requestWith(handler, http.MethodPost, actionPath, "Bearer test-token", actionBody, map[string]string{
+		"Content-Type": "application/json", "Idempotency-Key": "action-key",
+	}), http.StatusConflict, "idempotency_key_reused")
+	profiles.moderateErr = idempotency.ErrInvalid
+	assertCode(t, requestWith(handler, http.MethodPost, actionPath, "Bearer test-token", actionBody, map[string]string{
+		"Content-Type": "application/json", "Idempotency-Key": "short",
+	}), http.StatusBadRequest, "validation_error")
+	profiles.moderateErr = &profile.RateLimitError{RetryAfter: 3}
+	limited := requestWith(handler, http.MethodPost, actionPath, "Bearer test-token", actionBody, map[string]string{
+		"Content-Type": "application/json", "Idempotency-Key": "action-key",
+	})
+	assertCode(t, limited, http.StatusTooManyRequests, "rate_limited")
+	if limited.Header().Get("Retry-After") != "3" {
+		t.Fatalf("retry %q", limited.Header().Get("Retry-After"))
+	}
+	profiles.moderateErr = nil
+
+	dismisses := profiles.dismisses
+	for _, body := range []string{`{"status":"pending"}`, `{}`, `{"status":"dismissed","note":"x"}`} {
+		assertCode(t, authed(handler, http.MethodPatch, dismissPath, "application/json", []byte(body)), http.StatusBadRequest, "validation_error")
+	}
+	if profiles.dismisses != dismisses {
+		t.Fatalf("invalid dismiss called service %d", profiles.dismisses)
+	}
+	dismissed := authed(handler, http.MethodPatch, dismissPath, "application/json", []byte(`{"status":"dismissed"}`))
+	if dismissed.Code != http.StatusOK || profiles.dismissActor != caller.UserID || profiles.reportID != reportID || !bytes.Contains(dismissed.Body.Bytes(), []byte(`"status":"dismissed"`)) || !bytes.Contains(dismissed.Body.Bytes(), []byte(`"id":"`+reportID+`"`)) {
+		t.Fatalf("dismiss %d actor %s report %s body %s", dismissed.Code, profiles.dismissActor, profiles.reportID, dismissed.Body.String())
+	}
+	profiles.dismissErr = profile.ErrReportNotFound
+	assertCode(t, authed(handler, http.MethodPatch, dismissPath, "application/json", []byte(`{"status":"dismissed"}`)), http.StatusNotFound, "profile_report_not_found")
+	profiles.dismissErr = profile.ErrReportResolved
+	assertCode(t, authed(handler, http.MethodPatch, dismissPath, "application/json", []byte(`{"status":"dismissed"}`)), http.StatusConflict, "report_already_resolved")
+	profiles.dismissErr = &profile.ValidationError{Fields: map[string]string{"report_id": "must be a canonical uuid"}}
+	badID := authed(handler, http.MethodPatch, "/v1/moderation/profile-reports/abc", "application/json", []byte(`{"status":"dismissed"}`))
+	assertCode(t, badID, http.StatusBadRequest, "validation_error")
+	if !bytes.Contains(badID.Body.Bytes(), []byte(`"report_id"`)) {
+		t.Fatalf("report id %s", badID.Body.String())
+	}
+}
+
+type actionProfiles struct {
+	readProfiles
+	cmd          profile.ModerationCommand
+	result       profile.ModerationResult
+	moderateErr  error
+	moderates    int
+	dismissActor string
+	reportID     string
+	item         profile.ReportItem
+	dismissErr   error
+	dismisses    int
+}
+
+func (p *actionProfiles) Moderate(_ context.Context, cmd profile.ModerationCommand) (profile.ModerationResult, error) {
+	p.moderates++
+	p.cmd = cmd
+	return p.result, p.moderateErr
+}
+
+func (p *actionProfiles) DismissReport(_ context.Context, actorID, reportID string) (profile.ReportItem, error) {
+	p.dismisses++
+	p.dismissActor = actorID
+	p.reportID = reportID
+	return p.item, p.dismissErr
 }
