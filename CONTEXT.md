@@ -18,9 +18,11 @@ User. A public Review does not carry it.
 _Avoid_: Username, display name
 
 **User deletion**:
-The permanent removal of a User. Their Profile, Reviews, and Check-ins end
-with them. A Venue Submission they created remains, but it no longer has a
-Submitter.
+The permanent removal of a User. Their Profile, Reviews, Check-ins, and
+Profile Reports end with them, whether they filed the report or were its
+target. Their report quota ends with them. A restriction record remains,
+without that User's identity. A Venue Submission they created remains, but it
+no longer has a Submitter.
 _Avoid_: Account deletion, Profile deletion
 
 **Profile**:
@@ -39,17 +41,69 @@ _Avoid_: Personal catalogue
 
 **Profile Report**:
 A User's request for a Platform Moderator to assess another Profile for abuse,
-impersonation, personal information, or spam. It does not automatically alter
-that Profile, a change to the Profile leaves a pending report open, and a
-resolved report does not stop a later one.
+impersonation, personal information, or spam. The reporter's own Profile is
+active, and a User cannot report their own Profile. The target may already be
+under a rename requirement or a Community Suspension, and the report does not
+alter that Profile or lift either restriction. The reporter must explain
+impersonation, personal information, and other. That explanation is visible
+to a Platform Moderator and not to the reported User.
 _Avoid_: User Report
+
+**Pending Profile Report**:
+A Profile Report still waiting for assessment. One User has at most one
+pending report for a given Profile; another User may have their own. It stays
+pending when the Profile changes, a restriction is withdrawn or expires, or a
+Platform Moderator repeats the same reason, note, and expiry. One filed after
+an assessment is stored is a new pending report.
+_Avoid_: Open ticket
+
+**Resolved Profile Report**:
+A Profile Report closed by assessment or dismissal. Placing a restriction,
+replacing one, or changing its reason, note, or expiry resolves every report
+still pending for that Profile. Dismissing one report resolves only that
+report and leaves the Profile unchanged. Dismissal does not change a report
+a restriction already resolved, and dismissing an already dismissed report
+leaves it dismissed. A resolved report does not stop a later one.
+_Avoid_: Deleted report
+
+**Report quota**:
+A User's limit of 20 moderation reports in a rolling 24 hours. It covers
+Profile Reports, Venue Reports, and Review Reports. Filing a report uses one
+slot, and that slot stays used if the report is later dismissed, resolved, or
+ended by the target's User deletion. A report that is never filed uses no
+slot.
+_Avoid_: Rate limit, per-type quota
 
 **Community Suspension**:
 A restriction that prevents a User from contributing while leaving public
 discovery, that User's own Check-in history, Venue Submissions, and Reviews
-available. It may expire at a set time or remain until a Platform Moderator
-clears it.
-_Avoid_: Account deletion, authentication ban
+available. While it stands, the User cannot replace the Username or display
+name. It may expire, a Platform Moderator may clear it, or a rename
+requirement placed on that Profile ends it early. Once ended, it does not
+return.
+_Avoid_: Account deletion, authentication ban, Rename requirement
+
+**Rename requirement**:
+A Platform Moderator's objection to a Profile's public identity, with no
+expiry. The User may change the Username or display name while it stands, but
+that edit does not end it. It ends when a Platform Moderator withdraws it or
+places a Community Suspension on that Profile. Once ended, it does not return.
+_Avoid_: Community Suspension, ban
+
+**Restriction explanation**:
+The reason and note a Platform Moderator attaches to a rename requirement or
+a Community Suspension. The note is required only when the reason is other,
+and it may be added to any reason. The User sees it on their own Profile. A
+Community Suspension also shows its expiry there when one is set.
+_Avoid_: Report note, private note
+
+**Restriction record**:
+A kept record of one stored restriction decision: the decision, the reason,
+the note, and any expiry. It does not remember the Username or display name.
+Replacing a restriction adds only the new restriction's record, and a
+withdrawal or expiry is its own record. After User deletion it remains
+without that User's identity. It is not a Profile and has no public identity.
+_Avoid_: Profile, public identity
 
 **Username**:
 The unique public handle by which people identify a User. The User may choose
@@ -68,6 +122,15 @@ _Avoid_: Display name
 The non-unique name a User chooses to show. It may match another display name,
 another Username, or a protected word, and it does not identify the User.
 _Avoid_: Username, User id
+
+**Public identity**:
+The name a public surface shows for a Profile. While a rename requirement or
+a Community Suspension stands, it is the display name MetalHops User and no
+Username, even if the stored name changed. A pending Profile Report does not
+change it. The User's own Profile and a Platform Moderator see the stored
+Username and display name, and a public surface shows that stored identity
+again once the restriction ends.
+_Avoid_: User id
 
 **Venue**:
 A publicly accessible bar, pub, or club where rock or metal is a recurring
@@ -145,11 +208,11 @@ Review's rating remains public and unchanged.
 _Avoid_: Deleted Review
 
 **Platform Moderator**:
-A trusted MetalHops operator who decides Venue eligibility and makes final
-Review moderation decisions. On every privileged moderation view, that
-moderator sees each involved User's full Profile, without email or raw auth
-metadata.
-_Avoid_: Venue owner
+A trusted MetalHops operator who decides Venue eligibility, Profile
+restrictions, and final Review moderation. A Platform Moderator is not a User
+and has no Profile. On every privileged moderation view, that moderator sees
+each involved User's full Profile, without email or raw auth metadata.
+_Avoid_: Venue owner, management
 
 **Review Report**:
 A User's request for a Platform Moderator to assess another User's public
@@ -202,3 +265,114 @@ Their Venue Submission remains, but it has no Submitter.
 
 **Domain expert:** Yes, if it was within the last 24 hours. The Check-in is a
 user declaration, not proof of physical presence.
+
+**Developer:** The Username is `HateFan` and a rename requirement is in place.
+The User changes it to `MetalFan`. Are they free to contribute?
+
+**Domain expert:** No. The Profile now shows `MetalFan`, but the rename
+requirement remains. Only a Platform Moderator can withdraw it.
+
+**Developer:** `MetalFan` is still under that rename requirement. Can someone
+report that Username?
+
+**Domain expert:** Yes. The Profile Report asks a Platform Moderator to assess
+the Profile. It does not lift the rename requirement.
+
+**Developer:** That report is still pending, and the Platform Moderator
+withdraws the rename requirement. Is the report resolved?
+
+**Domain expert:** No. Withdrawing the objection does not assess the report.
+It stays pending.
+
+**Developer:** `MetalFan` is under a rename requirement and a Profile Report is
+pending. The Platform Moderator places a Community Suspension. What remains?
+
+**Domain expert:** The rename requirement ends. The Profile is under the
+Community Suspension, and that pending report is resolved. A report filed
+afterward is a new request.
+
+**Developer:** `MetalFan` is under a Community Suspension with time still left,
+and a Profile Report is pending. The Platform Moderator places a rename
+requirement. What remains?
+
+**Domain expert:** The suspension ends and does not return. The Profile is
+under the rename requirement, and that pending report is resolved.
+
+**Developer:** `MetalFan` is suspended until 1 November for spam, and a Profile
+Report is pending. The Platform Moderator moves the expiry to 1 December. Is
+the report still pending?
+
+**Domain expert:** No. A different expiry is a new assessment, so the report
+is resolved. The same reason, note, and expiry again would leave it pending.
+
+**Developer:** A rename requirement stands, and the User has changed the stored
+Username to `MetalFan`. What does a public surface show?
+
+**Domain expert:** MetalHops User, and no Username. The User and a Platform
+Moderator still see `MetalFan`.
+
+**Developer:** The Platform Moderator withdraws that rename requirement while
+a Profile Report about `MetalFan` is still pending. What does a public surface
+show?
+
+**Domain expert:** `MetalFan`. A pending Profile Report does not hide the
+Profile. The report stays pending.
+
+**Developer:** The Platform Moderator's note says "Use a personal name." The
+reporter's note says "This matches a local promoter." What does the User see
+on their own Profile?
+
+**Domain expert:** The restriction explanation. The reporter's explanation
+stays on the Profile Report.
+
+**Developer:** Can a Platform Moderator place a rename requirement for
+impersonation without a note?
+
+**Domain expert:** Yes. A note is required only when the reason is other. The
+reporter must still explain impersonation, personal information, and other.
+
+**Developer:** Someone reports `HateFan`, and then `HateFan` deletes their
+account. The reporter is at 20 for the day and files again. Does the earlier
+report still use a slot?
+
+**Domain expert:** Yes. Filing used the slot. The target's User deletion
+removes the Profile Report and does not return it.
+
+**Developer:** A User reports `MetalFan` for spam, then tries again for
+impersonation before anyone acts. Is the second report filed?
+
+**Domain expert:** No. That User already has a pending Profile Report for
+`MetalFan`. Another User may still report that Profile.
+
+**Developer:** A Platform Moderator suspends `HateFan`, and `HateFan` deletes
+their account. Does the record of that suspension remain?
+
+**Domain expert:** Yes. It remains without that User's identity. It is not a
+Profile and not a public surface.
+
+**Developer:** A rename requirement is already recorded, and a Platform
+Moderator replaces it with a Community Suspension. How many new records are
+added?
+
+**Domain expert:** One, for the suspension. The earlier rename record stays.
+A withdrawal or an expiry is its own record.
+
+**Developer:** The rename requirement was recorded while the Username was
+`HateFan`. The User then changes it to `MetalFan`. Does the record remember
+`HateFan`?
+
+**Domain expert:** No. It remembers the decision, the reason, the note, and
+any expiry. It does not remember the Username or display name.
+
+**Developer:** Is the report quota 20 Profile Reports, or 20 moderation
+reports of any kind?
+
+**Domain expert:** Any kind. Profile Reports, Venue Reports, and Review
+Reports share the same 20 in a rolling 24 hours.
+
+**Developer:** A Profile Report was resolved because a Community Suspension
+was placed. The Platform Moderator dismisses that same report. Does the
+report change?
+
+**Domain expert:** No. It stays resolved by the suspension. Dismissal
+resolves a pending report only.
