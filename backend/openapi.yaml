@@ -80,8 +80,22 @@ paths:
                   username: metal_fan
                   display_name: Metal Fan
                   status: active
+                  moderation_reason: null
+                  moderation_note: null
+                  suspended_until: null
         "401":
           $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: The caller is a platform moderator.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                error:
+                  code: forbidden
+                  message: This action is unavailable for this account.
+                  request_id: abc
         "404":
           description: This sign-in has no profile yet.
           content:
@@ -141,6 +155,27 @@ paths:
                       request_id: abc
         "401":
           $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: The caller is a platform moderator, or a suspended profile cannot change.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                forbidden:
+                  value:
+                    error:
+                      code: forbidden
+                      message: This action is unavailable for this account.
+                      request_id: abc
+                suspended:
+                  value:
+                    error:
+                      code: profile_suspended
+                      message: This profile is suspended.
+                      request_id: abc
+                      details:
+                        suspended_until: "2026-10-16T12:00:00Z"
         "409":
           description: Another profile already uses that username.
           content:
@@ -192,16 +227,24 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
-          description: The live session is older than ten minutes.
+          description: The caller is a platform moderator, or the live session is older than ten minutes.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
-              example:
-                error:
-                  code: recent_authentication_required
-                  message: Sign in again to delete your account.
-                  request_id: abc
+              examples:
+                forbidden:
+                  value:
+                    error:
+                      code: forbidden
+                      message: This action is unavailable for this account.
+                      request_id: abc
+                recent:
+                  value:
+                    error:
+                      code: recent_authentication_required
+                      message: Sign in again to delete your account.
+                      request_id: abc
         "413":
           $ref: "#/components/responses/BodyTooLarge"
         "415":
@@ -221,6 +264,599 @@ paths:
                   code: auth_provider_error
                   message: The authentication provider is unavailable.
                   request_id: abc
+  /v1/profiles/{username}/reports:
+    post:
+      operationId: createProfileReport
+      summary: File a report against a profile
+      description: The stored response uses the target's current username and includes no User id. A note is required for impersonation, personal_information, and other.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: username
+          in: path
+          required: true
+          description: Current username, compared without regard to case.
+          schema:
+            type: string
+        - name: Idempotency-Key
+          in: header
+          required: true
+          description: 8 to 128 printable ASCII characters. The idempotency operation is profile_report.
+          schema:
+            type: string
+            minLength: 8
+            maxLength: 128
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProfileReportRequest"
+            example:
+              reason: spam
+      responses:
+        "201":
+          description: The report and one quota event were stored. The target profile does not change.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProfileReportResponse"
+              example:
+                data:
+                  id: cccccccc-cccc-4ccc-8ccc-cccccccccccc
+                  username: metalfan
+                  reason: spam
+                  note: null
+                  status: pending
+                  created_at: "2026-10-15T12:00:00Z"
+        "400":
+          description: The body, note, reason, or idempotency key is invalid, or the path is the caller.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                validation:
+                  value:
+                    error:
+                      code: validation_error
+                      message: The request is invalid.
+                      request_id: abc
+                      fields:
+                        reason: must be a known reason
+                self:
+                  value:
+                    error:
+                      code: self_report
+                      message: You cannot report yourself.
+                      request_id: abc
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: The caller is a platform moderator, or the caller cannot contribute.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                forbidden:
+                  value:
+                    error:
+                      code: forbidden
+                      message: This action is unavailable for this account.
+                      request_id: abc
+                rename:
+                  value:
+                    error:
+                      code: profile_rename_required
+                      message: Rename this profile before continuing.
+                      request_id: abc
+                suspended:
+                  value:
+                    error:
+                      code: profile_suspended
+                      message: This profile is suspended.
+                      request_id: abc
+                      details:
+                        suspended_until: "2026-10-16T12:00:00Z"
+                suspended_indefinite:
+                  value:
+                    error:
+                      code: profile_suspended
+                      message: This profile is suspended.
+                      request_id: abc
+        "404":
+          description: The username matches no profile.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                error:
+                  code: profile_not_found
+                  message: Profile not found.
+                  request_id: abc
+        "409":
+          description: The caller already has a pending report, has no profile, or reused the idempotency key for a different command.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                pending:
+                  value:
+                    error:
+                      code: profile_already_reported
+                      message: You already reported this profile.
+                      request_id: abc
+                profile:
+                  value:
+                    error:
+                      code: profile_required
+                      message: Create a profile first.
+                      request_id: abc
+                idempotency:
+                  value:
+                    error:
+                      code: idempotency_key_reused
+                      message: That idempotency key was already used.
+                      request_id: abc
+        "413":
+          $ref: "#/components/responses/BodyTooLarge"
+        "415":
+          $ref: "#/components/responses/UnsupportedMedia"
+        "429":
+          description: The report quota or a write limit refused the request.
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                quota:
+                  value:
+                    error:
+                      code: quota_exceeded
+                      message: The report limit has been reached.
+                      request_id: abc
+                rate:
+                  value:
+                    error:
+                      code: rate_limited
+                      message: Too many requests.
+                      request_id: abc
+        "500":
+          $ref: "#/components/responses/Internal"
+        "502":
+          $ref: "#/components/responses/AuthProvider"
+  /v1/moderation/profile-reports:
+    get:
+      operationId: listProfileReports
+      summary: List pending profile reports
+      description: Oldest first by creation time and report id. Each item includes the reporter and target profiles.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: cursor
+          in: query
+          required: false
+          description: Opaque URL-safe cursor. A malformed cursor is rejected.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: The pending report page.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ModerationReportList"
+              example:
+                data:
+                  - id: cccccccc-cccc-4ccc-8ccc-cccccccccccc
+                    reason: spam
+                    note: null
+                    status: pending
+                    created_at: "2026-10-15T12:00:00Z"
+                    reporter:
+                      id: 00000000-0000-4000-8000-000000000001
+                      username: reporter
+                      display_name: Reporter
+                      status: active
+                      moderation_reason: null
+                      moderation_note: null
+                      suspended_until: null
+                      created_at: "2026-10-01T12:00:00Z"
+                      updated_at: "2026-10-01T12:00:00Z"
+                    target:
+                      id: 00000000-0000-4000-8000-000000000002
+                      username: metalfan
+                      display_name: Metal Fan
+                      status: active
+                      moderation_reason: null
+                      moderation_note: null
+                      suspended_until: null
+                      created_at: "2026-10-01T12:00:00Z"
+                      updated_at: "2026-10-01T12:00:00Z"
+                meta:
+                  next_cursor: null
+        "400":
+          description: The limit or cursor is invalid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                error:
+                  code: validation_error
+                  message: The request is invalid.
+                  request_id: abc
+                  fields:
+                    cursor: invalid
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: The caller has no platform operator row.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                error:
+                  code: forbidden
+                  message: This action requires a moderator account.
+                  request_id: abc
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/Internal"
+        "502":
+          $ref: "#/components/responses/AuthProvider"
+  /v1/moderation/profile-reports/{reportID}:
+    patch:
+      operationId: dismissProfileReport
+      summary: Dismiss one profile report
+      description: 'The body is exactly {"status":"dismissed"}. This route does not require Idempotency-Key. A repeated dismissal returns the same item.'
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: reportID
+          in: path
+          required: true
+          description: Canonical report id. Any other value is rejected.
+          schema:
+            type: string
+            format: uuid
+            pattern: "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DismissProfileReport"
+            example:
+              status: dismissed
+      responses:
+        "200":
+          description: The dismissed report, including both profiles. The profile itself does not change.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ModerationReportResponse"
+              example:
+                data:
+                  id: cccccccc-cccc-4ccc-8ccc-cccccccccccc
+                  reason: spam
+                  note: null
+                  status: dismissed
+                  created_at: "2026-10-15T12:00:00Z"
+                  reporter:
+                    id: 00000000-0000-4000-8000-000000000001
+                    username: reporter
+                    display_name: Reporter
+                    status: active
+                    moderation_reason: null
+                    moderation_note: null
+                    suspended_until: null
+                    created_at: "2026-10-01T12:00:00Z"
+                    updated_at: "2026-10-01T12:00:00Z"
+                  target:
+                    id: 00000000-0000-4000-8000-000000000002
+                    username: metalfan
+                    display_name: Metal Fan
+                    status: active
+                    moderation_reason: null
+                    moderation_note: null
+                    suspended_until: null
+                    created_at: "2026-10-01T12:00:00Z"
+                    updated_at: "2026-10-01T12:00:00Z"
+        "400":
+          description: The body or report id is invalid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                error:
+                  code: validation_error
+                  message: The request is invalid.
+                  request_id: abc
+                  fields:
+                    status: must be dismissed
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: The caller has no platform operator row.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                error:
+                  code: forbidden
+                  message: This action requires a moderator account.
+                  request_id: abc
+        "404":
+          description: No report has that canonical id.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                error:
+                  code: profile_report_not_found
+                  message: Report not found.
+                  request_id: abc
+        "409":
+          description: The report was already actioned.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                error:
+                  code: report_already_resolved
+                  message: That report is already resolved.
+                  request_id: abc
+        "413":
+          $ref: "#/components/responses/BodyTooLarge"
+        "415":
+          $ref: "#/components/responses/UnsupportedMedia"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/Internal"
+        "502":
+          $ref: "#/components/responses/AuthProvider"
+  /v1/moderation/profiles/{userID}:
+    get:
+      operationId: getModerationProfile
+      summary: Read one profile for moderation
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: userID
+          in: path
+          required: true
+          description: Canonical User id. Any other value is rejected.
+          schema:
+            type: string
+            format: uuid
+            pattern: "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+      responses:
+        "200":
+          description: The profile, including its User id and timestamps.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ModeratorProfileResponse"
+              example:
+                data:
+                  id: 00000000-0000-4000-8000-000000000002
+                  username: metalfan
+                  display_name: Metal Fan
+                  status: suspended
+                  moderation_reason: spam
+                  moderation_note: null
+                  suspended_until: null
+                  created_at: "2026-10-01T12:00:00Z"
+                  updated_at: "2026-10-15T12:00:00Z"
+        "400":
+          description: The User id is not canonical.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                error:
+                  code: validation_error
+                  message: The request is invalid.
+                  request_id: abc
+                  fields:
+                    user_id: must be a canonical uuid
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: The caller has no platform operator row.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                error:
+                  code: forbidden
+                  message: This action requires a moderator account.
+                  request_id: abc
+        "404":
+          description: That User id has no profile.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                error:
+                  code: profile_not_found
+                  message: Profile not found.
+                  request_id: abc
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/Internal"
+        "502":
+          $ref: "#/components/responses/AuthProvider"
+  /v1/moderation/profiles/{userID}/actions:
+    post:
+      operationId: applyProfileModeration
+      summary: Apply rename_required, suspended, or restored
+      description: An unchanged profile returns 200 with action_id null and stores nothing. A change returns 201, appends one audit row, and marks that profile's pending reports actioned. A note is required when the reason is other.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: userID
+          in: path
+          required: true
+          description: Canonical User id. Any other value is rejected.
+          schema:
+            type: string
+            format: uuid
+            pattern: "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        - name: Idempotency-Key
+          in: header
+          required: true
+          description: 8 to 128 printable ASCII characters. The idempotency operation is profile_moderation_action.
+          schema:
+            type: string
+            minLength: 8
+            maxLength: 128
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              oneOf:
+                - $ref: "#/components/schemas/RenameRequiredAction"
+                - $ref: "#/components/schemas/SuspendedAction"
+                - $ref: "#/components/schemas/RestoredAction"
+            examples:
+              rename_required:
+                value:
+                  action: rename_required
+                  reason: abusive_name
+              suspended:
+                value:
+                  action: suspended
+                  reason: spam
+                  suspended_until: "2026-10-20T12:00:00Z"
+              restored:
+                value:
+                  action: restored
+      responses:
+        "200":
+          description: The profile already had this moderation state. action_id is null.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ModerationActionResponse"
+              example:
+                data:
+                  action_id: null
+                  profile:
+                    id: 00000000-0000-4000-8000-000000000002
+                    username: metalfan
+                    display_name: Metal Fan
+                    status: suspended
+                    moderation_reason: spam
+                    moderation_note: null
+                    suspended_until: null
+                    created_at: "2026-10-01T12:00:00Z"
+                    updated_at: "2026-10-15T12:00:00Z"
+        "201":
+          description: The moderation action was stored.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ModerationActionResponse"
+              example:
+                data:
+                  action_id: 00000000-0000-4000-8000-000000000010
+                  profile:
+                    id: 00000000-0000-4000-8000-000000000002
+                    username: metalfan
+                    display_name: Metal Fan
+                    status: suspended
+                    moderation_reason: spam
+                    moderation_note: null
+                    suspended_until: "2026-10-20T12:00:00Z"
+                    created_at: "2026-10-01T12:00:00Z"
+                    updated_at: "2026-10-15T12:00:00Z"
+        "400":
+          description: The body, User id, or idempotency key is invalid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                error:
+                  code: validation_error
+                  message: The request is invalid.
+                  request_id: abc
+                  fields:
+                    action: must be rename_required, suspended, or restored
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: The caller has no platform operator row.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                error:
+                  code: forbidden
+                  message: This action requires a moderator account.
+                  request_id: abc
+        "404":
+          description: That User id has no profile.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                error:
+                  code: profile_not_found
+                  message: Profile not found.
+                  request_id: abc
+        "409":
+          description: The idempotency key was already used for a different command.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                error:
+                  code: idempotency_key_reused
+                  message: That idempotency key was already used.
+                  request_id: abc
+        "413":
+          $ref: "#/components/responses/BodyTooLarge"
+        "415":
+          $ref: "#/components/responses/UnsupportedMedia"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/Internal"
+        "502":
+          $ref: "#/components/responses/AuthProvider"
 components:
   securitySchemes:
     bearerAuth:
@@ -231,7 +867,7 @@ components:
     Profile:
       type: object
       additionalProperties: false
-      required: [id, username, display_name, status]
+      required: [id, username, display_name, status, moderation_reason, moderation_note, suspended_until]
       properties:
         id:
           type: string
@@ -243,6 +879,14 @@ components:
         status:
           type: string
           enum: [active, rename_required, suspended]
+        moderation_reason:
+          type: [string, "null"]
+          enum: [abusive_name, hate_or_discrimination, impersonation, personal_information, spam, other, null]
+        moderation_note:
+          type: [string, "null"]
+        suspended_until:
+          type: [string, "null"]
+          format: date-time
     ProfileResponse:
       type: object
       additionalProperties: false
@@ -258,6 +902,187 @@ components:
           type: string
         display_name:
           type: string
+    ModeratorProfile:
+      type: object
+      additionalProperties: false
+      required: [id, username, display_name, status, moderation_reason, moderation_note, suspended_until, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        username:
+          type: string
+        display_name:
+          type: string
+        status:
+          type: string
+          enum: [active, rename_required, suspended]
+        moderation_reason:
+          type: [string, "null"]
+          enum: [abusive_name, hate_or_discrimination, impersonation, personal_information, spam, other, null]
+        moderation_note:
+          type: [string, "null"]
+        suspended_until:
+          type: [string, "null"]
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    ModeratorProfileResponse:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          $ref: "#/components/schemas/ModeratorProfile"
+    ReportReason:
+      type: string
+      enum: [abusive_name, hate_or_discrimination, impersonation, personal_information, spam, other]
+    ProfileReportRequest:
+      type: object
+      additionalProperties: false
+      required: [reason]
+      properties:
+        reason:
+          $ref: "#/components/schemas/ReportReason"
+        note:
+          type: [string, "null"]
+          description: Required for impersonation, personal_information, and other. Omitted and null both mean no note.
+    ProfileReport:
+      type: object
+      additionalProperties: false
+      required: [id, username, reason, note, status, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        username:
+          type: string
+        reason:
+          $ref: "#/components/schemas/ReportReason"
+        note:
+          type: [string, "null"]
+        status:
+          const: pending
+        created_at:
+          type: string
+          format: date-time
+    ProfileReportResponse:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          $ref: "#/components/schemas/ProfileReport"
+    ModerationReport:
+      type: object
+      additionalProperties: false
+      required: [id, reason, note, status, created_at, reporter, target]
+      properties:
+        id:
+          type: string
+          format: uuid
+        reason:
+          $ref: "#/components/schemas/ReportReason"
+        note:
+          type: [string, "null"]
+        status:
+          type: string
+          enum: [pending, actioned, dismissed]
+        created_at:
+          type: string
+          format: date-time
+        reporter:
+          $ref: "#/components/schemas/ModeratorProfile"
+        target:
+          $ref: "#/components/schemas/ModeratorProfile"
+    ModerationReportResponse:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          $ref: "#/components/schemas/ModerationReport"
+    ModerationReportList:
+      type: object
+      additionalProperties: false
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/ModerationReport"
+        meta:
+          type: object
+          additionalProperties: false
+          required: [next_cursor]
+          properties:
+            next_cursor:
+              type: [string, "null"]
+    RenameRequiredAction:
+      type: object
+      additionalProperties: false
+      required: [action, reason]
+      properties:
+        action:
+          const: rename_required
+        reason:
+          $ref: "#/components/schemas/ReportReason"
+        note:
+          type: [string, "null"]
+          description: Required when reason is other.
+        suspended_until:
+          type: "null"
+    SuspendedAction:
+      type: object
+      additionalProperties: false
+      required: [action, reason]
+      properties:
+        action:
+          const: suspended
+        reason:
+          $ref: "#/components/schemas/ReportReason"
+        note:
+          type: [string, "null"]
+          description: Required when reason is other.
+        suspended_until:
+          type: [string, "null"]
+          format: date-time
+          description: Omitted or null means the suspension does not expire. A timestamp must be after the request time.
+    RestoredAction:
+      type: object
+      additionalProperties: false
+      required: [action]
+      properties:
+        action:
+          const: restored
+    ModerationAction:
+      type: object
+      additionalProperties: false
+      required: [action_id, profile]
+      properties:
+        action_id:
+          type: [string, "null"]
+          format: uuid
+        profile:
+          $ref: "#/components/schemas/ModeratorProfile"
+    ModerationActionResponse:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          $ref: "#/components/schemas/ModerationAction"
+    DismissProfileReport:
+      type: object
+      additionalProperties: false
+      required: [status]
+      properties:
+        status:
+          const: dismissed
     Error:
       type: object
       additionalProperties: false
@@ -278,6 +1103,14 @@ components:
               type: object
               additionalProperties:
                 type: string
+            details:
+              type: object
+              additionalProperties: false
+              required: [suspended_until]
+              properties:
+                suspended_until:
+                  type: string
+                  format: date-time
   responses:
     Unauthorized:
       description: The bearer token or live session was rejected.

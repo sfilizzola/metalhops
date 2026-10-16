@@ -3,7 +3,7 @@
 MetalHops MVP API roadmap. Refer to this document as **DevSteps** across every implementation session.
 
 **Date:** 2026-10-14
-**Status:** Sessions 1–5 are done. Session 6 is next. Sessions 7–14 are not started.
+**Status:** Sessions 1–6 are done. Session 7 is next. Sessions 8–14 are not started.
 
 ## Goal
 
@@ -1163,15 +1163,22 @@ invalid tokens fail consistently.
 
 ### Session 6: Profile safety and moderation API
 
-**Status:** Not started.
+**Status:** Done.
 
 Add Profile Reports, rename-required and suspended states, public identity
-redaction, moderation audit, expiry behavior, and privileged endpoints that
-list and resolve Profile Reports and apply rename-required and suspension
-actions. The session plan names the routes and how the existing `403` rule
-recognizes an operator. Any `POST` moderation action that appends an audit
-entry requires `Idempotency-Key`; state-setting `PUT`/`PATCH` and `DELETE`
-routes do not. Do not add an operator-provisioning model.
+redaction, moderation audit, expiry behavior, and privileged moderation routes.
+A Platform Moderator is a Supabase auth user with a `platform_operators` row
+and no Profile. App routes return `403 forbidden` to that caller. Privileged
+routes return `403 forbidden` to an authenticated caller without that row.
+No route provisions operators.
+
+`POST /v1/profiles/{username}/reports` files a report and requires
+`Idempotency-Key`. `GET /v1/moderation/profile-reports` lists pending reports.
+`GET /v1/moderation/profiles/{userID}` reads one Profile.
+`POST /v1/moderation/profiles/{userID}/actions` applies `rename_required`,
+`suspended`, or `restored` and requires `Idempotency-Key`.
+`PATCH /v1/moderation/profile-reports/{reportID}` dismisses one report and
+does not require `Idempotency-Key`.
 
 **Exit condition:** Users can report unsafe Profiles, operators can require a
 rename or suspend community writes through those endpoints, and moderated

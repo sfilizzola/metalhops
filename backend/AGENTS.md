@@ -16,8 +16,8 @@ PostGIS). Run commands from `backend/`.
 - `cmd/api/`: composition root only (configuration, adapters, and server
   lifecycle).
 - `internal/`: all domain code.
-- `internal/auth`: Supabase JWT verification, JWKS cache, and live-session lookup.
-- `internal/profile`: active Profile rules, persistence, and account deletion.
+- `internal/auth`: Supabase JWT verification, JWKS cache, live-session lookup, and operator lookup.
+- `internal/profile`: Profile, report, and moderation behavior.
 - `internal/idempotency`: in-transaction retry helper. No HTTP route.
 - `internal/ratelimit`: public per-IP token buckets, client-IP walk, and the per-User write limiter.
 - `internal/pgtest`: PostGIS test harness. Production code does not import it.
@@ -36,7 +36,7 @@ when that file exists. Variables already in the environment win.
 
 `GET /healthz` reports process health and does not check the database.
 `GET /readyz` returns 200 when the database ping succeeds and migration
-`0003` or newer is recorded. Otherwise it returns 503.
+`0004` or newer is recorded. Otherwise it returns 503.
 `GET /openapi.yaml` serves the embedded `openapi.yaml` in every environment.
 `GET /docs` serves the Scalar page when `DOCS_UI_ENABLED` is unset or `true`.
 The exact value `false` leaves `/docs` unregistered. Any other value stops
@@ -115,10 +115,18 @@ Never drift from it silently.
   is not used. JWKS is cached for ten minutes. An unknown `kid` forces one
   refresh. Every protected request then reads `auth.sessions` for that session
   and User.
-- `GET`, `PATCH`, and `DELETE /v1/me` are the protected routes. JSON bodies
-  are at most 64 KiB, valid UTF-8, one object, and reject unknown fields.
-- Profile writes and account deletion reserve a per-User bucket of burst 60
-  and one token per second. The reservation is committed only after the state
-  change succeeds and cancelled when it does not. `GET` does not reserve.
+- App routes are `GET`, `PATCH`, and `DELETE /v1/me` and
+  `POST /v1/profiles/{username}/reports`. Privileged routes are
+  `GET /v1/moderation/profile-reports`,
+  `GET /v1/moderation/profiles/{userID}`,
+  `POST /v1/moderation/profiles/{userID}/actions`, and
+  `PATCH /v1/moderation/profile-reports/{reportID}`. An operator on an app
+  route, or an app User on a privileged route, receives `403 forbidden`.
+  JSON bodies are at most 64 KiB, valid UTF-8, one object, and reject unknown
+  fields.
+- Profile writes, profile reports, moderation actions, report dismissals, and
+  account deletion reserve a per-User bucket of burst 60 and one token per
+  second. The reservation is committed only after the state change succeeds
+  and cancelled when it does not. `GET` does not reserve.
 - Deleting a User removes the Profile and idempotency rows. Venue submissions
   remain with `submitted_by` null.
