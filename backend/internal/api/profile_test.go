@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/metalhops/metalhops/backend/internal/auth"
+	"github.com/metalhops/metalhops/backend/internal/idempotency"
 	"github.com/metalhops/metalhops/backend/internal/profile"
 	"github.com/metalhops/metalhops/backend/internal/ratelimit"
 )
@@ -23,9 +24,13 @@ type scriptProfiles struct {
 	deleteErr error
 	patch     profile.Patch
 	command   profile.DeleteCommand
+	reportErr error
+	report    profile.Report
+	reportCmd profile.ReportCommand
 	gets      int
 	patches   int
 	deletes   int
+	reports   int
 }
 
 func (s *scriptProfiles) Get(context.Context, string) (profile.Profile, error) {
@@ -42,6 +47,11 @@ func (s *scriptProfiles) Delete(_ context.Context, cmd profile.DeleteCommand) er
 	s.command = cmd
 	return s.deleteErr
 }
+func (s *scriptProfiles) Report(_ context.Context, cmd profile.ReportCommand) (profile.Report, error) {
+	s.reports++
+	s.reportCmd = cmd
+	return s.report, s.reportErr
+}
 
 type rejectingProfiles struct{}
 
@@ -53,6 +63,9 @@ func (rejectingProfiles) Patch(context.Context, string, profile.Patch) (profile.
 }
 func (rejectingProfiles) Delete(context.Context, profile.DeleteCommand) error {
 	return errors.New("unexpected")
+}
+func (rejectingProfiles) Report(context.Context, profile.ReportCommand) (profile.Report, error) {
+	return profile.Report{}, errors.New("unexpected")
 }
 
 func TestProfileRoutes(t *testing.T) {
@@ -245,6 +258,103 @@ func TestOperatorLookupError(t *testing.T) {
 	}
 	if !bytes.Contains(logs.Bytes(), []byte("auth: operator lookup: db down")) || bytes.Contains(logs.Bytes(), []byte("test-token")) {
 		t.Fatalf("log %s", logs.String())
+	}
+}
+
+func TestReportRoute(t *testing.T) {
+	caller := auth.Caller{
+		UserID:           "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+		SessionID:        "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+		SessionCreatedAt: time.Date(2026, 10, 15, 12, 0, 0, 0, time.UTC),
+	}
+	targetID := "dddddddd-dddd-4ddd-8ddd-dddddddddddd"
+	created := time.Date(2026, 10, 15, 12, 0, 0, 0, time.UTC)
+	profiles := &scriptProfiles{report: profile.Report{
+		ID: "cccccccc-cccc-4ccc-8ccc-cccccccccccc", Username: "metalfan", Reason: "spam", Status: "pending", CreatedAt: created,
+	}}
+	authenticator := &fakeAuth{caller: caller}
+	handler := New(Options{
+		Readiness:   readyOK(),
+		PublicLimit: allowAll,
+		Auth:        authenticator,
+		Profiles:    profiles,
+	})
+
+	rec := requestWith(handler, http.MethodPost, "/v1/profiles/metalfan/reports", "Bearer test-token", []byte(`{"reason":"spam"}`), map[string]string{
+		"Content-Type":    "application/json",
+		"Idempotency-Key": "report-key",
+	})
+	want := `{"data":{"id":"cccccccc-cccc-4ccc-8ccc-cccccccccccc","username":"metalfan","reason":"spam","note":null,"status":"pending","created_at":"2026-10-15T12:00:00Z"}}` + "\n"
+	if rec.Code != http.StatusCreated || rec.Body.String() != want {
+		t.Fatalf("create %d %s", rec.Code, rec.Body.String())
+	}
+	if bytes.Contains(rec.Body.Bytes(), []byte(targetID)) || bytes.Contains(rec.Body.Bytes(), []byte(caller.UserID)) {
+		t.Fatalf("user id %s", rec.Body.String())
+	}
+	if profiles.reports != 1 || profiles.reportCmd.Username != "metalfan" || profiles.reportCmd.Reason != "spam" || profiles.reportCmd.Note != nil || profiles.reportCmd.Key != "report-key" || profiles.reportCmd.ReporterID != caller.UserID {
+		t.Fatalf("command %#v calls %d", profiles.reportCmd, profiles.reports)
+	}
+
+	missing := authed(handler, http.MethodPost, "/v1/profiles/metalfan/reports", "", []byte(`{"reason":"spam"}`))
+	assertCode(t, missing, http.StatusBadRequest, "validation_error")
+	if profiles.reports != 1 {
+		t.Fatalf("missing key calls %d", profiles.reports)
+	}
+
+	authenticator.operator = true
+	forbidden := requestWith(handler, http.MethodPost, "/v1/profiles/metalfan/reports", "Bearer test-token", []byte(`{"reason":"spam"}`), map[string]string{
+		"Content-Type":    "application/json",
+		"Idempotency-Key": "report-key",
+	})
+	assertForbidden(t, forbidden)
+	if profiles.reports != 1 {
+		t.Fatalf("operator calls %d", profiles.reports)
+	}
+	authenticator.operator = false
+
+	profiles.reportErr = profile.ErrReportPending
+	assertCode(t, requestWith(handler, http.MethodPost, "/v1/profiles/metalfan/reports", "Bearer test-token", []byte(`{"reason":"spam"}`), map[string]string{
+		"Content-Type":    "application/json",
+		"Idempotency-Key": "report-key",
+	}), http.StatusConflict, "profile_already_reported")
+	profiles.reportErr = profile.ErrSelfReport
+	assertCode(t, requestWith(handler, http.MethodPost, "/v1/profiles/metalfan/reports", "Bearer test-token", []byte(`{"reason":"spam"}`), map[string]string{
+		"Content-Type":    "application/json",
+		"Idempotency-Key": "report-key",
+	}), http.StatusBadRequest, "self_report")
+	profiles.reportErr = profile.ErrProfileRequired
+	assertCode(t, requestWith(handler, http.MethodPost, "/v1/profiles/metalfan/reports", "Bearer test-token", []byte(`{"reason":"spam"}`), map[string]string{
+		"Content-Type":    "application/json",
+		"Idempotency-Key": "report-key",
+	}), http.StatusConflict, "profile_required")
+	profiles.reportErr = profile.ErrRenameRequired
+	assertCode(t, requestWith(handler, http.MethodPost, "/v1/profiles/metalfan/reports", "Bearer test-token", []byte(`{"reason":"spam"}`), map[string]string{
+		"Content-Type":    "application/json",
+		"Idempotency-Key": "report-key",
+	}), http.StatusForbidden, "profile_rename_required")
+	profiles.reportErr = profile.ErrNotFound
+	assertCode(t, requestWith(handler, http.MethodPost, "/v1/profiles/metalfan/reports", "Bearer test-token", []byte(`{"reason":"spam"}`), map[string]string{
+		"Content-Type":    "application/json",
+		"Idempotency-Key": "report-key",
+	}), http.StatusNotFound, "profile_not_found")
+	profiles.reportErr = idempotency.ErrReused
+	assertCode(t, requestWith(handler, http.MethodPost, "/v1/profiles/metalfan/reports", "Bearer test-token", []byte(`{"reason":"spam"}`), map[string]string{
+		"Content-Type":    "application/json",
+		"Idempotency-Key": "report-key",
+	}), http.StatusConflict, "idempotency_key_reused")
+	profiles.reportErr = idempotency.ErrInvalid
+	assertCode(t, requestWith(handler, http.MethodPost, "/v1/profiles/metalfan/reports", "Bearer test-token", []byte(`{"reason":"spam"}`), map[string]string{
+		"Content-Type":    "application/json",
+		"Idempotency-Key": "report-key",
+	}), http.StatusBadRequest, "validation_error")
+	profiles.reportErr = &profile.QuotaError{RetryAfter: 17}
+	limited := requestWith(handler, http.MethodPost, "/v1/profiles/metalfan/reports", "Bearer test-token", []byte(`{"reason":"spam"}`), map[string]string{
+		"Content-Type":    "application/json",
+		"Idempotency-Key": "report-key",
+	})
+	assertCode(t, limited, http.StatusTooManyRequests, "quota_exceeded")
+	if limited.Header().Get("Retry-After") != "17" {
+		t.Fatalf("retry %q", limited.Header().Get("Retry-After"))
 	}
 }
 

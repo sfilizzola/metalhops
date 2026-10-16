@@ -54,6 +54,9 @@ func New(options Options) http.Handler {
 	mux.Handle("GET /v1/me", protected)
 	mux.Handle("PATCH /v1/me", protected)
 	mux.Handle("DELETE /v1/me", protected)
+	mux.Handle("POST /v1/profiles/{username}/reports", requireApp(options.Auth, options.Logger, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		createReport(w, r, options.Profiles, options.Logger)
+	})))
 	return wrap(options.Logger, options.PublicLimit, mux)
 }
 
