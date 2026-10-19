@@ -253,14 +253,16 @@ Later migrations may add indexes or constraints but never edit migration
 
 A Venue requires a trimmed name (1–150 characters), valid latitude and
 longitude, a trimmed street address (1–500 characters), a city (1–120
-characters), a valid ISO 3166-1 alpha-2 country code, one of the existing
+characters), a Country code as defined in the glossary, one of the existing
 Venue types, and at least one valid Genre. Description is optional, trimmed,
 and limited to 2,000 characters. Genre IDs are deduplicated before writing.
 
 A new migration strengthens the nullable initial columns and country-code
-constraint without editing `0001_init.sql`. It also adds `updated_at` and
-`status_changed_at`; every content change updates the former, and every
-moderation status transition updates both.
+constraint without editing `0001_init.sql`. It also adds `updated_at`.
+Venue-row changes update it through the row trigger. A Venue transaction that
+changes Genre links explicitly touches the Venue row in the same transaction.
+The moderation lifecycle migration adds `status_changed_at`; every moderation
+status transition updates both timestamps.
 
 When a Supabase User is deleted, their Profile, Reviews, and Check-ins cascade
 delete. Their Venue Submissions remain, but `submitted_by` becomes null. The
@@ -360,8 +362,8 @@ Creation and correction reject a strong Duplicate Venue Submission before
 writing. A strong match has the same normalized name and lies within 100
 metres of a verified Venue or pending Venue Submission. Name normalization
 uses Unicode case and accent folding, trims and collapses whitespace, and
-removes punctuation; it does not remove articles or words such as `bar`,
-`pub`, or `club`. Rejected submissions do not block a new submission.
+removes punctuation and symbols; it does not remove articles or words such as
+`bar`, `pub`, or `club`. Rejected submissions do not block a new submission.
 
 Duplicate detection and writing occur in one transaction. A
 transaction-scoped advisory lock derived from the normalized name prevents
@@ -727,8 +729,9 @@ verified-Venue, Venue-genre, and direct-submission policies without editing
 - Name, coordinates, address, city, country code, Venue type, and Genres are
   required; description is optional. A submission missing any required field
   is rejected and no Venue is stored.
-- The API field is `country_code`, stored uppercase as a valid ISO 3166-1
-  alpha-2 code; clients localize the country display name.
+- The API field is `country_code`, stored as the canonical uppercase Country
+  code; clients localize the country display name. `XK` is accepted for
+  Kosovo, `GB` identifies the United Kingdom, and `UK` is rejected.
 - Creates the venue with `pending` status and the caller as `submitted_by`.
 - Creates the venue and genre links in one transaction.
 - Never accepts verification status from the client.
@@ -1191,7 +1194,9 @@ identities are not exposed publicly.
 Implement genre listing, the public catalogue, venue detail, aggregates,
 and cursor pagination without the optional discovery filters. The catalogue
 includes Verified Venues and pending Venue Submissions whose required fields
-are valid.
+are valid and that have at least one Genre. Pagination is deterministic while
+membership and sort keys are unchanged and best-effort across concurrent
+catalogue changes.
 
 **Exit condition:** Android can render a paginated venue catalogue and venue
 detail screen.

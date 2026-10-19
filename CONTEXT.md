@@ -137,6 +137,12 @@ A publicly accessible bar, pub, or club where rock or metal is a recurring
 part of the normal experience, not merely an occasional event.
 _Avoid_: Place, location, event venue
 
+**Country code**:
+The canonical uppercase code for a Venue's country. It is an officially
+assigned ISO 3166-1 alpha-2 code, with `XK` as the sole product exception for
+Kosovo. The United Kingdom is `GB`.
+_Avoid_: Country name, lowercase code, `UK`
+
 **Venue Submission**:
 A User's proposal to add a Venue to the catalogue. Only its Submitter can
 correct it while pending or rejected, which returns it to pending review and

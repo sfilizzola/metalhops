@@ -4,7 +4,7 @@
 
 **Goal:** Serve the public Genre list, the unfiltered Venue catalogue, and Venue detail from the Go API.
 
-**Architecture:** `internal/venue` owns catalogue membership, `venue_name_key` ordering, and the three reads. `internal/api` defines a `Catalogue` interface and maps results to HTTP. HTTP tests use a fake. PostgreSQL is the production adapter. Migration `0005` makes the catalogue columns required and adds the shared name key.
+**Architecture:** `internal/venue` owns catalogue membership, explicit `C`-collated `venue_name_key` ordering, versioned cursors, and the three reads. `internal/api` defines a `Catalogue` interface and maps results to HTTP. HTTP tests use a fake. PostgreSQL is the production adapter. Migration `0005` makes the catalogue columns required and adds the shared name key.
 
 **Tech Stack:** Go 1.24, `net/http`, `pgx/v5`, PostgreSQL 16, PostGIS, `unaccent`, OpenAPI 3.1, `httptest`, and `testcontainers-go`.
 
@@ -21,16 +21,22 @@
 - Discovery filters, Venue submissions, delisting, rejection feedback, and `status_changed_at` stay in later sessions.
 - Review and Check-in tables stay in later sessions. This session does not create them.
 - Aggregates are SQL literals: `average_rating` null, `review_count` 0, `check_in_count` 0.
+- Pagination has no snapshot state. It has no gap or repeat while membership
+  and sort keys are unchanged, and is best-effort across concurrent catalogue
+  changes.
 - Continue on `feature/session-7-venue-catalogue`. Merge into `dev` by pull request.
 - Commands in this plan use `go` and `git`, run from `backend/` unless a step says otherwise.
 
 ## Review Focus
 
 1. **Two genres, one venue:** a venue linked to two genres must occupy one catalogue slot. A join that multiplies rows makes `limit=1` return that venue twice or skip the next venue. Task 3 pins this with `TestVenueWithTwoGenresCountsOnce`.
-2. **Empty name key:** a punctuation-only name produces an empty `venue_name_key`, and its cursor starts with the encoded form of `|` plus the id. A decoder that rejects an empty key cannot page past `!!!`. Task 3 pins this with `TestEmptyNameKeyCursorSurvivesDeletion`.
+2. **Empty name key:** a punctuation- or symbol-only name produces an empty `venue_name_key`, and its cursor is the encoded form of `name-v1||` plus the id. A decoder that rejects an empty key cannot page past `!!!`. Task 3 pins this with `TestEmptyNameKeyCursorSurvivesDeletion`.
 3. **Supplied `updated_at`:** an `UPDATE` that sets `updated_at` to `2000-01-01` must still store the trigger time. A trigger that only fills a null leaves the supplied value. Task 1 pins this with `TestUpdatedAtTriggerOverwritesSuppliedTime`.
 4. **Uppercase venue id:** `AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA` is not a canonical id. The read must return validation, not `ErrNotFound`, or HTTP maps it to 404. Task 3 pins this with `TestUppercaseVenueIDIsInvalid`.
 5. **Data API execute:** `anon` must receive SQLSTATE `42501` for `select venue_name_key('Bar!')`. A function left granted to `PUBLIC` lets the Data API fold names. Task 1 pins this with the new statement in `TestDataAPIClosed`.
+6. **Portable name folding:** PostgreSQL 16 does not support `\p{P}`. The name key keeps alphanumeric characters and whitespace after `unaccent`, removes punctuation and symbols, and schema-qualifies the extension function. Task 1 pins symbols and international text.
+7. **Deterministic order:** every name comparison that defines public order uses explicit `C` collation. The cursor carries the `name-v1` discriminator so Session 8 can add sort modes without guessing its shape.
+8. **Legacy data:** `0005` remains fail-closed. Its read-only preflight identifies invalid Venue ids; it never fabricates catalogue fields. `XK` is valid, while `UK` and other noncanonical codes are not.
 
 ---
 
@@ -82,7 +88,7 @@ DevSteps.md
 
 **Interfaces:**
 - Consumes: migrations `0001` through `0004`, `database.Pool.Check`, `pgtest.MigratedURL`.
-- Produces: `venues.country_code`, required `address` and `city`, `venues.updated_at`, trigger `venues_set_updated_at`, and `venue_name_key(text) returns text`. Readiness version `0005`.
+- Produces: `venues.country_code`, required `address` and `city`, `venues.updated_at`, trigger `venues_set_updated_at`, and `venue_name_key(text) returns text`. `country_code` uses official ISO 3166-1 alpha-2 codes plus `XK`; `GB`, not `UK`, identifies the United Kingdom. Readiness version `0005`.
 
 - [ ] **Step 1: Write the failing readiness, constraint, and fixture tests**
 
@@ -156,13 +162,19 @@ func TestVenueCatalogueConstraints(t *testing.T) {
 	if err == nil {
 		t.Fatal("missing country_code accepted")
 	}
-	for _, code := range []string{"de", "XK", "UK", "ZZ"} {
+	for _, code := range []string{"de", "UK", "ZZ"} {
 		_, err = pool.Exec(ctx, `
 			insert into venues (name, location, address, city, country_code)
 			values ('Rocker', ST_MakePoint(10.75, 59.91)::geography, '1 Metal Street', 'Oslo', $1)`, code)
 		if err == nil {
 			t.Fatalf("country %s accepted", code)
 		}
+	}
+	_, err = pool.Exec(ctx, `
+		insert into venues (name, location, address, city, country_code)
+		values ('Kosovo Rock', ST_MakePoint(21.16, 42.66)::geography, '1 Metal Street', 'Pristina', 'XK')`)
+	if err != nil {
+		t.Fatalf("country XK rejected: %v", err)
 	}
 	_, err = pool.Exec(ctx, `
 		insert into venues (name, location, address, city, country_code)
@@ -205,6 +217,9 @@ func TestVenueNameKey(t *testing.T) {
 		"Röcker":      "rocker",
 		"O'Connor":    "oconnor",
 		"black-metal": "blackmetal",
+		"C++":         "c",
+		"Бар №1":      "бар 1",
+		"東京":           "東京",
 		"bar  one":    "bar one",
 		"!!!":         "",
 	}
@@ -300,11 +315,55 @@ Run: `go test ./internal/database ./internal/profile -run 'TestMigrationVersions
 
 Expected: FAIL. `0005_venue_catalogue.sql` is missing, or `venue_name_key` and `country_code` do not exist.
 
-- [ ] **Step 3: Add the migration and raise readiness**
+- [ ] **Step 3: Add the preflight, migration, and readiness version**
 
 Set `requiredMigrationVersion` in `backend/internal/database/pool.go` to `"0005"`.
 
-Create `infra/supabase/migrations/0005_venue_catalogue.sql` with this SQL. The country list is the 249 officially assigned ISO 3166-1 alpha-2 codes. It excludes `XK`, `UK`, and every reserved code.
+Before an operator applies `0005`, run this read-only query against the target
+database. A successful preflight returns no row. It identifies every Venue
+that would fail the new catalogue constraints and never changes data:
+
+```sql
+with allowed_country(code) as (
+  select unnest(string_to_array(
+    'AD AE AF AG AI AL AM AO AQ AR AS AT AU AW AX AZ BA BB BD BE BF BG BH BI BJ BL BM BN BO BQ BR BS BT BV BW BY BZ CA CC CD CF CG CH CI CK CL CM CN CO CR CU CV CW CX CY CZ DE DJ DK DM DO DZ EC EE EG EH ER ES ET FI FJ FK FM FO FR GA GB GD GE GF GG GH GI GL GM GN GP GQ GR GS GT GU GW GY HK HM HN HR HT HU ID IE IL IM IN IO IQ IR IS IT JE JM JO JP KE KG KH KI KM KN KP KR KW KY KZ LA LB LC LI LK LR LS LT LU LV LY MA MC MD ME MF MG MH MK ML MM MN MO MP MQ MR MS MT MU MV MW MX MY MZ NA NC NE NF NG NI NL NO NP NR NU NZ OM PA PE PF PG PH PK PL PM PN PR PS PT PW PY QA RE RO RS RU RW SA SB SC SD SE SG SH SI SJ SK SL SM SN SO SR SS ST SV SX SY SZ TC TD TF TG TH TJ TK TL TM TN TO TR TT TV TW TZ UA UG UM US UY UZ VA VC VE VG VI VN VU WF WS XK YE YT ZA ZM ZW',
+    ' '
+  ))
+),
+inspected as (
+  select v.id, array_remove(array[
+    case when char_length(v.name) not between 1 and 150
+                   or v.name <> btrim(v.name)
+                   or v.name ~ E'[\n\r]' then 'name' end,
+    case when v.address is null
+                   or char_length(v.address) not between 1 and 500
+                   or v.address <> btrim(v.address)
+                   or v.address ~ E'[\n\r]' then 'address' end,
+    case when v.city is null
+                   or char_length(v.city) not between 1 and 120
+                   or v.city <> btrim(v.city)
+                   or v.city ~ E'[\n\r]' then 'city' end,
+    case when v.description is not null
+                   and (char_length(v.description) not between 1 and 2000
+                        or v.description <> btrim(v.description))
+         then 'description' end,
+    case when v.country is null
+                   or not exists (
+                     select 1 from allowed_country c where c.code = v.country
+                   ) then 'country_code' end
+  ], null) as violations
+  from venues v
+)
+select id, violations
+from inspected
+where cardinality(violations) > 0
+order by id;
+```
+
+Do not normalize or fill a failing row in the migration. Correct it
+deliberately before applying `0005`.
+
+Create `infra/supabase/migrations/0005_venue_catalogue.sql` with this SQL. The country list is the 249 officially assigned ISO 3166-1 alpha-2 codes plus the product exception `XK`. It excludes `UK` and every other reserved or user-assigned code.
 
 ```sql
 alter table venues rename column country to country_code;
@@ -369,7 +428,7 @@ alter table venues add constraint venues_country_code_check check (country_code 
   'SX', 'SY', 'SZ', 'TC', 'TD', 'TF', 'TG', 'TH', 'TJ', 'TK',
   'TL', 'TM', 'TN', 'TO', 'TR', 'TT', 'TV', 'TW', 'TZ', 'UA',
   'UG', 'UM', 'US', 'UY', 'UZ', 'VA', 'VC', 'VE', 'VG', 'VI',
-  'VN', 'VU', 'WF', 'WS', 'YE', 'YT', 'ZA', 'ZM', 'ZW'
+  'VN', 'VU', 'WF', 'WS', 'XK', 'YE', 'YT', 'ZA', 'ZM', 'ZW'
 ));
 
 create or replace function venues_set_updated_at() returns trigger
@@ -386,16 +445,35 @@ before update on venues
 for each row
 execute function venues_set_updated_at();
 
-create extension if not exists unaccent;
+create schema if not exists extensions;
+create extension if not exists unaccent with schema extensions;
+
+do $$
+begin
+  if (
+    select n.nspname <> 'extensions'
+    from pg_extension e
+    join pg_namespace n on n.oid = e.extnamespace
+    where e.extname = 'unaccent'
+  ) then
+    alter extension unaccent set schema extensions;
+  end if;
+end
+$$;
 
 create function venue_name_key(input text) returns text
 language sql
 stable
-set search_path = public
+set search_path = pg_catalog, extensions
 as $$
   select btrim(
     regexp_replace(
-      regexp_replace(lower(unaccent(input)), '\p{P}+', '', 'g'),
+      regexp_replace(
+        lower(extensions.unaccent(input)),
+        '[^[:alnum:][:space:]]+',
+        '',
+        'g'
+      ),
       '\s+', ' ', 'g'
     )
   )
@@ -477,6 +555,7 @@ func CanonicalVenueID(id string) bool
 ```
 
 `DecodeCursor` returns `&ValidationError{Fields: map[string]string{"cursor": "invalid"}}` for a bad cursor. `ValidateLimit` uses the field message `must be from 1 to 100`. `CanonicalVenueID` accepts only `^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`.
+The cursor payload is exactly `name-v1|<name-key>|<venue-id>`.
 
 - [ ] **Step 1: Write the failing cursor tests**
 
@@ -486,6 +565,7 @@ Create `backend/internal/venue/venue_test.go`:
 package venue
 
 import (
+	"encoding/base64"
 	"errors"
 	"testing"
 )
@@ -510,6 +590,9 @@ func TestCursorRejectsMalformedValues(t *testing.T) {
 		"",
 		"abc",
 		EncodeCursor("the|bar", id),
+		base64.RawURLEncoding.EncodeToString([]byte("other-v1|the bar|" + id)),
+		base64.RawURLEncoding.EncodeToString([]byte("the bar|" + id)),
+		base64.RawURLEncoding.EncodeToString([]byte("name-v1|the bar")),
 		EncodeCursor("the bar", "AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA"),
 		EncodeCursor("the bar", "not-a-uuid"),
 	} {
@@ -544,7 +627,10 @@ func TestCanonicalVenueID(t *testing.T) {
 }
 ```
 
-The `"the|bar"` case still encodes. `DecodeCursor` must reject it because `strings.Cut` would hide the extra pipe inside the key only when the pipe is first. Encode does not strip pipes. Decode rejects a payload whose remainder after the first `|` is not a canonical UUID, and rejects a key that itself contains `|`. For `"the|bar"`, `Cut` produces key `the` and id `bar|<uuid>`, which fails the UUID check. Assert that this cursor returns `cursor: invalid`.
+The `"the|bar"` case still encodes. Production name keys cannot contain a
+pipe, but `DecodeCursor` must reject a constructed payload with an extra
+delimiter. It also rejects an unknown discriminator, the legacy unversioned
+shape, a missing component, and a non-canonical UUID.
 
 - [ ] **Step 2: Run the test to verify it fails**
 
@@ -615,7 +701,7 @@ func ValidateLimit(limit int) error {
 }
 
 func EncodeCursor(nameKey, id string) string {
-	return base64.RawURLEncoding.EncodeToString([]byte(nameKey + "|" + id))
+	return base64.RawURLEncoding.EncodeToString([]byte("name-v1|" + nameKey + "|" + id))
 }
 
 func DecodeCursor(cursor string) (string, string, error) {
@@ -624,11 +710,11 @@ func DecodeCursor(cursor string) (string, string, error) {
 	if err != nil || cursor == "" {
 		return "", "", invalid
 	}
-	nameKey, id, ok := strings.Cut(string(raw), "|")
-	if !ok || strings.Contains(nameKey, "|") || strings.Contains(id, "|") || !CanonicalVenueID(id) {
+	parts := strings.Split(string(raw), "|")
+	if len(parts) != 3 || parts[0] != "name-v1" || !CanonicalVenueID(parts[2]) {
 		return "", "", invalid
 	}
-	return nameKey, id, nil
+	return parts[1], parts[2], nil
 }
 ```
 
@@ -704,6 +790,33 @@ func TestListGenresOrderedByName(t *testing.T) {
 		if genres[i].Name != name || genres[i].ID == 0 {
 			t.Fatalf("genre %d %+v", i, genres[i])
 		}
+	}
+}
+
+func TestGenreOrderUsesCCollation(t *testing.T) {
+	ctx := context.Background()
+	pool := testPool(t)
+	if _, err := pool.Exec(ctx, `insert into genres (name) values ('alpha test'), ('Zulu test')`); err != nil {
+		t.Fatal(err)
+	}
+	genres, err := New(pool).ListGenres(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	positions := map[string]int{}
+	for i, genre := range genres {
+		positions[genre.Name] = i
+	}
+	if positions["Zulu test"] >= positions["alpha test"] {
+		t.Fatalf("C order positions %+v", positions)
+	}
+}
+
+func TestEmptyCatalogue(t *testing.T) {
+	service := New(testPool(t))
+	page, err := service.ListVenues(context.Background(), 20, "")
+	if err != nil || page.Venues == nil || len(page.Venues) != 0 || page.NextCursor != nil {
+		t.Fatalf("page %+v err %v", page, err)
 	}
 }
 
@@ -882,7 +995,7 @@ func insertVenue(t *testing.T, pool *pgxpool.Pool, id, name, status string, genr
 
 - [ ] **Step 2: Run the tests to verify they fail**
 
-Run: `go test ./internal/venue -run 'TestListGenresOrderedByName|TestCatalogueMembershipAndAggregates|TestVenueWithTwoGenresCountsOnce|TestEmptyNameKeyCursorSurvivesDeletion|TestNameSortAndTieBreak|TestUppercaseVenueIDIsInvalid' -count=1`
+Run: `go test ./internal/venue -run 'TestListGenresOrderedByName|TestGenreOrderUsesCCollation|TestEmptyCatalogue|TestCatalogueMembershipAndAggregates|TestVenueWithTwoGenresCountsOnce|TestEmptyNameKeyCursorSurvivesDeletion|TestNameSortAndTieBreak|TestUppercaseVenueIDIsInvalid' -count=1`
 
 Expected: FAIL with `New` undefined.
 
@@ -915,7 +1028,7 @@ func New(pool *pgxpool.Pool) *Service {
 func (s *Service) ListGenres(ctx context.Context) ([]Genre, error) {
 	queryCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
-	rows, err := s.pool.Query(queryCtx, `select id, name from genres order by name, id`)
+	rows, err := s.pool.Query(queryCtx, `select id, name from genres order by name collate "C", id`)
 	if err != nil {
 		return nil, fmt.Errorf("venue: genres: %w", err)
 	}
@@ -953,8 +1066,12 @@ func (s *Service) ListVenues(ctx context.Context, limit int, cursor string) (Pag
 	rows, err := s.pool.Query(queryCtx, venueSelect+`
 		where v.verification_status in ('pending', 'verified')
 		  and exists (select 1 from venue_genres link where link.venue_id = v.id)
-		  and ($1::bool or (venue_name_key(v.name), v.id) > ($2::text, $3::uuid))
-		order by venue_name_key(v.name), v.id
+		  and (
+		    $1::bool
+		    or (venue_name_key(v.name) collate "C", v.id)
+		       > ($2::text collate "C", $3::uuid)
+		  )
+		order by venue_name_key(v.name) collate "C", v.id
 		limit $4`, firstPage, nameKey, id, limit+1)
 	if err != nil {
 		return Page{}, fmt.Errorf("venue: list: %w", err)
@@ -1008,7 +1125,10 @@ const venueSelect = `
 		ST_Y(v.location::geometry), ST_X(v.location::geometry),
 		v.address, v.city, v.country_code, v.venue_type, v.verification_status,
 		coalesce((
-			select json_agg(json_build_object('id', g.id, 'name', g.name) order by g.name, g.id)
+			select json_agg(
+				json_build_object('id', g.id, 'name', g.name)
+				order by g.name collate "C", g.id
+			)
 			from venue_genres vg
 			join genres g on g.id = vg.genre_id
 			where vg.venue_id = v.id
@@ -1042,7 +1162,11 @@ func scanVenue(row venueScanner) (Venue, string, error) {
 }
 ```
 
-The list predicate uses the venue as the limited row. The genre aggregate is a scalar subquery, so two genre links do not multiply the page.
+The list predicate uses the venue as the limited row. The genre aggregate is
+a scalar subquery, so two genre links do not multiply the page. The keyset
+predicate and both public name orders use explicit `C` collation. Pagination
+has no snapshot state: it is gap- and repeat-free while membership and sort
+keys are unchanged, and best-effort across concurrent changes.
 
 - [ ] **Step 4: Run the tests to verify they pass**
 
@@ -1134,13 +1258,27 @@ func TestVenueRoutes(t *testing.T) {
 	}
 }
 
+func TestEmptyVenueCollections(t *testing.T) {
+	handler := venueHandler(&fakeCatalogue{})
+	genres := requestVenue(handler, http.MethodGet, "/v1/genres", "")
+	if genres.Code != http.StatusOK || !bytes.Contains(genres.Body.Bytes(), []byte(`"data":[]`)) || bytes.Contains(genres.Body.Bytes(), []byte(`"meta"`)) {
+		t.Fatalf("genres %d %s", genres.Code, genres.Body.String())
+	}
+	list := requestVenue(handler, http.MethodGet, "/v1/venues", "")
+	if list.Code != http.StatusOK || !bytes.Contains(list.Body.Bytes(), []byte(`"data":[]`)) || !bytes.Contains(list.Body.Bytes(), []byte(`"next_cursor":null`)) {
+		t.Fatalf("list %d %s", list.Code, list.Body.String())
+	}
+}
+
 func TestVenueQueryValidation(t *testing.T) {
 	catalogue := &fakeCatalogue{}
 	handler := venueHandler(catalogue)
 	cases := []string{
 		"/v1/venues?limit=nope",
 		"/v1/venues?limit=0",
+		"/v1/venues?limit=101",
 		"/v1/venues?limit=1&limit=2",
+		"/v1/venues?cursor=a&cursor=b",
 		"/v1/venues?country_code=DE",
 		"/v1/genres?limit=20",
 		"/v1/venues/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa?cursor=abc",
@@ -1151,7 +1289,7 @@ func TestVenueQueryValidation(t *testing.T) {
 		if rec.Code != http.StatusBadRequest || !bytes.Contains(rec.Body.Bytes(), []byte(`"validation_error"`)) {
 			t.Fatalf("%s %d %s", path, rec.Code, rec.Body.String())
 		}
-		if path == "/v1/venues?limit=0" {
+		if path == "/v1/venues?limit=0" || path == "/v1/venues?limit=101" {
 			if catalogue.listCalls != before+1 {
 				t.Fatal("range limit did not reach the catalogue")
 			}
@@ -1161,6 +1299,12 @@ func TestVenueQueryValidation(t *testing.T) {
 			t.Fatalf("%s reached the catalogue", path)
 		}
 	}
+	catalogue.listErr = &venue.ValidationError{Fields: map[string]string{"cursor": "invalid"}}
+	badCursor := requestVenue(handler, http.MethodGet, "/v1/venues?cursor=abc", "")
+	if badCursor.Code != http.StatusBadRequest || !bytes.Contains(badCursor.Body.Bytes(), []byte(`"cursor":"invalid"`)) {
+		t.Fatalf("cursor %d %s", badCursor.Code, badCursor.Body.String())
+	}
+	catalogue.listErr = nil
 	badID := requestVenue(handler, http.MethodGet, "/v1/venues/AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA", "")
 	if badID.Code != http.StatusBadRequest || !bytes.Contains(badID.Body.Bytes(), []byte(`"venue_id"`)) || catalogue.getCalls != 1 {
 		t.Fatalf("uppercase %d calls %d %s", badID.Code, catalogue.getCalls, badID.Body.String())
@@ -1246,7 +1390,7 @@ func (f *fakeCatalogue) GetVenue(_ context.Context, id string) (venue.Venue, err
 
 - [ ] **Step 2: Run the test to verify it fails**
 
-Run: `go test ./internal/api -run 'TestVenueRoutes|TestVenueQueryValidation' -count=1`
+Run: `go test ./internal/api -run 'TestVenueRoutes|TestEmptyVenueCollections|TestVenueQueryValidation' -count=1`
 
 Expected: FAIL with `Catalogue` or the routes missing.
 
@@ -1469,6 +1613,8 @@ Add these strings to the `TestOpenAPIDocument` list:
 "verification_status",
 "country_code",
 "average_rating",
+"XK",
+"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
 ```
 
 - [ ] **Step 2: Run the test to verify it fails**
@@ -1488,7 +1634,7 @@ Insert these paths immediately before `/v1/me:` in `backend/openapi.yaml`. Do no
       summary: List genres
       responses:
         "200":
-          description: Every genre, ordered by name.
+          description: Every genre, ordered deterministically by name.
           content:
             application/json:
               schema:
@@ -1534,7 +1680,7 @@ Insert these paths immediately before `/v1/me:` in `backend/openapi.yaml`. Do no
             type: string
       responses:
         "200":
-          description: One page of public venues.
+          description: One page of public venues. Traversal is stable while catalogue membership and names are unchanged, and best-effort across concurrent changes.
           content:
             application/json:
               schema:
@@ -1587,6 +1733,7 @@ Insert these paths immediately before `/v1/me:` in `backend/openapi.yaml`. Do no
           schema:
             type: string
             format: uuid
+            pattern: "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
       responses:
         "200":
           description: The public venue.
@@ -1667,6 +1814,7 @@ Add these schemas beside `Profile`:
         id:
           type: string
           format: uuid
+          pattern: "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
         name:
           type: string
         description:
@@ -1681,6 +1829,8 @@ Add these schemas beside `Profile`:
           type: string
         country_code:
           type: string
+          pattern: "^[A-Z]{2}$"
+          description: Official ISO 3166-1 alpha-2 code, plus XK for Kosovo. The United Kingdom is GB.
         venue_type:
           type: string
           enum: [bar, pub, club]
@@ -1731,9 +1881,11 @@ Replace the Venue-fields strengthening paragraph with:
 ```markdown
 Migration `0005` strengthens the nullable initial columns and country-code
 constraint without editing `0001_init.sql`, and it adds `updated_at`. Every
-content change updates `updated_at`. The moderation lifecycle migration adds
-`status_changed_at`; every moderation status transition updates both
-timestamps.
+Venue-row change updates `updated_at`; a Venue transaction that changes
+Genre links explicitly touches the Venue row. The moderation lifecycle
+migration adds `status_changed_at`; every moderation status transition
+updates both timestamps. Country codes use official ISO 3166-1 alpha-2 codes
+plus `XK`; `GB`, not `UK`, identifies the United Kingdom.
 ```
 
 Replace the Session 7 section with:
@@ -1754,6 +1906,9 @@ verified. Rejected Venues stay hidden.
 `GET /v1/venues/{venueID}` returns one catalogue Venue.
 Both venue routes use one Venue document. A hidden or unknown Venue is
 `404 venue_not_found`.
+Venue and Genre name ordering uses explicit `C` collation. Venue cursors use
+the `name-v1` discriminator. Traversal has no gap or repeat while membership
+and sort keys are unchanged and is best-effort across concurrent changes.
 
 Migration `0005` requires address, city, and `country_code`, adds
 `updated_at` and `venue_name_key`, and raises readiness to `0005`.
@@ -1765,10 +1920,11 @@ detail screen.
 Replace the Session 9 migration sentence with:
 
 ```markdown
-Duplicate detection uses `venue_name_key` from migration `0005`. Add any
-further migration required for submission quotas, duplicate locking, and RLS
-read policies. Do not repeat the `0005` column, country-code, or `updated_at`
-work.
+Duplicate detection uses `venue_name_key` from migration `0005`, which keeps
+alphanumeric characters and whitespace and removes punctuation and symbols.
+Add any further migration required for submission quotas, duplicate locking,
+and RLS read policies. Do not repeat the `0005` column, country-code, or
+`updated_at` work.
 ```
 
 - [ ] **Step 4: Run the full backend checks**
