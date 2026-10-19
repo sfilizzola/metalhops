@@ -37,8 +37,8 @@ func TestDeleteUser(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := pool.Exec(ctx, `
-		insert into venues (name, location, submitted_by)
-		values ('Room', ST_MakePoint(0, 0)::geography, $1)`, userID); err != nil {
+		insert into venues (name, location, address, city, country_code, submitted_by)
+		values ('Room', ST_MakePoint(0, 0)::geography, '1 Metal Street', 'Oslo', 'NO', $1)`, userID); err != nil {
 		t.Fatal(err)
 	}
 

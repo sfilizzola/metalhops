@@ -30,6 +30,7 @@ func TestDataAPIClosed(t *testing.T) {
 		`insert into venues (name, location) values ('nope', ST_MakePoint(0, 0)::geography)`,
 		`update venues set name = 'nope' where false`,
 		`delete from venues where false`,
+		`select venue_name_key('Bar!')`,
 		`select * from venue_genres`,
 		`insert into venue_genres (venue_id, genre_id) values ('00000000-0000-4000-8000-000000000001', 1)`,
 		`update venue_genres set genre_id = 1 where false`,
@@ -92,8 +93,8 @@ func TestDataAPIClosed(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := pool.Exec(ctx, `
-		insert into venues (name, location, submitted_by)
-		values ('Access', ST_MakePoint(0, 0)::geography, 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa')`); err != nil {
+		insert into venues (name, location, address, city, country_code, submitted_by)
+		values ('Access', ST_MakePoint(0, 0)::geography, '1 Metal Street', 'Oslo', 'NO', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa')`); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := pool.Exec(ctx, `
