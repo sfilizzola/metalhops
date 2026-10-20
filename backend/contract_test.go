@@ -36,6 +36,10 @@ func TestOpenAPIDocument(t *testing.T) {
 		"verification_status",
 		"country_code",
 		"average_rating",
+		"genre_id",
+		"radius_km",
+		"distance_meters",
+		"must be provided with latitude, longitude, and radius_km",
 		"XK",
 		"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
 	} {

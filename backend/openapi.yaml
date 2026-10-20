@@ -109,11 +109,85 @@ paths:
         - name: cursor
           in: query
           required: false
+          description: Opaque next_cursor from a previous page. Valid only with the same filters that produced it; limit may change. Otherwise the request fails with cursor invalid.
           schema:
             type: string
+        - name: query
+          in: query
+          required: false
+          description: Substring match on Venue name, address, or city. Matching ignores case, accents, punctuation, and whitespace, and does not tolerate typos. Must contain a letter or digit.
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 100
+        - name: genre_id
+          in: query
+          required: false
+          description: Repeat to match Venues with any of the listed Genres. Unknown ids match nothing.
+          style: form
+          explode: true
+          schema:
+            type: array
+            maxItems: 20
+            items:
+              type: integer
+              minimum: 1
+              maximum: 2147483647
+        - name: city
+          in: query
+          required: false
+          description: Exact city match after the same folding as query, so Saint-Étienne matches Saint Etienne. Must contain a letter or digit.
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 120
+        - name: country_code
+          in: query
+          required: false
+          description: Official ISO 3166-1 alpha-2 code, plus XK for Kosovo. The United Kingdom is GB; UK is rejected.
+          schema:
+            type: string
+            pattern: "^[A-Z]{2}$"
+        - name: venue_type
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [bar, pub, club]
+        - name: latitude
+          in: query
+          required: false
+          description: WGS84 latitude. Send with longitude and radius_km.
+          schema:
+            type: number
+            minimum: -90
+            maximum: 90
+        - name: longitude
+          in: query
+          required: false
+          description: WGS84 longitude. Send with latitude and radius_km.
+          schema:
+            type: number
+            minimum: -180
+            maximum: 180
+        - name: radius_km
+          in: query
+          required: false
+          description: Inclusive radius around latitude and longitude. Send with both.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
       responses:
         "200":
-          description: One page of public venues. Traversal is stable while catalogue membership and names are unchanged, and best-effort across concurrent changes.
+          description: >-
+            One page of public venues. Without query or location, results sort by
+            folded name, then id. With a location only, by distance, then id. With
+            query only, by relevance tier (exact name, name prefix, name substring,
+            exact city, other city or address match), then folded name, then id.
+            With query and a location, by relevance tier, then distance, then id.
+            Traversal is stable while catalogue membership and sort keys are
+            unchanged, and best-effort across concurrent changes.
           content:
             application/json:
               schema:
@@ -139,7 +213,7 @@ paths:
                 meta:
                   next_cursor: null
         "400":
-          description: The limit or cursor is invalid, or another parameter was sent.
+          description: A filter, limit, or cursor is invalid, a parameter is repeated or unknown, or the location group is incomplete.
           content:
             application/json:
               schema:
@@ -150,7 +224,7 @@ paths:
                   message: The request is invalid.
                   request_id: abc
                   fields:
-                    country_code: is not accepted
+                    radius_km: must be provided with latitude, longitude, and radius_km
         "429":
           $ref: "#/components/responses/RateLimited"
         "500":
@@ -1078,6 +1152,10 @@ components:
           type: integer
         check_in_count:
           type: integer
+        distance_meters:
+          type: integer
+          minimum: 0
+          description: Metres from the supplied point, rounded half up. Present only on GET /v1/venues when latitude, longitude, and radius_km are supplied. Never present on GET /v1/venues/{venueID}.
     VenueResponse:
       type: object
       additionalProperties: false

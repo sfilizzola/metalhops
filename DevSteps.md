@@ -3,7 +3,7 @@
 MetalHops MVP API roadmap. Refer to this document as **DevSteps** across every implementation session.
 
 **Date:** 2026-10-14
-**Status:** Sessions 1–7 are done. Session 8 is next. Sessions 9–14 are not started.
+**Status:** Sessions 1–8 are done. Session 9 is next. Sessions 10–14 are not started.
 
 ## Goal
 
@@ -1091,7 +1091,10 @@ The Check-in cooldown remains a separate domain rule and returns `409`.
 | 3. Backend foundation | Done |
 | 4. API safety and data boundary | Done |
 | 5. Authentication and profiles | Done |
-| 6–14 | Not started |
+| 6. Profile safety and moderation API | Done |
+| 7. Venue catalogue | Done |
+| 8. Venue discovery | Done |
+| 9–14 | Not started |
 
 ### Session 1: Repository boundaries
 
@@ -1215,12 +1218,21 @@ detail screen.
 
 ### Session 8: Venue discovery
 
-**Status:** Not started.
+**Status:** Done.
 
 Add every approved text, classification, location, and radius filter to the
 venue list endpoint. Add indexes justified by query plans and PostGIS
 integration coverage. Text matching ignores case, accents, punctuation, and
 spaces, but not typos; tests pin the relevance and tie-breaking order.
+
+Migration `0006` adds `venue_search_key`, which is `venue_name_key` with all
+whitespace removed, and trigger-maintained `search_name`, `search_address`,
+and `search_city` columns with indexes that captured query plans use. These
+columns serve discovery only; Session 9 duplicate detection keeps using
+`venue_name_key`. The server chooses one of four orders from the filters,
+cursors are bound to that order and the filter set, and `distance_meters`
+appears on list items only when a location is supplied. Readiness requires
+`0006`.
 
 **Exit condition:** Android can implement map/list discovery with all MVP
 filters.
