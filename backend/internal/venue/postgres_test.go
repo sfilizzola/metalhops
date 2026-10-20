@@ -213,13 +213,18 @@ func genreID(t *testing.T, pool *pgxpool.Pool, name string) int {
 func insertVenue(t *testing.T, pool *pgxpool.Pool, id, name, status string, genreIDs ...int) {
 	t.Helper()
 	ctx := context.Background()
+	var rejectionReason, rejectionNote *string
+	if status == "rejected" {
+		rejectionReason, rejectionNote = ptr("other"), ptr("seed")
+	}
 	if _, err := pool.Exec(ctx, `
 		insert into venues (
-			id, name, description, location, address, city, country_code, venue_type, verification_status
+			id, name, description, location, address, city, country_code, venue_type,
+			verification_status, rejection_reason, rejection_note
 		) values (
 			$1, $2, 'A metal bar', ST_MakePoint(10, 60)::geography,
-			'1 Metal Street', 'Oslo', 'DE', 'bar', $3
-		)`, id, name, status); err != nil {
+			'1 Metal Street', 'Oslo', 'DE', 'bar', $3, $4, $5
+		)`, id, name, status, rejectionReason, rejectionNote); err != nil {
 		t.Fatal(err)
 	}
 	for _, genreID := range genreIDs {

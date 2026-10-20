@@ -85,14 +85,18 @@ func seedVenue(t *testing.T, pool *pgxpool.Pool, s seed) {
 	if s.updated.IsZero() {
 		s.updated = s.created
 	}
+	var rejectionReason, rejectionNote *string
+	if s.status == "rejected" {
+		rejectionReason, rejectionNote = ptr("other"), ptr("seed")
+	}
 	if _, err := pool.Exec(ctx, `
 		insert into venues (
 			id, name, location, address, city, country_code, venue_type,
-			verification_status, submitted_by, created_at, updated_at
+			verification_status, submitted_by, created_at, updated_at, rejection_reason, rejection_note
 		) values (
 			$1, $2, ST_SetSRID(ST_MakePoint($3::float8, $4::float8), 4326)::geography,
-			'1 Metal Street', 'Oslo', 'NO', 'pub', $5, $6::uuid, $7, $8
-		)`, s.id, s.name, s.lon, s.lat, s.status, s.submitter, s.created, s.updated); err != nil {
+			'1 Metal Street', 'Oslo', 'NO', 'pub', $5, $6::uuid, $7, $8, $9, $10
+		)`, s.id, s.name, s.lon, s.lat, s.status, s.submitter, s.created, s.updated, rejectionReason, rejectionNote); err != nil {
 		t.Fatal(err)
 	}
 	if s.genre == 0 {
