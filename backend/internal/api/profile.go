@@ -214,11 +214,32 @@ func writeDecodeError(w http.ResponseWriter, r *http.Request, err error) {
 	}
 }
 
+func writeContributionError(w http.ResponseWriter, id string, err error) bool {
+	var suspended *profile.SuspendedError
+	switch {
+	case errors.Is(err, profile.ErrProfileRequired):
+		WriteError(w, http.StatusConflict, "profile_required", "Create a profile first.", id, nil)
+	case errors.Is(err, profile.ErrRenameRequired):
+		WriteError(w, http.StatusForbidden, "profile_rename_required", "Rename this profile before continuing.", id, nil)
+	case errors.As(err, &suspended):
+		var details map[string]any
+		if suspended.Until != nil {
+			details = map[string]any{"suspended_until": suspended.Until.UTC().Format(time.RFC3339)}
+		}
+		WriteErrorDetails(w, http.StatusForbidden, "profile_suspended", "This profile is suspended.", id, nil, details)
+	default:
+		return false
+	}
+	return true
+}
+
 func writeProfileError(logger *slog.Logger, w http.ResponseWriter, r *http.Request, err error) {
 	id := requestID(r.Context())
+	if writeContributionError(w, id, err) {
+		return
+	}
 	var validation *profile.ValidationError
 	var limited *profile.RateLimitError
-	var suspended *profile.SuspendedError
 	var quota *profile.QuotaError
 	switch {
 	case errors.As(err, &validation):
@@ -235,10 +256,6 @@ func writeProfileError(logger *slog.Logger, w http.ResponseWriter, r *http.Reque
 		WriteError(w, http.StatusBadRequest, "self_report", "You cannot report yourself.", id, nil)
 	case errors.Is(err, profile.ErrReportPending):
 		WriteError(w, http.StatusConflict, "profile_already_reported", "You already reported this profile.", id, nil)
-	case errors.Is(err, profile.ErrProfileRequired):
-		WriteError(w, http.StatusConflict, "profile_required", "Create a profile first.", id, nil)
-	case errors.Is(err, profile.ErrRenameRequired):
-		WriteError(w, http.StatusForbidden, "profile_rename_required", "Rename this profile before continuing.", id, nil)
 	case errors.Is(err, idempotency.ErrInvalid):
 		WriteError(w, http.StatusBadRequest, "validation_error", "The request is invalid.", id, nil)
 	case errors.Is(err, idempotency.ErrReused):
@@ -247,12 +264,6 @@ func writeProfileError(logger *slog.Logger, w http.ResponseWriter, r *http.Reque
 		WriteError(w, http.StatusConflict, "username_taken", "That username is taken.", id, nil)
 	case errors.Is(err, profile.ErrRecentAuthenticationRequired):
 		WriteError(w, http.StatusForbidden, "recent_authentication_required", "Sign in again to delete your account.", id, nil)
-	case errors.As(err, &suspended):
-		var details map[string]any
-		if suspended.Until != nil {
-			details = map[string]any{"suspended_until": suspended.Until.UTC().Format(time.RFC3339)}
-		}
-		WriteErrorDetails(w, http.StatusForbidden, "profile_suspended", "This profile is suspended.", id, nil, details)
 	case errors.As(err, &limited):
 		w.Header().Set("Retry-After", strconv.Itoa(limited.RetryAfter))
 		WriteError(w, http.StatusTooManyRequests, "rate_limited", "Too many requests.", id, nil)

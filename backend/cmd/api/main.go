@@ -52,6 +52,7 @@ func main() {
 			Auth:        authenticator,
 			Profiles:    profiles,
 			Catalogue:   venues,
+			Submissions: venues,
 		}),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       10 * time.Second,

@@ -32,6 +32,7 @@ type Options struct {
 	Profiles    Profiles
 	Logger      *slog.Logger
 	Catalogue   Catalogue
+	Submissions Submissions
 }
 
 func New(options Options) http.Handler {
@@ -66,6 +67,18 @@ func New(options Options) http.Handler {
 	mux.Handle("DELETE /v1/me", protected)
 	mux.Handle("POST /v1/profiles/{username}/reports", requireApp(options.Auth, options.Logger, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		createReport(w, r, options.Profiles, options.Logger)
+	})))
+	mux.Handle("POST /v1/venues", requireApp(options.Auth, options.Logger, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		createSubmission(w, r, options.Submissions, options.Logger)
+	})))
+	mux.Handle("GET /v1/me/venues", requireApp(options.Auth, options.Logger, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		listSubmissions(w, r, options.Submissions, options.Logger)
+	})))
+	mux.Handle("GET /v1/me/venues/{venueID}", requireApp(options.Auth, options.Logger, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		getSubmission(w, r, options.Submissions, options.Logger)
+	})))
+	mux.Handle("PUT /v1/me/venues/{venueID}", requireApp(options.Auth, options.Logger, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		correctSubmission(w, r, options.Submissions, options.Logger)
 	})))
 	mux.Handle("GET /v1/moderation/profile-reports", requireOperator(options.Auth, options.Logger, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		listProfileReports(w, r, options.Profiles, options.Logger)
