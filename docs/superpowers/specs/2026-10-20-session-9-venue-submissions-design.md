@@ -277,9 +277,11 @@ cannot be corrected.
 
 1. Lock the caller's profile with `for update`. Apply `CommunityAccess`.
 2. On `PUT`, lock the venue with `for update`. A missing row, a null
-   submitter, or another submitter is `404`. The caller's `verified` or
-   `rejected` venue is `409 venue_not_pending` with message
-   `This venue can no longer be corrected.`
+   submitter, or another submitter is `404`. The caller's verified venue
+   is `409 venue_not_pending` with message
+   `This venue can no longer be corrected.` The caller's rejected venue
+   is `409 venue_not_pending` with message
+   `Only a pending venue can be corrected.`
 3. Resolve `genre_ids`. An unknown id returns `400` and rolls the
    transaction back.
 4. On an unchanged `PUT`, return the locked submission and commit.
@@ -342,7 +344,8 @@ quota count and this User's list. This session does not change deletion.
 | Suspended on `POST` or `PUT` | `403 profile_suspended`, with `details.suspended_until` when an expiry is set |
 | No Profile on `POST` or `PUT` | `409 profile_required` |
 | Missing venue, or a venue the caller does not own | `404 venue_not_found` |
-| Own venue whose status is `verified` or `rejected` | `409 venue_not_pending` |
+| Own verified venue | `409 venue_not_pending`, `This venue can no longer be corrected.` |
+| Own rejected venue | `409 venue_not_pending`, `Only a pending venue can be corrected.` |
 | Strong duplicate | `409 duplicate_venue` |
 | Idempotency key reused with a different command | `409 idempotency_key_reused` |
 | Ten creates in the rolling 24 hours | `429 quota_exceeded` |
@@ -408,9 +411,12 @@ PostGIS integration tests, from an empty database through `0007`:
   list, and increases `updated_at`. A genre-only change does too. An
   identical `PUT` leaves `updated_at` unchanged. The search-key columns
   follow the new name, address, and city;
-- the owner can read a `verified` or `rejected` venue and receives
-  `409 venue_not_pending` on `PUT`. Another User's venue, a null submitter,
-  and a missing id are `404`. A non-canonical id is `400`;
+- the owner can read a `verified` or `rejected` venue. `PUT` on the
+  verified venue returns `409 venue_not_pending` with message
+  `This venue can no longer be corrected.` `PUT` on the rejected venue
+  returns `409 venue_not_pending` with message
+  `Only a pending venue can be corrected.` Another User's venue, a null
+  submitter, and a missing id are `404`. A non-canonical id is `400`;
 - a `rename_required` caller and a suspended caller can list and read, and
   both writes return the contribution error. An expired suspension is
   restored by the write, and that caller can then submit. A caller with no
@@ -429,7 +435,8 @@ PostGIS integration tests, from an empty database through `0007`:
   `service_role` still have no privilege on `venues`.
 
 The OpenAPI contract test requires the four paths, bearer security on each,
-`Submission`, `duplicate_venue`, `venue_not_pending`, and `quota_exceeded`.
+`Submission`, `duplicate_venue`, `venue_not_pending`,
+`Only a pending venue can be corrected.`, and `quota_exceeded`.
 
 ## Documentation
 
@@ -448,6 +455,10 @@ Session 10 next.
 ## Out of scope
 
 - Rejection reason, rejection note, and correcting a rejected Venue.
+  Session 10 replaces the rejected `PUT` refusal with a correction that
+  sets the submission back to pending and clears Rejection Feedback. The
+  message `Only a pending venue can be corrected.` is this session's
+  slice, not a domain rule.
 - `delisted`, delisting fields, and `status_changed_at`.
 - Venue Reports and venue moderation routes.
 - Real rating and check-in aggregates.

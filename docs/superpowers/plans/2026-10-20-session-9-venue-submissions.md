@@ -23,7 +23,7 @@
 - Idempotency operation name: `venue_submission`. Only `POST /v1/venues` requires `Idempotency-Key`; `PUT /v1/me/venues/{venueID}` ignores it.
 - Quota: 10 rows per `submitted_by` with `created_at` strictly after `now - 24h`, every status. Message `The submission limit has been reached.`
 - Duplicate: equal `venue_name_key`, status `pending` or `verified`, `ST_DWithin(..., 100)` on geography. Message `A matching venue already exists.`
-- Not pending: `409 venue_not_pending`, message `This venue can no longer be corrected.`
+- Not pending: `409 venue_not_pending`. A verified Venue uses `This venue can no longer be corrected.` A rejected Venue Submission uses `Only a pending venue can be corrected.` Session 10 replaces the rejected branch with a correction that sets the submission back to pending and clears Rejection Feedback.
 - Advisory lock keys: `hashtextextended('venue_submissions' || chr(31) || userID, 0)` and `hashtextextended('venue_name' || chr(31) || nameKey, 0)`.
 - Reads and the venue transaction each use a two-second timeout.
 - Work on `feature/session-9-venue-submissions`. Merge into `dev` by pull request.
@@ -360,7 +360,7 @@ type OwnPage struct {
 	NextCursor  *string
 }
 
-var ErrNotPending = errors.New("venue: not pending")
+type NotPendingError struct{ Status string }
 
 type DuplicateMatch struct {
 	VenueID            string
@@ -693,7 +693,10 @@ type OwnPage struct {
 	NextCursor  *string
 }
 
-var ErrNotPending = errors.New("venue: not pending")
+type NotPendingError struct{ Status string }
+
+func (e *NotPendingError) Error() string { return "venue: not pending" }
+
 var errWritesUnavailable = errors.New("venue: writes are not configured")
 
 type DuplicateMatch struct {
@@ -1947,7 +1950,7 @@ git commit -m "feat: submit venues with duplicate and quota checks"
 - Modify: `backend/internal/venue/submit_test.go`
 
 **Interfaces:**
-- Consumes: `CorrectCommand`, `ErrNotPending`, `sameSubmission`, `checkGenres`, `checkDuplicate`, `replaceGenres`, `ownSubmission`, `RateLimitError`.
+- Consumes: `CorrectCommand`, `NotPendingError`, `sameSubmission`, `checkGenres`, `checkDuplicate`, `replaceGenres`, `ownSubmission`, `RateLimitError`.
 - Produces: `func (s *Service) Correct(ctx context.Context, cmd CorrectCommand) (Submission, error)`.
 
 - [ ] **Step 1: Write the failing correction tests**
@@ -2010,9 +2013,10 @@ func TestCorrectPendingSubmission(t *testing.T) {
 	seedVenue(t, h.pool, seed{id: vid(31), name: "Verified Own", status: "verified", submitter: ptr(userA), lat: 16, lon: 15})
 	seedVenue(t, h.pool, seed{id: vid(32), name: "Rejected Own", status: "rejected", submitter: ptr(userA), lat: 17, lon: 15})
 	seedVenue(t, h.pool, seed{id: vid(33), name: "Orphan", status: "pending", lat: 18, lon: 15})
-	for _, id := range []string{vid(31), vid(32)} {
-		if _, err := correct(h, userA, id, rawVenue("Changed", 16, 15, 999999)); !errors.Is(err, ErrNotPending) {
-			t.Fatalf("%s err %v", id, err)
+	for _, c := range []struct{ id, status string }{{vid(31), "verified"}, {vid(32), "rejected"}} {
+		var notPending *NotPendingError
+		if _, err := correct(h, userA, c.id, rawVenue("Changed", 16, 15, 999999)); !errors.As(err, &notPending) || notPending.Status != c.status {
+			t.Fatalf("%s err %v", c.id, err)
 		}
 	}
 	for _, c := range []struct{ user, id string }{{userB, created.ID}, {userA, vid(33)}, {userA, vid(99)}} {
@@ -2129,7 +2133,7 @@ func (s *Service) Correct(ctx context.Context, cmd CorrectCommand) (Submission, 
 		return Submission{}, fmt.Errorf("venue: correct: %w", err)
 	}
 	if status != "pending" {
-		return Submission{}, ErrNotPending
+		return Submission{}, &NotPendingError{Status: status}
 	}
 	if err := checkGenres(txCtx, tx, draft.GenreIDs); err != nil {
 		return Submission{}, err
@@ -2296,7 +2300,7 @@ git commit -m "test: justify venue submission indexes with query plans"
 - Modify: `backend/cmd/api/main.go:54`
 
 **Interfaces:**
-- Consumes: `venue.SubmitCommand`, `venue.CorrectCommand`, `venue.OwnQuery`, `venue.OwnPage`, `venue.Submission`, `venue.RawSubmission`, `venue.DuplicateError`, `venue.QuotaError`, `venue.RateLimitError`, `venue.ErrNotFound`, `venue.ErrNotPending`, `venue.ValidationError`; `requireApp`, `DecodeJSON`, `writeDecodeError`, `rejectedQuery`, `parseVenueLimit`, `genreView`, `WriteData`, `WriteList`, `WriteError`, `WriteErrorDetails`.
+- Consumes: `venue.SubmitCommand`, `venue.CorrectCommand`, `venue.OwnQuery`, `venue.OwnPage`, `venue.Submission`, `venue.RawSubmission`, `venue.DuplicateError`, `venue.QuotaError`, `venue.RateLimitError`, `venue.ErrNotFound`, `venue.NotPendingError`, `venue.ValidationError`; `requireApp`, `DecodeJSON`, `writeDecodeError`, `rejectedQuery`, `parseVenueLimit`, `genreView`, `WriteData`, `WriteList`, `WriteError`, `WriteErrorDetails`.
 - Produces:
 
 ```go
@@ -2495,7 +2499,8 @@ func TestSubmissionErrors(t *testing.T) {
 		{profile.ErrRenameRequired, 403, "profile_rename_required", "", ""},
 		{&profile.SuspendedError{Until: &until}, 403, "profile_suspended", `"suspended_until":"2026-11-01T00:00:00Z"`, ""},
 		{venue.ErrNotFound, 404, "venue_not_found", "Venue not found.", ""},
-		{venue.ErrNotPending, 409, "venue_not_pending", "This venue can no longer be corrected.", ""},
+		{&venue.NotPendingError{Status: "verified"}, 409, "venue_not_pending", "This venue can no longer be corrected.", ""},
+		{&venue.NotPendingError{Status: "rejected"}, 409, "venue_not_pending", "Only a pending venue can be corrected.", ""},
 		{&venue.DuplicateError{Match: &venue.DuplicateMatch{VenueID: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", VerificationStatus: "verified"}}, 409, "duplicate_venue", `"details":{"venue_id":"bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb","verification_status":"verified"}`, ""},
 		{&venue.QuotaError{RetryAfter: 3600}, 429, "quota_exceeded", "The submission limit has been reached.", "3600"},
 		{&venue.RateLimitError{RetryAfter: 2}, 429, "rate_limited", "Too many requests.", "2"},
@@ -2742,6 +2747,7 @@ func writeSubmissionError(logger *slog.Logger, w http.ResponseWriter, r *http.Re
 	var duplicate *venue.DuplicateError
 	var quota *venue.QuotaError
 	var limited *venue.RateLimitError
+	var notPending *venue.NotPendingError
 	switch {
 	case errors.As(err, &validation):
 		WriteError(w, http.StatusBadRequest, "validation_error", "The request is invalid.", id, validation.Fields)
@@ -2751,8 +2757,12 @@ func writeSubmissionError(logger *slog.Logger, w http.ResponseWriter, r *http.Re
 		WriteError(w, http.StatusConflict, "idempotency_key_reused", "That idempotency key was already used.", id, nil)
 	case errors.Is(err, venue.ErrNotFound):
 		WriteError(w, http.StatusNotFound, "venue_not_found", "Venue not found.", id, nil)
-	case errors.Is(err, venue.ErrNotPending):
-		WriteError(w, http.StatusConflict, "venue_not_pending", "This venue can no longer be corrected.", id, nil)
+	case errors.As(err, &notPending):
+		message := "This venue can no longer be corrected."
+		if notPending.Status == "rejected" {
+			message = "Only a pending venue can be corrected."
+		}
+		WriteError(w, http.StatusConflict, "venue_not_pending", message, id, nil)
 	case errors.As(err, &duplicate):
 		var details map[string]any
 		if duplicate.Match != nil {
@@ -2888,6 +2898,7 @@ func TestOpenAPIDocument(t *testing.T) {
 		"venue_submission",
 		"duplicate_venue",
 		"venue_not_pending",
+		"Only a pending venue can be corrected.",
 		"The submission limit has been reached.",
 		"genre_ids",
 	} {
@@ -3209,6 +3220,12 @@ After the `/v1/me:` path block (its `delete:` operation) and before `/v1/profile
                     error:
                       code: venue_not_pending
                       message: This venue can no longer be corrected.
+                      request_id: abc
+                rejected:
+                  value:
+                    error:
+                      code: venue_not_pending
+                      message: Only a pending venue can be corrected.
                       request_id: abc
                 duplicate:
                   value:

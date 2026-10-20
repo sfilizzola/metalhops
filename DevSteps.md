@@ -1244,7 +1244,10 @@ filters.
 Implement transactional pending submissions, correction of pending
 submissions, strong duplicate prevention, daily quotas, and the caller's
 submission history. `POST /v1/venues` requires `Idempotency-Key`;
-`PUT /v1/me/venues/{venueID}` does not.
+`PUT /v1/me/venues/{venueID}` does not. A verified Venue returns
+`409 venue_not_pending` with `This venue can no longer be corrected.`; a
+rejected Venue Submission uses the same code with
+`Only a pending venue can be corrected.`, which Session 10 replaces.
 Duplicate detection uses `venue_name_key` from migration `0005`, which keeps
 alphanumeric characters and whitespace and removes punctuation and symbols.
 Add any further migration required for submission quotas, duplicate locking,
