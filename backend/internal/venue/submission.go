@@ -49,6 +49,8 @@ type Submission struct {
 	CountryCode        string
 	VenueType          string
 	VerificationStatus string
+	RejectionReason    *string
+	RejectionNote      *string
 	Genres             []Genre
 	CreatedAt          time.Time
 	UpdatedAt          time.Time
@@ -236,6 +238,8 @@ type submissionBody struct {
 	VenueType          string      `json:"venue_type"`
 	Genres             []genreBody `json:"genres"`
 	VerificationStatus string      `json:"verification_status"`
+	RejectionReason    *string     `json:"rejection_reason"`
+	RejectionNote      *string     `json:"rejection_note"`
 	CreatedAt          time.Time   `json:"created_at"`
 	UpdatedAt          time.Time   `json:"updated_at"`
 }
@@ -249,6 +253,7 @@ func bodyOf(s Submission) submissionBody {
 		ID: s.ID, Name: s.Name, Description: s.Description, Latitude: s.Latitude, Longitude: s.Longitude,
 		Address: s.Address, City: s.City, CountryCode: s.CountryCode, VenueType: s.VenueType,
 		Genres: genres, VerificationStatus: s.VerificationStatus,
+		RejectionReason: s.RejectionReason, RejectionNote: s.RejectionNote,
 		CreatedAt: s.CreatedAt.UTC(), UpdatedAt: s.UpdatedAt.UTC(),
 	}
 }
@@ -262,6 +267,7 @@ func (b submissionBody) submission() Submission {
 		ID: b.ID, Name: b.Name, Description: b.Description, Latitude: b.Latitude, Longitude: b.Longitude,
 		Address: b.Address, City: b.City, CountryCode: b.CountryCode, VenueType: b.VenueType,
 		VerificationStatus: b.VerificationStatus, Genres: genres,
+		RejectionReason: b.RejectionReason, RejectionNote: b.RejectionNote,
 		CreatedAt: b.CreatedAt.UTC(), UpdatedAt: b.UpdatedAt.UTC(),
 	}
 }

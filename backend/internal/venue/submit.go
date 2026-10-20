@@ -232,7 +232,7 @@ func (s *Service) Correct(ctx context.Context, cmd CorrectCommand) (Submission, 
 	if err != nil {
 		return Submission{}, fmt.Errorf("venue: correct: %w", err)
 	}
-	if status != "pending" {
+	if status != "pending" && status != "rejected" {
 		return Submission{}, &NotPendingError{Status: status}
 	}
 	if err := checkGenres(txCtx, tx, draft.GenreIDs); err != nil {
@@ -242,7 +242,7 @@ func (s *Service) Correct(ctx context.Context, cmd CorrectCommand) (Submission, 
 	if err != nil {
 		return Submission{}, err
 	}
-	if sameSubmission(current, draft) {
+	if status == "pending" && sameSubmission(current, draft) {
 		if err := tx.Commit(txCtx); err != nil {
 			return Submission{}, fmt.Errorf("venue: commit: %w", err)
 		}
@@ -265,7 +265,8 @@ func (s *Service) Correct(ctx context.Context, cmd CorrectCommand) (Submission, 
 		update venues set
 			name = $2, description = $3,
 			location = ST_SetSRID(ST_MakePoint($4::float8, $5::float8), 4326)::geography,
-			address = $6, city = $7, country_code = $8, venue_type = $9
+			address = $6, city = $7, country_code = $8, venue_type = $9,
+			verification_status = 'pending', rejection_reason = null, rejection_note = null
 		where id = $1::uuid`,
 		cmd.VenueID, draft.Name, draft.Description, draft.Longitude, draft.Latitude,
 		draft.Address, draft.City, draft.CountryCode, draft.VenueType); err != nil {

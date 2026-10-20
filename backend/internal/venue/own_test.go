@@ -105,3 +105,13 @@ func TestListAndGetOwn(t *testing.T) {
 		t.Fatalf("id %v", err)
 	}
 }
+
+func TestOwnSubmissionCarriesRejectionFeedback(t *testing.T) {
+	h := newHarness(t)
+	insertUser(t, h.pool, userA, "active", nil)
+	seedVenue(t, h.pool, seed{id: vid(44), name: "Nope", status: "rejected", submitter: ptr(userA)})
+	got, err := h.service.GetOwn(context.Background(), userA, vid(44))
+	if err != nil || got.RejectionReason == nil || *got.RejectionReason != "other" || got.RejectionNote == nil || *got.RejectionNote != "seed" {
+		t.Fatalf("%+v %v", got, err)
+	}
+}
