@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"testing"
 
 	"github.com/metalhops/metalhops/backend/internal/venue"
@@ -39,8 +40,11 @@ func TestVenueRoutes(t *testing.T) {
 		t.Fatal("handler reordered genres")
 	}
 	list := requestVenue(handler, http.MethodGet, "/v1/venues", "")
-	if list.Code != http.StatusOK || catalogue.limit != 20 || catalogue.cursor != "" || !bytes.Contains(list.Body.Bytes(), []byte(`"next_cursor":"next-page"`)) {
-		t.Fatalf("list %d limit %d cursor %q body %s", list.Code, catalogue.limit, catalogue.cursor, list.Body.String())
+	if list.Code != http.StatusOK || catalogue.query.Limit != 20 || catalogue.query.Cursor != "" || !bytes.Contains(list.Body.Bytes(), []byte(`"next_cursor":"next-page"`)) {
+		t.Fatalf("list %d query %+v body %s", list.Code, catalogue.query, list.Body.String())
+	}
+	if bytes.Contains(list.Body.Bytes(), []byte(`"distance_meters"`)) {
+		t.Fatalf("distance without location %s", list.Body.String())
 	}
 	if !bytes.Contains(list.Body.Bytes(), []byte(`"average_rating":null`)) || bytes.Contains(list.Body.Bytes(), []byte(`"submitted_by"`)) {
 		t.Fatalf("document %s", list.Body.String())
@@ -72,7 +76,8 @@ func TestVenueQueryValidation(t *testing.T) {
 		"/v1/venues?limit=101",
 		"/v1/venues?limit=1&limit=2",
 		"/v1/venues?cursor=a&cursor=b",
-		"/v1/venues?country_code=DE",
+		"/v1/venues?city=Oslo&city=Bergen",
+		"/v1/venues?sort=name",
 		"/v1/genres?limit=20",
 		"/v1/venues/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa?cursor=abc",
 	}
@@ -81,12 +86,6 @@ func TestVenueQueryValidation(t *testing.T) {
 		rec := requestVenue(handler, http.MethodGet, path, "")
 		if rec.Code != http.StatusBadRequest || !bytes.Contains(rec.Body.Bytes(), []byte(`"validation_error"`)) {
 			t.Fatalf("%s %d %s", path, rec.Code, rec.Body.String())
-		}
-		if path == "/v1/venues?limit=0" || path == "/v1/venues?limit=101" {
-			if catalogue.listCalls != before+1 {
-				t.Fatal("range limit did not reach the catalogue")
-			}
-			continue
 		}
 		if catalogue.listCalls+catalogue.getCalls+catalogue.genreCalls != before {
 			t.Fatalf("%s reached the catalogue", path)
@@ -137,8 +136,7 @@ type fakeCatalogue struct {
 	genres     []venue.Genre
 	page       venue.Page
 	venue      venue.Venue
-	limit      int
-	cursor     string
+	query      venue.Query
 	id         string
 	genreCalls int
 	listCalls  int
@@ -152,13 +150,9 @@ func (f *fakeCatalogue) ListGenres(context.Context) ([]venue.Genre, error) {
 	return f.genres, nil
 }
 
-func (f *fakeCatalogue) ListVenues(_ context.Context, limit int, cursor string) (venue.Page, error) {
+func (f *fakeCatalogue) ListVenues(_ context.Context, q venue.Query) (venue.Page, error) {
 	f.listCalls++
-	f.limit = limit
-	f.cursor = cursor
-	if limit < 1 || limit > 100 {
-		return venue.Page{}, &venue.ValidationError{Fields: map[string]string{"limit": "must be from 1 to 100"}}
-	}
+	f.query = q
 	if f.listErr != nil {
 		return venue.Page{}, f.listErr
 	}
@@ -175,4 +169,52 @@ func (f *fakeCatalogue) GetVenue(_ context.Context, id string) (venue.Venue, err
 		return venue.Venue{}, f.getErr
 	}
 	return f.venue, nil
+}
+
+func TestVenueDiscoveryParams(t *testing.T) {
+	catalogue := &fakeCatalogue{}
+	handler := venueHandler(catalogue)
+	rec := requestVenue(handler, http.MethodGet, "/v1/venues?query=Iron&genre_id=3&genre_id=1&genre_id=3&city=Oslo&country_code=NO&venue_type=pub&latitude=59.9&longitude=10.75&radius_km=5&limit=10&cursor=abc", "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("%d %s", rec.Code, rec.Body.String())
+	}
+	want := venue.Query{
+		Limit: 10, Cursor: "abc", Text: "Iron", GenreIDs: []int{1, 3},
+		City: "Oslo", CountryCode: "NO", VenueType: "pub",
+		Location: &venue.Location{Latitude: 59.9, Longitude: 10.75, RadiusKM: 5},
+	}
+	if !reflect.DeepEqual(catalogue.query, want) {
+		t.Fatalf("query %+v want %+v", catalogue.query, want)
+	}
+	for _, path := range []string{
+		"/v1/venues?genre_id=x",
+		"/v1/venues?latitude=1&longitude=2",
+		"/v1/venues?latitude=91&longitude=0&radius_km=5",
+		"/v1/venues?radius_km=1.5&latitude=0&longitude=0",
+		"/v1/venues?country_code=UK",
+		"/v1/venues?query=a&query=b",
+	} {
+		before := catalogue.listCalls
+		rec := requestVenue(handler, http.MethodGet, path, "")
+		if rec.Code != http.StatusBadRequest || !bytes.Contains(rec.Body.Bytes(), []byte(`"validation_error"`)) || catalogue.listCalls != before {
+			t.Fatalf("%s %d %s", path, rec.Code, rec.Body.String())
+		}
+	}
+}
+
+func TestDistanceMetersPresence(t *testing.T) {
+	meters := 1234
+	catalogue := &fakeCatalogue{page: venue.Page{Venues: []venue.Venue{{
+		ID: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", Name: "Alpha", Genres: []venue.Genre{}, DistanceMeters: &meters,
+	}}}}
+	handler := venueHandler(catalogue)
+	rec := requestVenue(handler, http.MethodGet, "/v1/venues?latitude=0&longitude=0&radius_km=5", "")
+	if rec.Code != http.StatusOK || !bytes.Contains(rec.Body.Bytes(), []byte(`"distance_meters":1234`)) {
+		t.Fatalf("%d %s", rec.Code, rec.Body.String())
+	}
+	catalogue.page.Venues[0].DistanceMeters = nil
+	rec = requestVenue(handler, http.MethodGet, "/v1/venues", "")
+	if rec.Code != http.StatusOK || bytes.Contains(rec.Body.Bytes(), []byte(`"distance_meters"`)) {
+		t.Fatalf("%d %s", rec.Code, rec.Body.String())
+	}
 }

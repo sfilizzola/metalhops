@@ -1,11 +1,8 @@
 package venue
 
 import (
-	"encoding/base64"
 	"errors"
 	"regexp"
-	"strings"
-	"unicode/utf8"
 )
 
 type Genre struct {
@@ -28,6 +25,7 @@ type Venue struct {
 	AverageRating      *float64
 	ReviewCount        int
 	CheckInCount       int
+	DistanceMeters     *int
 }
 
 type Page struct {
@@ -54,24 +52,4 @@ func ValidateLimit(limit int) error {
 		return &ValidationError{Fields: map[string]string{"limit": "must be from 1 to 100"}}
 	}
 	return nil
-}
-
-func EncodeCursor(nameKey, id string) string {
-	return base64.RawURLEncoding.EncodeToString([]byte("name-v1|" + nameKey + "|" + id))
-}
-
-func DecodeCursor(cursor string) (string, string, error) {
-	invalid := &ValidationError{Fields: map[string]string{"cursor": "invalid"}}
-	raw, err := base64.RawURLEncoding.DecodeString(cursor)
-	if err != nil || cursor == "" {
-		return "", "", invalid
-	}
-	parts := strings.Split(string(raw), "|")
-	if len(parts) != 3 || parts[0] != "name-v1" || !CanonicalVenueID(parts[2]) {
-		return "", "", invalid
-	}
-	if !utf8.ValidString(parts[1]) || strings.ContainsRune(parts[1], 0) {
-		return "", "", invalid
-	}
-	return parts[1], parts[2], nil
 }
