@@ -78,7 +78,9 @@ Migration `0006_venue_discovery.sql`:
    from `PUBLIC`, `anon`, `authenticated`, and `service_role`.
 3. Adds `search_name`, `search_address`, and `search_city` to `venues` as
    `text`, backfills them with `venue_search_key` of `name`, `address`, and
-   `city`, then sets them `not null`.
+   `city`, then sets them `not null`. The backfill runs with
+   `venues_set_updated_at` disabled, so existing `updated_at` values do not
+   move.
 4. Creates `venues_set_search_keys()` and a `before insert or update` row
    trigger that always recomputes the three columns from the row. A caller
    cannot supply its own key values. The Session 7 `updated_at` trigger is
@@ -127,7 +129,7 @@ character counts after normalization.
 | --- | --- | --- |
 | `query` | text rules; 1–100 characters; non-empty search key | `must be 1 to 100 characters`, `must be a single line of text`, or `must contain a letter or digit` |
 | `city` | text rules; 1–120 characters; non-empty search key | same pattern, with `must be 1 to 120 characters` |
-| `genre_id` | each value parses with `strconv.Atoi` and is at least 1; duplicates are removed; at most 20 distinct values | `must be a positive integer` or `must be provided at most 20 times` |
+| `genre_id` | each value parses with `strconv.ParseInt(value, 10, 32)` and is at least 1, matching the `serial` Genre id; duplicates are removed; at most 20 distinct values | `must be a positive integer` or `must be provided at most 20 times` |
 | `country_code` | exactly a code in the `0005` allowlist, uppercase | `must be an ISO 3166-1 alpha-2 code` |
 | `venue_type` | `bar`, `pub`, or `club` | `must be bar, pub, or club` |
 | `latitude` | `strconv.ParseFloat` 64-bit, finite, −90 to 90 inclusive | `must be from -90 to 90` |
@@ -138,9 +140,11 @@ character counts after normalization.
 but not all are present, each missing one fails with
 `must be provided with latitude, longitude, and radius_km`.
 
-The HTTP adapter rejects unknown and repeated parameters, applies the default
-limit, and passes raw strings to `venue.ParseQuery`. `ParseQuery` owns every
-rule above and returns `*ValidationError` with all failing fields. The `0005`
+The HTTP adapter rejects unknown and repeated parameters, parses `limit` as
+Session 7 does, and passes the limit and raw strings to `venue.ParseQuery`.
+`ParseQuery` owns every rule above, including the 1–100 limit range, and
+returns `*ValidationError` with all failing fields. An out-of-range limit no
+longer reaches the catalogue. The `0005`
 country allowlist is copied into a Go set in `internal/venue`; a test reads
 the migration file and asserts the two lists are identical.
 
@@ -311,9 +315,9 @@ and `distance_meters`.
 - `backend/openapi.yaml` documents every new parameter and its validation,
   `distance_meters` and when it appears, the four orderings, and that a
   cursor is valid only with the filters that produced it.
-- `backend/AGENTS.md` raises the readiness version to `0006`, correcting the
-  stale `0004`, and describes `internal/venue` as Genre, catalogue, and
-  discovery behavior.
+- `backend/AGENTS.md` raises the readiness version from `0005` to `0006` and
+  adds `internal/venue` to the layout as Genre, catalogue, and discovery
+  behavior.
 - DevSteps marks Session 8 done, moves the header to Sessions 1–8 done and
   Session 9 next, and notes that the `search_*` columns serve discovery only;
   Session 9 duplicate detection keeps using `venue_name_key`.
