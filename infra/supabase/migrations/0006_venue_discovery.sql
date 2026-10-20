@@ -30,12 +30,16 @@ alter table venues
   add column search_city text;
 
 -- The backfill is not a Venue change, so it must not move updated_at.
-alter table venues disable trigger venues_set_updated_at;
-update venues set
-  search_name = venue_search_key(name),
-  search_address = venue_search_key(address),
-  search_city = venue_search_key(city);
-alter table venues enable trigger venues_set_updated_at;
+do $$
+begin
+  alter table venues disable trigger venues_set_updated_at;
+  update venues set
+    search_name = venue_search_key(name),
+    search_address = venue_search_key(address),
+    search_city = venue_search_key(city);
+  alter table venues enable trigger venues_set_updated_at;
+end
+$$;
 
 alter table venues
   alter column search_name set not null,
