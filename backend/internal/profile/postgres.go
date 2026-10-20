@@ -32,7 +32,7 @@ type rowScanner interface {
 func (s *Service) Get(ctx context.Context, userID string) (Profile, error) {
 	queryCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
-	if err := s.commitExpiry(queryCtx, userID); err != nil {
+	if err := s.NormalizeExpiry(queryCtx, userID); err != nil {
 		return Profile{}, err
 	}
 	profile, err := scanProfile(s.pool.QueryRow(queryCtx, `
@@ -51,7 +51,7 @@ func (s *Service) Get(ctx context.Context, userID string) (Profile, error) {
 func (s *Service) Patch(ctx context.Context, userID string, patch Patch) (Profile, error) {
 	txCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
-	if err := s.commitExpiry(txCtx, userID); err != nil {
+	if err := s.NormalizeExpiry(txCtx, userID); err != nil {
 		return Profile{}, err
 	}
 	tx, err := s.pool.Begin(txCtx)
@@ -166,7 +166,7 @@ func (s *Service) Patch(ctx context.Context, userID string, patch Patch) (Profil
 	return stored, nil
 }
 
-func (s *Service) commitExpiry(ctx context.Context, userID string) error {
+func (s *Service) NormalizeExpiry(ctx context.Context, userID string) error {
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return fmt.Errorf("profile: begin: %w", err)

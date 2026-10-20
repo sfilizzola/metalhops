@@ -56,7 +56,7 @@ type reportBody struct {
 func (s *Service) Report(ctx context.Context, cmd ReportCommand) (Report, error) {
 	txCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
-	if err := s.commitExpiry(txCtx, cmd.ReporterID); err != nil {
+	if err := s.NormalizeExpiry(txCtx, cmd.ReporterID); err != nil {
 		return Report{}, err
 	}
 	tx, err := s.pool.Begin(txCtx)
@@ -65,20 +65,7 @@ func (s *Service) Report(ctx context.Context, cmd ReportCommand) (Report, error)
 	}
 	defer func() { _ = tx.Rollback(context.Background()) }()
 
-	var status string
-	var until *time.Time
-	err = tx.QueryRow(txCtx, `
-		select status, suspended_until
-		from profiles
-		where id = $1::uuid
-		for update`, cmd.ReporterID).Scan(&status, &until)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return Report{}, CommunityAccess(false, "", nil)
-	}
-	if err != nil {
-		return Report{}, fmt.Errorf("profile: read: %w", err)
-	}
-	if err := CommunityAccess(true, status, until); err != nil {
+	if err := RequireContributor(txCtx, tx, cmd.ReporterID); err != nil {
 		return Report{}, err
 	}
 	reason, note, err := normalizeReport(cmd.Reason, cmd.Note)

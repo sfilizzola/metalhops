@@ -1,8 +1,12 @@
 package profile
 
 import (
+	"context"
 	"errors"
+	"fmt"
 	"time"
+
+	"github.com/jackc/pgx/v5"
 )
 
 type Identity struct {
@@ -36,4 +40,22 @@ func CommunityAccess(found bool, status string, until *time.Time) error {
 	default:
 		return nil
 	}
+}
+
+// RequireContributor locks the Profile row for the rest of tx.
+func RequireContributor(ctx context.Context, tx pgx.Tx, userID string) error {
+	var status string
+	var until *time.Time
+	err := tx.QueryRow(ctx, `
+		select status, suspended_until
+		from profiles
+		where id = $1::uuid
+		for update`, userID).Scan(&status, &until)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return CommunityAccess(false, "", nil)
+	}
+	if err != nil {
+		return fmt.Errorf("profile: read: %w", err)
+	}
+	return CommunityAccess(true, status, until)
 }
