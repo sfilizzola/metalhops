@@ -2,10 +2,13 @@ package venue
 
 import (
 	"context"
+	"errors"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/metalhops/metalhops/backend/internal/idempotency"
 	"github.com/metalhops/metalhops/backend/internal/profile"
 	"github.com/metalhops/metalhops/backend/internal/ratelimit"
 )
@@ -128,3 +131,265 @@ func tokensLeft(limiter *ratelimit.UserLimiter, userID string) int {
 }
 
 func ptr(s string) *string { return &s }
+
+func submit(h *harness, user, key string, raw RawSubmission) (Submission, error) {
+	return h.service.Submit(context.Background(), SubmitCommand{UserID: user, Key: key, Fields: raw})
+}
+
+func countRows(t *testing.T, h *harness, query string, args ...any) int {
+	t.Helper()
+	var n int
+	if err := h.pool.QueryRow(context.Background(), query, args...).Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	return n
+}
+
+func TestSubmitCreatesPublicPendingVenue(t *testing.T) {
+	ctx := context.Background()
+	h := newHarness(t)
+	insertUser(t, h.pool, userA, "active", nil)
+	punk := genreID(t, h.pool, "Punk")
+	got, err := submit(h, userA, "create-key1", rawVenue("Iron Maiden Pub", 59.91, 10.75, punk, punk))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.VerificationStatus != "pending" || got.Name != "Iron Maiden Pub" || len(got.Genres) != 1 ||
+		!got.CreatedAt.Equal(submitNow) || !got.UpdatedAt.Equal(submitNow) || got.Latitude != 59.91 || got.Longitude != 10.75 {
+		t.Fatalf("submission %+v", got)
+	}
+	public, err := h.service.GetVenue(ctx, got.ID)
+	if err != nil || public.VerificationStatus != "pending" {
+		t.Fatalf("public %+v %v", public, err)
+	}
+	if tokensLeft(h.limiter, userA) != 59 {
+		t.Fatal("create did not take one token")
+	}
+	if countRows(t, h, `select count(*) from idempotency_records where user_id = $1 and operation = 'venue_submission'`, userA) != 1 {
+		t.Fatal("idempotency row")
+	}
+	var submitter string
+	if err := h.pool.QueryRow(ctx, `select submitted_by::text from venues where id = $1`, got.ID).Scan(&submitter); err != nil || submitter != userA {
+		t.Fatalf("submitter %s %v", submitter, err)
+	}
+}
+
+func TestSubmitDuplicateRules(t *testing.T) {
+	h := newHarness(t)
+	insertUser(t, h.pool, userA, "active", nil)
+	insertUser(t, h.pool, userB, "active", nil)
+	at := func(n int) float64 { return float64(n) }
+	seedVenue(t, h.pool, seed{id: vid(1), name: "Iron Maiden", status: "pending", submitter: ptr(userB), lat: at(1), lon: 10})
+	seedVenue(t, h.pool, seed{id: vid(2), name: "Black Hole", status: "pending", submitter: ptr(userB), lat: at(2), lon: 10})
+	seedVenue(t, h.pool, seed{id: vid(3), name: "Black Hole", status: "verified", lat: at(2) + 0.00045, lon: 10})
+	seedVenue(t, h.pool, seed{id: vid(4), name: "Own Place", status: "pending", submitter: ptr(userA), lat: at(3), lon: 10})
+	seedVenue(t, h.pool, seed{id: vid(6), name: "Twin", status: "verified", lat: at(4), lon: 10})
+	seedVenue(t, h.pool, seed{id: vid(5), name: "Twin", status: "verified", lat: at(4), lon: 10})
+	seedVenue(t, h.pool, seed{id: vid(7), name: "Gone", status: "rejected", lat: at(5), lon: 10})
+	seedVenue(t, h.pool, seed{id: vid(8), name: "Iron Maiden", status: "verified", lat: at(6), lon: 10})
+	seedVenue(t, h.pool, seed{id: vid(9), name: "!!!", status: "verified", lat: at(7), lon: 10})
+	seedVenue(t, h.pool, seed{id: vid(10), name: "Orphan", status: "pending", lat: at(8), lon: 10})
+	punk := genreID(t, h.pool, "Punk")
+
+	cases := []struct {
+		name  string
+		raw   RawSubmission
+		match *DuplicateMatch
+		dup   bool
+	}{
+		{"private pending", rawVenue("iron maiden!", at(1), 10, punk), nil, true},
+		{"verified beats closer private", rawVenue("Black  Hole", at(2), 10, punk), &DuplicateMatch{vid(3), "verified"}, true},
+		{"own pending", rawVenue("Own Place", at(3), 10, punk), &DuplicateMatch{vid(4), "pending"}, true},
+		{"tie smallest id", rawVenue("Twin", at(4), 10, punk), &DuplicateMatch{vid(5), "verified"}, true},
+		{"rejected ignored", rawVenue("Gone", at(5), 10, punk), nil, false},
+		{"space counts", rawVenue("IronMaiden", at(6), 10, punk), nil, false},
+		{"punctuation only", rawVenue("???", at(7), 10, punk), &DuplicateMatch{vid(9), "verified"}, true},
+		{"deleted submitter stays private", rawVenue("Orphan", at(8), 10, punk), nil, true},
+		{"far away", rawVenue("Iron Maiden", at(20), 10, punk), nil, false},
+	}
+	for i, c := range cases {
+		before := tokensLeft(h.limiter, userA)
+		_, err := submit(h, userA, "dup-key-"+string(rune('a'+i)), c.raw)
+		var duplicate *DuplicateError
+		switch {
+		case c.dup && !errors.As(err, &duplicate):
+			t.Fatalf("%s: err %v", c.name, err)
+		case !c.dup && err != nil:
+			t.Fatalf("%s: err %v", c.name, err)
+		}
+		if c.dup {
+			if (c.match == nil) != (duplicate.Match == nil) || (c.match != nil && *c.match != *duplicate.Match) {
+				t.Fatalf("%s: match %+v", c.name, duplicate.Match)
+			}
+			if tokensLeft(h.limiter, userA) != before {
+				t.Fatalf("%s: duplicate spent a token", c.name)
+			}
+		}
+	}
+}
+
+func TestSubmitDistanceBoundary(t *testing.T) {
+	ctx := context.Background()
+	h := newHarness(t)
+	insertUser(t, h.pool, userA, "active", nil)
+	punk := genreID(t, h.pool, "Punk")
+	for i, metres := range []float64{99, 100, 101} {
+		name := "Edge " + string(rune('A'+i))
+		lat := float64(10 + i)
+		seedVenue(t, h.pool, seed{id: vid(100 + i), name: name, lat: lat, lon: 20})
+		var probeLat, probeLon, distance float64
+		if err := h.pool.QueryRow(ctx, `
+			with origin as (select ST_SetSRID(ST_MakePoint(20, $1::float8), 4326)::geography as o),
+			     probe as (select ST_Project(o, $2::float8, radians(90)) as p, o from origin)
+			select ST_Y(p::geometry), ST_X(p::geometry), ST_Distance(p, o) from probe`, lat, metres).Scan(&probeLat, &probeLon, &distance); err != nil {
+			t.Fatal(err)
+		}
+		_, err := submit(h, userA, "edge-key-"+string(rune('a'+i)), rawVenue(name, probeLat, probeLon, punk))
+		var duplicate *DuplicateError
+		if got, want := errors.As(err, &duplicate), distance <= 100; got != want {
+			t.Fatalf("%.0f m (measured %.9f): duplicate %v err %v", metres, distance, got, err)
+		}
+	}
+}
+
+func TestSubmitConcurrentSameName(t *testing.T) {
+	h := newHarness(t)
+	insertUser(t, h.pool, userA, "active", nil)
+	insertUser(t, h.pool, userB, "active", nil)
+	punk := genreID(t, h.pool, "Punk")
+	var wg sync.WaitGroup
+	errs := make([]error, 2)
+	for i, user := range []string{userA, userB} {
+		wg.Add(1)
+		go func(i int, user string) {
+			defer wg.Done()
+			_, errs[i] = submit(h, user, "race-key-1", rawVenue("Race Bar", 30, 30, punk))
+		}(i, user)
+	}
+	wg.Wait()
+	var duplicate *DuplicateError
+	wins := 0
+	for _, err := range errs {
+		switch {
+		case err == nil:
+			wins++
+		case !errors.As(err, &duplicate):
+			t.Fatalf("err %v", err)
+		}
+	}
+	if wins != 1 || countRows(t, h, `select count(*) from venues where name = 'Race Bar'`) != 1 {
+		t.Fatalf("wins %d errs %v", wins, errs)
+	}
+}
+
+func TestSubmitQuota(t *testing.T) {
+	h := newHarness(t)
+	insertUser(t, h.pool, userA, "active", nil)
+	punk := genreID(t, h.pool, "Punk")
+	statuses := []string{"pending", "verified", "rejected"}
+	for i := 0; i < 9; i++ {
+		seedVenue(t, h.pool, seed{
+			id: vid(200 + i), name: "Quota " + string(rune('A'+i)), status: statuses[i%3], submitter: ptr(userA),
+			lat: float64(i), lon: 40, created: submitNow.Add(-time.Duration(23-i) * time.Hour),
+		})
+	}
+	seedVenue(t, h.pool, seed{id: vid(220), name: "Expired Slot", status: "pending", submitter: ptr(userA), lat: 50, lon: 40, created: submitNow.Add(-24 * time.Hour)})
+
+	tenth, err := submit(h, userA, "quota-key-10", rawVenue("Tenth", 60, 40, punk))
+	if err != nil {
+		t.Fatalf("tenth %v", err)
+	}
+	if tokensLeft(h.limiter, userA) != 59 {
+		t.Fatal("tenth token")
+	}
+	_, err = submit(h, userA, "quota-key-11", rawVenue("Eleventh", 61, 40, punk))
+	var quota *QuotaError
+	if !errors.As(err, &quota) || quota.RetryAfter != 3600 {
+		t.Fatalf("eleventh %v", err)
+	}
+	if tokensLeft(h.limiter, userA) != 59 || countRows(t, h, `select count(*) from venues where name = 'Eleventh'`) != 0 {
+		t.Fatal("quota failure spent a token or wrote a row")
+	}
+	if countRows(t, h, `select count(*) from idempotency_records where key = 'quota-key-11'`) != 0 {
+		t.Fatal("quota failure recorded idempotency")
+	}
+	replay, err := submit(h, userA, "quota-key-10", rawVenue("Tenth", 60, 40, punk))
+	if err != nil || replay.ID != tenth.ID || tokensLeft(h.limiter, userA) != 59 {
+		t.Fatalf("replay %+v %v", replay, err)
+	}
+}
+
+func TestSubmitIdempotency(t *testing.T) {
+	h := newHarness(t)
+	insertUser(t, h.pool, userA, "active", nil)
+	punk := genreID(t, h.pool, "Punk")
+	first, err := submit(h, userA, "same-key-1", rawVenue("Echo Bar", 70, 10, punk))
+	if err != nil {
+		t.Fatal(err)
+	}
+	replay, err := submit(h, userA, "same-key-1", rawVenue("Echo Bar", 70, 10, punk))
+	if err != nil || replay.ID != first.ID || !replay.UpdatedAt.Equal(first.UpdatedAt) || !replay.CreatedAt.Equal(first.CreatedAt) {
+		t.Fatalf("replay %+v %v", replay, err)
+	}
+	if _, err := submit(h, userA, "same-key-1", rawVenue("Other Bar", 71, 10, punk)); !errors.Is(err, idempotency.ErrReused) {
+		t.Fatalf("reused %v", err)
+	}
+	if _, err := submit(h, userA, "short", rawVenue("Key Bar", 72, 10, punk)); !errors.Is(err, idempotency.ErrInvalid) {
+		t.Fatalf("invalid key %v", err)
+	}
+	bad := rawVenue("", 73, 10, punk)
+	var validation *ValidationError
+	if _, err := submit(h, userA, "bad-key-01", bad); !errors.As(err, &validation) {
+		t.Fatalf("validation %v", err)
+	}
+	if _, err := submit(h, userA, "bad-key-02", rawVenue("Ghost Genre", 74, 10, 999999)); !errors.As(err, &validation) || validation.Fields["genre_ids"] != "must be an existing genre" {
+		t.Fatalf("genre %v", err)
+	}
+	if countRows(t, h, `select count(*) from idempotency_records where key like 'bad-key-%'`) != 0 || countRows(t, h, `select count(*) from venues where submitted_by = $1`, userA) != 1 {
+		t.Fatal("failed request left rows")
+	}
+	if tokensLeft(h.limiter, userA) != 59 {
+		t.Fatal("replay or failure spent a token")
+	}
+}
+
+func TestSubmitContributionRules(t *testing.T) {
+	ctx := context.Background()
+	h := newHarness(t)
+	punk := genreID(t, h.pool, "Punk")
+	noProfile := "cccccccc-cccc-4ccc-8ccc-cccccccccccc"
+	renamed := "dddddddd-dddd-4ddd-8ddd-dddddddddddd"
+	suspended := "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee"
+	expired := "ffffffff-ffff-4fff-8fff-ffffffffffff"
+	until := submitNow.Add(time.Hour)
+	past := submitNow.Add(-time.Hour)
+	insertUser(t, h.pool, noProfile, "", nil)
+	insertUser(t, h.pool, renamed, "rename_required", nil)
+	insertUser(t, h.pool, suspended, "suspended", &until)
+	insertUser(t, h.pool, expired, "suspended", &past)
+
+	if _, err := submit(h, noProfile, "role-key-1", rawVenue("A", 80, 1, punk)); !errors.Is(err, profile.ErrProfileRequired) {
+		t.Fatalf("no profile %v", err)
+	}
+	if _, err := submit(h, renamed, "role-key-2", rawVenue("B", 80, 2, punk)); !errors.Is(err, profile.ErrRenameRequired) {
+		t.Fatalf("renamed %v", err)
+	}
+	var blocked *profile.SuspendedError
+	if _, err := submit(h, suspended, "role-key-3", rawVenue("C", 80, 3, punk)); !errors.As(err, &blocked) || blocked.Until == nil || !blocked.Until.Equal(until) {
+		t.Fatalf("suspended %v", err)
+	}
+	if _, err := submit(h, expired, "role-key-4", rawVenue("D", 80, 4, punk)); err != nil {
+		t.Fatalf("expired suspension %v", err)
+	}
+	var status string
+	if err := h.pool.QueryRow(ctx, `select status from profiles where id = $1`, expired).Scan(&status); err != nil || status != "active" {
+		t.Fatalf("restored %s %v", status, err)
+	}
+	if countRows(t, h, `select count(*) from venues`) != 1 {
+		t.Fatal("blocked caller wrote a venue")
+	}
+	catalogueOnly := New(h.pool, nil, nil, time.Now)
+	if _, err := catalogueOnly.Submit(ctx, SubmitCommand{UserID: expired, Key: "role-key-5", Fields: rawVenue("E", 80, 5, punk)}); !errors.Is(err, errWritesUnavailable) {
+		t.Fatalf("catalogue-only service %v", err)
+	}
+}
