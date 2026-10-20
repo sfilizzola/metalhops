@@ -4,13 +4,14 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/metalhops/metalhops/backend/internal/pgtest"
 )
 
 func TestListGenresOrderedByName(t *testing.T) {
-	service := New(testPool(t))
+	service := New(testPool(t), nil, nil, time.Now)
 	genres, err := service.ListGenres(context.Background())
 	if err != nil {
 		t.Fatal(err)
@@ -35,7 +36,7 @@ func TestGenreOrderUsesCCollation(t *testing.T) {
 	if _, err := pool.Exec(ctx, `insert into genres (name) values ('alpha test'), ('Zulu test')`); err != nil {
 		t.Fatal(err)
 	}
-	genres, err := New(pool).ListGenres(ctx)
+	genres, err := New(pool, nil, nil, time.Now).ListGenres(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -49,7 +50,7 @@ func TestGenreOrderUsesCCollation(t *testing.T) {
 }
 
 func TestEmptyCatalogue(t *testing.T) {
-	service := New(testPool(t))
+	service := New(testPool(t), nil, nil, time.Now)
 	page, err := service.ListVenues(context.Background(), Query{Limit: 20})
 	if err != nil || page.Venues == nil || len(page.Venues) != 0 || page.NextCursor != nil {
 		t.Fatalf("page %+v err %v", page, err)
@@ -70,7 +71,7 @@ func TestCatalogueMembershipAndAggregates(t *testing.T) {
 	insertVenue(t, pool, rejected, "Gamma", "rejected", punk)
 	insertVenue(t, pool, bare, "Delta", "verified")
 
-	service := New(pool)
+	service := New(pool, nil, nil, time.Now)
 	page, err := service.ListVenues(ctx, Query{Limit: 20})
 	if err != nil {
 		t.Fatal(err)
@@ -116,11 +117,11 @@ func TestVenueWithTwoGenresCountsOnce(t *testing.T) {
 	second := "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
 	insertVenue(t, pool, first, "Alpha", "verified", classic, punk)
 	insertVenue(t, pool, second, "Beta", "pending", punk)
-	page, err := New(pool).ListVenues(ctx, Query{Limit: 1})
+	page, err := New(pool, nil, nil, time.Now).ListVenues(ctx, Query{Limit: 1})
 	if err != nil || len(page.Venues) != 1 || page.Venues[0].ID != first || len(page.Venues[0].Genres) != 2 || page.NextCursor == nil {
 		t.Fatalf("page %+v err %v", page, err)
 	}
-	next, err := New(pool).ListVenues(ctx, Query{Limit: 1, Cursor: *page.NextCursor})
+	next, err := New(pool, nil, nil, time.Now).ListVenues(ctx, Query{Limit: 1, Cursor: *page.NextCursor})
 	if err != nil || len(next.Venues) != 1 || next.Venues[0].ID != second || next.NextCursor != nil {
 		t.Fatalf("next %+v err %v", next, err)
 	}
@@ -136,7 +137,7 @@ func TestEmptyNameKeyCursorSurvivesDeletion(t *testing.T) {
 	insertVenue(t, pool, first, "!!!", "verified", punk)
 	insertVenue(t, pool, second, "???", "verified", punk)
 	insertVenue(t, pool, third, "Alpha", "verified", punk)
-	service := New(pool)
+	service := New(pool, nil, nil, time.Now)
 	page, err := service.ListVenues(ctx, Query{Limit: 1})
 	if err != nil || len(page.Venues) != 1 || page.Venues[0].ID != first || page.NextCursor == nil {
 		t.Fatalf("first %+v err %v", page, err)
@@ -164,7 +165,7 @@ func TestNameSortAndTieBreak(t *testing.T) {
 	insertVenue(t, pool, high, "Bar!", "verified", punk)
 	insertVenue(t, pool, low, "bar", "pending", punk)
 	insertVenue(t, pool, article, "The Bar", "verified", punk)
-	page, err := New(pool).ListVenues(ctx, Query{Limit: 20})
+	page, err := New(pool, nil, nil, time.Now).ListVenues(ctx, Query{Limit: 20})
 	if err != nil || len(page.Venues) != 3 {
 		t.Fatal(err)
 	}
@@ -174,7 +175,7 @@ func TestNameSortAndTieBreak(t *testing.T) {
 }
 
 func TestUppercaseVenueIDIsInvalid(t *testing.T) {
-	service := New(testPool(t))
+	service := New(testPool(t), nil, nil, time.Now)
 	_, err := service.GetVenue(context.Background(), "AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA")
 	var validation *ValidationError
 	if !errors.As(err, &validation) || validation.Fields["venue_id"] != "must be a canonical uuid" || errors.Is(err, ErrNotFound) {

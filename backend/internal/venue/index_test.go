@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestDiscoveryIndexes(t *testing.T) {
@@ -39,7 +40,7 @@ func TestDiscoveryIndexes(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	service := New(pool)
+	service := New(pool, nil, nil, time.Now)
 	cases := []struct {
 		name    string
 		raw     RawQuery

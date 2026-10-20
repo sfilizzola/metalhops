@@ -7,6 +7,7 @@ import (
 	"math"
 	"strconv"
 	"testing"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -114,7 +115,7 @@ func TestDiscoveryFilters(t *testing.T) {
 	insertPlace(t, pool, place{id: vid(2), name: "Rust Bar", city: "Bergen", country: "NO", venueType: "bar", lon: 5.32, lat: 60.39, genres: []int{classic}})
 	insertPlace(t, pool, place{id: vid(3), name: "Metal Club", city: "Berlin", country: "DE", venueType: "club", lon: 13.40, lat: 52.52, genres: []int{punk, classic}})
 	insertPlace(t, pool, place{id: vid(4), name: "Black Hole", city: "Oslo", country: "NO", venueType: "bar", lon: 10.76, lat: 59.92, genres: []int{heavy}})
-	service := New(pool)
+	service := New(pool, nil, nil, time.Now)
 	g := strconv.Itoa
 
 	assertIDs(t, pageIDs(discover(t, service, RawQuery{})), vid(4), vid(1), vid(3), vid(2))
@@ -146,7 +147,7 @@ func TestRadiusBoundary(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	page := discover(t, New(pool), RawQuery{Latitude: "0", Longitude: "0", RadiusKM: "1"})
+	page := discover(t, New(pool, nil, nil, time.Now), RawQuery{Latitude: "0", Longitude: "0", RadiusKM: "1"})
 	included := map[string]bool{}
 	for _, got := range page.Venues {
 		included[got.ID] = true
@@ -167,7 +168,7 @@ func TestDistanceOrderAndMeters(t *testing.T) {
 	insertPlace(t, pool, place{id: vid(2), name: "Twin B", lon: 0, lat: 0.001})
 	insertPlace(t, pool, place{id: vid(1), name: "Twin A", lon: 0, lat: 0.001})
 	insertPlace(t, pool, place{id: vid(4), name: "Outside", lon: 0.02, lat: 0})
-	service := New(pool)
+	service := New(pool, nil, nil, time.Now)
 	page := discover(t, service, RawQuery{Latitude: "0", Longitude: "0", RadiusKM: "1"})
 	assertIDs(t, pageIDs(page), vid(1), vid(2), vid(3))
 	for _, got := range page.Venues {
@@ -197,7 +198,7 @@ func TestRelevanceTiers(t *testing.T) {
 	insertPlace(t, pool, place{id: vid(6), name: "Pub", address: "1 Ironside Road"})
 	insertPlace(t, pool, place{id: vid(7), name: "Bar", city: "Ironton"})
 	insertPlace(t, pool, place{id: vid(8), name: "Rust Pub"})
-	page := discover(t, New(pool), RawQuery{Query: "iron"})
+	page := discover(t, New(pool, nil, nil, time.Now), RawQuery{Query: "iron"})
 	// Tiers 0, 1, 1, 2, 3, 4, 4. "iron bar" sorts before "ironbar" under C collation.
 	assertIDs(t, pageIDs(page), vid(1), vid(2), vid(3), vid(4), vid(5), vid(7), vid(6))
 }
@@ -207,7 +208,7 @@ func TestRelevanceDistanceTieBreak(t *testing.T) {
 	insertPlace(t, pool, place{id: vid(1), name: "Iron", lon: 0.5})
 	insertPlace(t, pool, place{id: vid(2), name: "Iron Bar", lon: 0.2})
 	insertPlace(t, pool, place{id: vid(3), name: "Ironbar", lon: 0.1})
-	page := discover(t, New(pool), RawQuery{Query: "iron", Latitude: "0", Longitude: "0", RadiusKM: "100"})
+	page := discover(t, New(pool, nil, nil, time.Now), RawQuery{Query: "iron", Latitude: "0", Longitude: "0", RadiusKM: "100"})
 	assertIDs(t, pageIDs(page), vid(1), vid(3), vid(2))
 }
 
@@ -216,7 +217,7 @@ func TestTextAndCityFolding(t *testing.T) {
 	insertPlace(t, pool, place{id: vid(1), name: "Iron-Maiden Pub", city: "Saint-Étienne", country: "FR"})
 	insertPlace(t, pool, place{id: vid(2), name: "Other", city: "Saint Etienne", country: "FR"})
 	insertPlace(t, pool, place{id: vid(3), name: "Third", city: "Lyon", country: "FR"})
-	service := New(pool)
+	service := New(pool, nil, nil, time.Now)
 	assertIDs(t, pageIDs(discover(t, service, RawQuery{City: "saint etienne"})), vid(1), vid(2))
 	assertIDs(t, pageIDs(discover(t, service, RawQuery{City: "SAINT-ÉTIENNE"})), vid(1), vid(2))
 	assertIDs(t, pageIDs(discover(t, service, RawQuery{City: "Saint"})))
@@ -228,7 +229,7 @@ func TestTextAndCityFolding(t *testing.T) {
 }
 
 func TestPunctuationOnlyText(t *testing.T) {
-	service := New(testPool(t))
+	service := New(testPool(t), nil, nil, time.Now)
 	for field, raw := range map[string]RawQuery{
 		"query": {Limit: 20, Query: "!!!"},
 		"city":  {Limit: 20, City: "---"},
@@ -254,7 +255,7 @@ func TestWalkEveryMode(t *testing.T) {
 	insertPlace(t, pool, place{id: vid(5), name: "Pub", address: "1 Ironside Road", lon: 0.003})
 	insertPlace(t, pool, place{id: vid(6), name: "Rust", city: "Iron", lon: 0.003})
 	insertPlace(t, pool, place{id: vid(7), name: "!!!", lon: 0.004})
-	service := New(pool)
+	service := New(pool, nil, nil, time.Now)
 	modes := map[string]RawQuery{
 		"name":               {},
 		"distance":           {Latitude: "0", Longitude: "0", RadiusKM: "100"},
@@ -288,7 +289,7 @@ func TestCursorBoundToFilters(t *testing.T) {
 	insertPlace(t, pool, place{id: vid(1), name: "Alpha", country: "NO"})
 	insertPlace(t, pool, place{id: vid(2), name: "Beta", country: "NO"})
 	insertPlace(t, pool, place{id: vid(3), name: "Gamma", country: "DE"})
-	service := New(pool)
+	service := New(pool, nil, nil, time.Now)
 	first := discover(t, service, RawQuery{Limit: 1, CountryCode: "NO"})
 	if first.NextCursor == nil {
 		t.Fatal("no cursor")

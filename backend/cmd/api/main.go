@@ -41,7 +41,7 @@ func main() {
 	authenticator := auth.New(cfg.SupabaseURL, cfg.SupabaseJWTAudience, pool.Raw(), httpClient, time.Now)
 	admin := profile.NewAdminClient(cfg.SupabaseURL, cfg.SupabaseServiceRoleKey, httpClient)
 	profiles := profile.New(pool.Raw(), userLimiter, admin, time.Now)
-	venues := venue.New(pool.Raw())
+	venues := venue.New(pool.Raw(), profiles, userLimiter, time.Now)
 	srv := &http.Server{
 		Addr: ":" + cfg.Port,
 		Handler: api.New(api.Options{

@@ -12,14 +12,20 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/metalhops/metalhops/backend/internal/profile"
+	"github.com/metalhops/metalhops/backend/internal/ratelimit"
 )
 
 type Service struct {
-	pool *pgxpool.Pool
+	pool     *pgxpool.Pool
+	profiles *profile.Service
+	writes   *ratelimit.UserLimiter
+	clock    func() time.Time
 }
 
-func New(pool *pgxpool.Pool) *Service {
-	return &Service{pool: pool}
+// profiles and writes may be nil for catalogue-only use; writes then fail.
+func New(pool *pgxpool.Pool, profiles *profile.Service, writes *ratelimit.UserLimiter, clock func() time.Time) *Service {
+	return &Service{pool: pool, profiles: profiles, writes: writes, clock: clock}
 }
 
 func (s *Service) ListGenres(ctx context.Context) ([]Genre, error) {
@@ -213,12 +219,7 @@ func (s *Service) GetVenue(ctx context.Context, venueID string) (Venue, error) {
 	return got, nil
 }
 
-func venueSelect(distance, tier string) string {
-	return `
-	select v.id::text, v.name, v.description,
-		ST_Y(v.location::geometry), ST_X(v.location::geometry),
-		v.address, v.city, v.country_code, v.venue_type, v.verification_status,
-		coalesce((
+const genresJSON = `coalesce((
 			select json_agg(
 				json_build_object('id', g.id, 'name', g.name)
 				order by g.name collate "C", g.id
@@ -226,7 +227,14 @@ func venueSelect(distance, tier string) string {
 			from venue_genres vg
 			join genres g on g.id = vg.genre_id
 			where vg.venue_id = v.id
-		), '[]'::json),
+		), '[]'::json)`
+
+func venueSelect(distance, tier string) string {
+	return `
+	select v.id::text, v.name, v.description,
+		ST_Y(v.location::geometry), ST_X(v.location::geometry),
+		v.address, v.city, v.country_code, v.venue_type, v.verification_status,
+		` + genresJSON + `,
 		null::float8, 0, 0,
 		venue_name_key(v.name), ` + distance + `, ` + tier + `
 	from venues v`
