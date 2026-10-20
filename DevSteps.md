@@ -3,7 +3,7 @@
 MetalHops MVP API roadmap. Refer to this document as **DevSteps** across every implementation session.
 
 **Date:** 2026-10-14
-**Status:** Sessions 1–6 are done. Session 7 is next. Sessions 8–14 are not started.
+**Status:** Sessions 1–7 are done. Session 8 is next. Sessions 9–14 are not started.
 
 ## Goal
 
@@ -257,12 +257,13 @@ characters), a Country code as defined in the glossary, one of the existing
 Venue types, and at least one valid Genre. Description is optional, trimmed,
 and limited to 2,000 characters. Genre IDs are deduplicated before writing.
 
-A new migration strengthens the nullable initial columns and country-code
-constraint without editing `0001_init.sql`. It also adds `updated_at`.
-Venue-row changes update it through the row trigger. A Venue transaction that
-changes Genre links explicitly touches the Venue row in the same transaction.
-The moderation lifecycle migration adds `status_changed_at`; every moderation
-status transition updates both timestamps.
+Migration `0005` strengthens the nullable initial columns and country-code
+constraint without editing `0001_init.sql`, and it adds `updated_at`. Every
+Venue-row change updates `updated_at`; a Venue transaction that changes
+Genre links explicitly touches the Venue row. The moderation lifecycle
+migration adds `status_changed_at`; every moderation status transition
+updates both timestamps. Country codes use official ISO 3166-1 alpha-2 codes
+plus `XK`; `GB`, not `UK`, identifies the United Kingdom.
 
 When a Supabase User is deleted, their Profile, Reviews, and Check-ins cascade
 delete. Their Venue Submissions remain, but `submitted_by` becomes null. The
@@ -1189,14 +1190,25 @@ identities are not exposed publicly.
 
 ### Session 7: Venue catalogue
 
-**Status:** Not started.
+**Status:** Done.
 
-Implement genre listing, the public catalogue, venue detail, aggregates,
-and cursor pagination without the optional discovery filters. The catalogue
-includes Verified Venues and pending Venue Submissions whose required fields
-are valid and that have at least one Genre. Pagination is deterministic while
-membership and sort keys are unchanged and best-effort across concurrent
-catalogue changes.
+Add genre listing, the public venue catalogue, venue detail, literal rating
+and check-in aggregates, and cursor pagination. Discovery filters stay in
+Session 8. The catalogue includes Verified Venues and pending Venue
+Submissions that have at least one Genre. Pending Venues are visibly not
+verified. Rejected Venues stay hidden.
+
+`GET /v1/genres` returns every Genre ordered by name and is not paginated.
+`GET /v1/venues` lists the catalogue with `limit` and `cursor`.
+`GET /v1/venues/{venueID}` returns one catalogue Venue.
+Both venue routes use one Venue document. A hidden or unknown Venue is
+`404 venue_not_found`.
+Venue and Genre name ordering uses explicit `C` collation. Venue cursors use
+the `name-v1` discriminator. Traversal has no gap or repeat while membership
+and sort keys are unchanged and is best-effort across concurrent changes.
+
+Migration `0005` requires address, city, and `country_code`, adds
+`updated_at` and `venue_name_key`, and raises readiness to `0005`.
 
 **Exit condition:** Android can render a paginated venue catalogue and venue
 detail screen.
@@ -1220,9 +1232,12 @@ filters.
 Implement transactional pending submissions, correction of pending
 submissions, strong duplicate prevention, daily quotas, and the caller's
 submission history. `POST /v1/venues` requires `Idempotency-Key`;
-`PUT /v1/me/venues/{venueID}` does not. Add any migration required to
-strengthen Venue constraints and RLS read policies without editing the initial
-migration.
+`PUT /v1/me/venues/{venueID}` does not.
+Duplicate detection uses `venue_name_key` from migration `0005`, which keeps
+alphanumeric characters and whitespace and removes punctuation and symbols.
+Add any further migration required for submission quotas, duplicate locking,
+and RLS read policies. Do not repeat the `0005` column, country-code, or
+`updated_at` work.
 
 **Exit condition:** a signed-in User can submit a Venue, track its pending
 status, and correct it without creating strong duplicates.

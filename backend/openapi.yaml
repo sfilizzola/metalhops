@@ -61,6 +61,147 @@ paths:
               example:
                 status: not_ready
                 reason: migrations_unavailable
+  /v1/genres:
+    get:
+      operationId: listGenres
+      summary: List genres
+      responses:
+        "200":
+          description: Every genre, ordered deterministically by name.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GenreListResponse"
+              example:
+                data:
+                  - id: 1
+                    name: Black metal
+        "400":
+          description: The query has a parameter.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                error:
+                  code: validation_error
+                  message: The request is invalid.
+                  request_id: abc
+                  fields:
+                    limit: is not accepted
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/Internal"
+  /v1/venues:
+    get:
+      operationId: listVenues
+      summary: List the public venue catalogue
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: cursor
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: One page of public venues. Traversal is stable while catalogue membership and names are unchanged, and best-effort across concurrent changes.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VenueListResponse"
+              example:
+                data:
+                  - id: aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa
+                    name: Alpha
+                    description: A metal bar
+                    latitude: 59.91
+                    longitude: 10.75
+                    address: 1 Metal Street
+                    city: Oslo
+                    country_code: DE
+                    venue_type: bar
+                    verification_status: pending
+                    genres:
+                      - id: 1
+                        name: Classic rock
+                    average_rating: null
+                    review_count: 0
+                    check_in_count: 0
+                meta:
+                  next_cursor: null
+        "400":
+          description: The limit or cursor is invalid, or another parameter was sent.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                error:
+                  code: validation_error
+                  message: The request is invalid.
+                  request_id: abc
+                  fields:
+                    country_code: is not accepted
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/Internal"
+  /v1/venues/{venueID}:
+    get:
+      operationId: getVenue
+      summary: Read one public venue
+      parameters:
+        - name: venueID
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+            pattern: "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+      responses:
+        "200":
+          description: The public venue.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VenueResponse"
+        "400":
+          description: The id is not a canonical UUID, or a query parameter was sent.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                error:
+                  code: validation_error
+                  message: The request is invalid.
+                  request_id: abc
+                  fields:
+                    venue_id: must be a canonical uuid
+        "404":
+          description: The venue is not in the public catalogue.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                error:
+                  code: venue_not_found
+                  message: Venue not found.
+                  request_id: abc
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/Internal"
   /v1/me:
     get:
       operationId: getMe
@@ -864,6 +1005,102 @@ components:
       scheme: bearer
       bearerFormat: JWT
   schemas:
+    Genre:
+      type: object
+      additionalProperties: false
+      required: [id, name]
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+    GenreListResponse:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/Genre"
+    PublicVenue:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - name
+        - description
+        - latitude
+        - longitude
+        - address
+        - city
+        - country_code
+        - venue_type
+        - verification_status
+        - genres
+        - average_rating
+        - review_count
+        - check_in_count
+      properties:
+        id:
+          type: string
+          format: uuid
+          pattern: "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        name:
+          type: string
+        description:
+          type: [string, "null"]
+        latitude:
+          type: number
+        longitude:
+          type: number
+        address:
+          type: string
+        city:
+          type: string
+        country_code:
+          type: string
+          pattern: "^[A-Z]{2}$"
+          description: Official ISO 3166-1 alpha-2 code, plus XK for Kosovo. The United Kingdom is GB.
+        venue_type:
+          type: string
+          enum: [bar, pub, club]
+        verification_status:
+          type: string
+          enum: [pending, verified]
+        genres:
+          type: array
+          items:
+            $ref: "#/components/schemas/Genre"
+        average_rating:
+          type: [number, "null"]
+        review_count:
+          type: integer
+        check_in_count:
+          type: integer
+    VenueResponse:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          $ref: "#/components/schemas/PublicVenue"
+    VenueListResponse:
+      type: object
+      additionalProperties: false
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/PublicVenue"
+        meta:
+          type: object
+          additionalProperties: false
+          required: [next_cursor]
+          properties:
+            next_cursor:
+              type: [string, "null"]
     Profile:
       type: object
       additionalProperties: false

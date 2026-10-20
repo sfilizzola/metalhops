@@ -26,6 +26,18 @@ func TestOpenAPIDocument(t *testing.T) {
 		"profile_report_not_found",
 		"moderation_reason",
 		"suspended_until",
+		"/v1/genres",
+		"/v1/venues",
+		"/v1/venues/{venueID}",
+		"listGenres",
+		"listVenues",
+		"getVenue",
+		"venue_not_found",
+		"verification_status",
+		"country_code",
+		"average_rating",
+		"XK",
+		"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
 	} {
 		if !bytes.Contains(OpenAPI, []byte(want)) {
 			t.Fatalf("missing %q", want)

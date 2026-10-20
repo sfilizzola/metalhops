@@ -18,6 +18,7 @@ PostGIS). Run commands from `backend/`.
 - `internal/`: all domain code.
 - `internal/auth`: Supabase JWT verification, JWKS cache, live-session lookup, and operator lookup.
 - `internal/profile`: Profile, report, and moderation behavior.
+- `internal/venue`: Genre list and public Venue catalogue reads.
 - `internal/idempotency`: in-transaction retry helper. No HTTP route.
 - `internal/ratelimit`: public per-IP token buckets, client-IP walk, and the per-User write limiter.
 - `internal/pgtest`: PostGIS test harness. Production code does not import it.
@@ -36,7 +37,7 @@ when that file exists. Variables already in the environment win.
 
 `GET /healthz` reports process health and does not check the database.
 `GET /readyz` returns 200 when the database ping succeeds and migration
-`0004` or newer is recorded. Otherwise it returns 503.
+`0005` or newer is recorded. Otherwise it returns 503.
 `GET /openapi.yaml` serves the embedded `openapi.yaml` in every environment.
 `GET /docs` serves the Scalar page when `DOCS_UI_ENABLED` is unset or `true`.
 The exact value `false` leaves `/docs` unregistered. Any other value stops
