@@ -1,7 +1,7 @@
 # Session 10: Venue safety and moderation API
 
 **Date:** 2026-10-20
-**Status:** Pending review of this spec
+**Status:** Reviewed in a grilling session; pending final approval
 
 ## Goal
 
@@ -81,6 +81,13 @@ service and an HTTP-test fake.
 back to `verified` (`reopen`). A request for the current state is a no-op: no
 audit row, no rate-limit charge. Any other transition is `409`.
 
+`verify` returns `409 venue_incomplete` when the Venue has no Genre link,
+checked under the same row lock. `reject` and `delist` compare the whole
+decision (status, reason, note). An identical repeat is a no-op. The same
+status with a different reason or note updates the feedback columns and appends
+an audit row with equal prior and new status that carries the new reason and
+note. A different status follows the transition table.
+
 `Moderate` follows `profile.Moderate`: lock the Venue row, `idempotency.Lookup`,
 no-op check, then `idempotency.Execute` containing the write reservation, the
 status update, the audit insert, and marking every pending report for that Venue
@@ -89,8 +96,10 @@ dismissed report, and returns `409` for an actioned one.
 
 ### Submitter correction
 
-`Correct` accepts `pending` and `rejected`. A rejected Venue returns to
-`pending`, clears rejection feedback, re-runs the duplicate check excluding
+`Correct` accepts `pending` and `rejected`. Any valid `PUT` on a rejected Venue
+returns it to `pending`, even when every field is unchanged: the status change
+counts as a change, charges the per-User limiter, and runs the duplicate check.
+A rejected Venue returns to `pending`, clears rejection feedback, re-runs the duplicate check excluding
 itself, and reappears in the catalogue as not verified. A verified or delisted
 Venue stays `409 venue_not_pending` with `This venue can no longer be
 corrected.`
@@ -98,14 +107,28 @@ corrected.`
 ### Operator correction
 
 `PUT /v1/moderation/venues/{venueID}` takes the Submitter-correction fields,
-applies to `pending` or `verified`, never changes status, and appends an audit
-row.
+applies to `pending` or `verified`, never changes status, and in one
+transaction updates the Venue, appends an audit row, and marks every pending
+report for that Venue `actioned`. A body identical to the stored Venue is a
+no-op: `200` with the current Venue, no audit row, no report resolution, and no
+rate-limit charge. The key is absent, so the no-op makes retries safe.
+
+### Operator detail
+
+`GET /v1/moderation/venues/{venueID}` returns the full Venue with its Genres and
+current status, including any rejection or delisting feedback; each pending
+report with its reporter's full Profile (a deleted reporter's reports are gone
+by cascade); the Submitter's full Profile, or null after User deletion; and the
+last 20 audit rows, newest first (prior and new status, reasons and notes,
+operator user id, timestamp). Resolved reports are not returned.
 
 ### Reports
 
 Allowed for a Venue in the public catalogue (verified, or pending with a
 genre). A self-report is `400`. A rejected, delisted, hidden, or unknown Venue
-is `404 venue_not_found`. A second pending report is `409
+is `404 venue_not_found`, matching the public detail route. Checks run in
+order: Profile, Venue lookup (`404`), self-report (`400`), duplicate pending
+report (`409`), quota (`429`). A second pending report is `409
 venue_already_reported`. Quota exhaustion is `429` with `Retry-After`. Reports
 never change Venue visibility.
 
@@ -127,11 +150,12 @@ to Sessions 1–10 done, Session 11 next.
   list.
 - Catalogue: rejected and delisted Venues stay hidden.
 
-## Assumptions to confirm
+## Confirmed decisions
 
-- A hidden-by-status Venue returns `404 venue_not_found` to a reporter. DevSteps
-  says only that such Venues "cannot be reported".
-- Operator correction audits with equal prior and new status and no reason.
+- A hidden-by-status Venue returns `404 venue_not_found` to a reporter.
+- Operator correction audits with equal prior and new status and no reason. A
+  feedback-only change on `reject` or `delist` also audits with equal statuses,
+  but carries a reason.
 
 ## Out of scope
 

@@ -169,8 +169,8 @@ _Avoid_: Country name, lowercase code, `UK`
 
 **Venue Submission**:
 A User's proposal to add a Venue to the catalogue. Only its Submitter can
-correct it while pending or rejected, which returns it to pending review and
-to the public catalogue; after User deletion no User can correct it.
+correct it while pending or rejected. Correcting a rejected one, even with
+no field changed, returns it to pending review and to the public catalogue; after User deletion no User can correct it.
 _Avoid_: Venue claim, listing
 
 **Duplicate Venue Submission**:
@@ -211,7 +211,11 @@ The Submitter is not offered a report on their own Venue, a person who is not
 yet a User is not offered one either. A report does not automatically hide or
 alter that Venue, and a resolved report stays resolved if the Venue returns
 to the public catalogue. A resolved report does not stop that User from filing
-a later one.
+a later one. A Platform Moderator's decision on the Venue, including a
+correction that changes it, resolves every report still pending for that Venue;
+a correction that changes nothing resolves none, and dismissing one report
+resolves only that report. A Venue that is rejected, Delisted, or unknown
+cannot be reported, and looks the same as one that does not exist.
 _Avoid_: Venue edit, Venue Submission
 
 **Genre**:
