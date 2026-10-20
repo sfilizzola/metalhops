@@ -59,9 +59,6 @@ before insert or update on venues
 for each row
 execute function venues_set_search_keys();
 
-create index venues_search_name_trgm_idx on venues using gin (search_name extensions.gin_trgm_ops);
-create index venues_search_address_trgm_idx on venues using gin (search_address extensions.gin_trgm_ops);
-create index venues_search_city_trgm_idx on venues using gin (search_city extensions.gin_trgm_ops);
 create index venues_search_city_idx on venues (search_city);
 create index venues_country_code_idx on venues (country_code);
 create index venue_genres_genre_id_idx on venue_genres (genre_id);
