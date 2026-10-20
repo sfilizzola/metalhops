@@ -31,6 +31,7 @@ type Options struct {
 	Auth        Authenticator
 	Profiles    Profiles
 	Logger      *slog.Logger
+	Catalogue   Catalogue
 }
 
 func New(options Options) http.Handler {
@@ -50,6 +51,15 @@ func New(options Options) http.Handler {
 	if options.DocsEnabled {
 		mux.HandleFunc("GET /docs", docsHandler)
 	}
+	mux.HandleFunc("GET /v1/genres", func(w http.ResponseWriter, r *http.Request) {
+		listGenres(w, r, options.Catalogue, options.Logger)
+	})
+	mux.HandleFunc("GET /v1/venues", func(w http.ResponseWriter, r *http.Request) {
+		listVenues(w, r, options.Catalogue, options.Logger)
+	})
+	mux.HandleFunc("GET /v1/venues/{venueID}", func(w http.ResponseWriter, r *http.Request) {
+		getVenue(w, r, options.Catalogue, options.Logger)
+	})
 	protected := requireApp(options.Auth, options.Logger, profileRoutes(options.Profiles, options.Logger))
 	mux.Handle("GET /v1/me", protected)
 	mux.Handle("PATCH /v1/me", protected)

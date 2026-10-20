@@ -16,6 +16,7 @@ import (
 	"github.com/metalhops/metalhops/backend/internal/database"
 	"github.com/metalhops/metalhops/backend/internal/profile"
 	"github.com/metalhops/metalhops/backend/internal/ratelimit"
+	"github.com/metalhops/metalhops/backend/internal/venue"
 )
 
 const version = "v0.1.0-dev"
@@ -40,6 +41,7 @@ func main() {
 	authenticator := auth.New(cfg.SupabaseURL, cfg.SupabaseJWTAudience, pool.Raw(), httpClient, time.Now)
 	admin := profile.NewAdminClient(cfg.SupabaseURL, cfg.SupabaseServiceRoleKey, httpClient)
 	profiles := profile.New(pool.Raw(), userLimiter, admin, time.Now)
+	venues := venue.New(pool.Raw())
 	srv := &http.Server{
 		Addr: ":" + cfg.Port,
 		Handler: api.New(api.Options{
@@ -49,6 +51,7 @@ func main() {
 			PublicLimit: ratelimit.Middleware(ratelimit.New(time.Now, cfg.TrustedProxies)),
 			Auth:        authenticator,
 			Profiles:    profiles,
+			Catalogue:   venues,
 		}),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       10 * time.Second,
