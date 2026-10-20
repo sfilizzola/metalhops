@@ -2,6 +2,7 @@ package venue
 
 import (
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/metalhops/metalhops/backend/internal/profile"
@@ -214,4 +215,35 @@ func normalizeNote(value string) (string, error) {
 		return "", &ValidationError{Fields: invalid.Fields}
 	}
 	return note, err
+}
+
+func profileColumns(alias string) string {
+	return fmt.Sprintf(`%[1]s.id::text, %[1]s.username, %[1]s.display_name, %[1]s.status,
+		%[1]s.moderation_reason, %[1]s.moderation_note, %[1]s.suspended_until, %[1]s.created_at, %[1]s.updated_at`, alias)
+}
+
+// nullableProfile scans a LEFT JOINed profile; every column is null when the User has no Profile.
+type nullableProfile struct {
+	id, username, displayName, status, reason, note *string
+	until, createdAt, updatedAt                     *time.Time
+}
+
+func (n *nullableProfile) dest() []any {
+	return []any{&n.id, &n.username, &n.displayName, &n.status, &n.reason, &n.note, &n.until, &n.createdAt, &n.updatedAt}
+}
+
+func (n nullableProfile) profile() *profile.Profile {
+	if n.id == nil {
+		return nil
+	}
+	p := profile.Profile{
+		ID: *n.id, Username: *n.username, DisplayName: *n.displayName, Status: *n.status,
+		ModerationReason: n.reason, ModerationNote: n.note, SuspendedUntil: n.until,
+		CreatedAt: n.createdAt.UTC(), UpdatedAt: n.updatedAt.UTC(),
+	}
+	if p.SuspendedUntil != nil {
+		until := p.SuspendedUntil.UTC()
+		p.SuspendedUntil = &until
+	}
+	return &p
 }

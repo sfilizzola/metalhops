@@ -131,3 +131,79 @@ func TestModerateResolvesPendingReports(t *testing.T) {
 		t.Fatalf("report %s %v %v", status, by, err)
 	}
 }
+
+func TestOperatorCorrect(t *testing.T) {
+	h := newHarness(t)
+	insertOperator(t, h)
+	insertUser(t, h.pool, userA, "active", nil)
+	insertUser(t, h.pool, userB, "active", nil)
+	seedVenue(t, h.pool, seed{id: vid(60), name: "Typo Bar", status: "verified", submitter: ptr(userA), lat: 50, lon: 10})
+	seedVenue(t, h.pool, seed{id: vid(61), name: "Rejected", status: "rejected", lat: 51, lon: 10})
+	if _, err := h.pool.Exec(context.Background(), `insert into venue_reports (reporter_user_id, venue_id, reason) values ($1, $2, 'incorrect_details' ) `, userB, vid(60)); err == nil {
+		t.Fatal("note should be required")
+	}
+	if _, err := h.pool.Exec(context.Background(), `insert into venue_reports (reporter_user_id, venue_id, reason, note) values ($1, $2, 'incorrect_details', 'typo')`, userB, vid(60)); err != nil {
+		t.Fatal(err)
+	}
+	punk := genreID(t, h.pool, "Punk")
+	correct := func(id string, raw RawSubmission) (Moderated, error) {
+		return h.service.CorrectVenue(context.Background(), OperatorCorrectCommand{ActorID: operatorID, VenueID: id, Fields: raw})
+	}
+
+	got, err := correct(vid(60), rawVenue("Type Bar", 50, 10, punk))
+	if err != nil || got.Name != "Type Bar" || got.VerificationStatus != "verified" {
+		t.Fatalf("correct %+v %v", got, err)
+	}
+	var prior, next string
+	if err := h.pool.QueryRow(context.Background(), `select prior_status, new_status from venue_moderation_actions where venue_id = $1 and action = 'correct'`, vid(60)).Scan(&prior, &next); err != nil || prior != "verified" || next != "verified" {
+		t.Fatalf("audit %s %s %v", prior, next, err)
+	}
+	var reportStatus string
+	if err := h.pool.QueryRow(context.Background(), `select status from venue_reports where venue_id = $1`, vid(60)).Scan(&reportStatus); err != nil || reportStatus != "actioned" {
+		t.Fatalf("report %s %v", reportStatus, err)
+	}
+	if _, err := correct(vid(60), rawVenue("Type Bar", 50, 10, punk)); err != nil {
+		t.Fatal(err)
+	}
+	if n := countRows(t, h, `select count(*) from venue_moderation_actions where venue_id = $1 and action = 'correct'`, vid(60)); n != 1 {
+		t.Fatalf("unchanged correction wrote audit: %d", n)
+	}
+	var bad *InvalidTransitionError
+	if _, err := correct(vid(61), rawVenue("Rejected 2", 51, 10, punk)); !errors.As(err, &bad) || bad.Status != "rejected" {
+		t.Fatalf("rejected correction: %v", err)
+	}
+	if _, err := correct(vid(99), rawVenue("None", 1, 1, punk)); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("missing: %v", err)
+	}
+	seedVenue(t, h.pool, seed{id: vid(62), name: "Type Bar", status: "verified", lat: 52, lon: 10})
+	var dup *DuplicateError
+	if _, err := correct(vid(62), rawVenue("Type Bar", 50, 10, punk)); !errors.As(err, &dup) {
+		t.Fatalf("duplicate: %v", err)
+	}
+}
+
+func TestGetModerationVenue(t *testing.T) {
+	h := newHarness(t)
+	insertOperator(t, h)
+	insertUser(t, h.pool, userA, "active", nil)
+	insertUser(t, h.pool, userB, "active", nil)
+	seedVenue(t, h.pool, seed{id: vid(70), name: "Detail", status: "verified", submitter: ptr(userA), lat: 60, lon: 10})
+	if _, err := h.pool.Exec(context.Background(), `insert into venue_reports (reporter_user_id, venue_id, reason) values ($1, $2, 'moved')`, userB, vid(70)); err != nil {
+		t.Fatal(err)
+	}
+	got, err := h.service.GetModerationVenue(context.Background(), vid(70))
+	if err != nil || got.Submitter == nil || got.Submitter.ID != userA || len(got.Reports) != 1 || got.Reports[0].Reporter == nil || got.Reports[0].Reporter.ID != userB {
+		t.Fatalf("%+v %v", got, err)
+	}
+	seedVenue(t, h.pool, seed{id: vid(71), name: "Orphan", status: "pending", lat: 61, lon: 10})
+	orphan, err := h.service.GetModerationVenue(context.Background(), vid(71))
+	if err != nil || orphan.Submitter != nil || len(orphan.Reports) != 0 {
+		t.Fatalf("%+v %v", orphan, err)
+	}
+	if _, err := h.service.GetModerationVenue(context.Background(), vid(72)); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("missing: %v", err)
+	}
+	if _, err := h.service.GetModerationVenue(context.Background(), "nope"); err == nil {
+		t.Fatal("bad id accepted")
+	}
+}

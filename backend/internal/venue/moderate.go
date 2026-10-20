@@ -237,3 +237,131 @@ func moderationFromStored(r idempotency.Result) (ModerationResult, error) {
 	id := body.ActionID
 	return ModerationResult{Created: true, ActionID: &id, Venue: body.Venue.moderated()}, nil
 }
+
+func (s *Service) CorrectVenue(ctx context.Context, cmd OperatorCorrectCommand) (Moderated, error) {
+	if !CanonicalVenueID(cmd.VenueID) {
+		return Moderated{}, &ValidationError{Fields: map[string]string{"venue_id": "must be a canonical uuid"}}
+	}
+	draft, err := ParseSubmission(cmd.Fields)
+	if err != nil {
+		return Moderated{}, err
+	}
+	if s.writes == nil {
+		return Moderated{}, errWritesUnavailable
+	}
+	now := s.clock()
+	txCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	tx, err := s.pool.Begin(txCtx)
+	if err != nil {
+		return Moderated{}, fmt.Errorf("venue: begin: %w", err)
+	}
+	defer func() { _ = tx.Rollback(context.Background()) }()
+	var status string
+	err = tx.QueryRow(txCtx, `select verification_status from venues where id = $1::uuid for update`, cmd.VenueID).Scan(&status)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return Moderated{}, ErrNotFound
+	}
+	if err != nil {
+		return Moderated{}, fmt.Errorf("venue: correct: %w", err)
+	}
+	if status != "pending" && status != "verified" {
+		return Moderated{}, &InvalidTransitionError{Action: "correct", Status: status}
+	}
+	if err := checkGenres(txCtx, tx, draft.GenreIDs); err != nil {
+		return Moderated{}, err
+	}
+	current, err := moderated(txCtx, tx, cmd.VenueID)
+	if err != nil {
+		return Moderated{}, err
+	}
+	if sameSubmission(current.Submission, draft) {
+		if err := tx.Commit(txCtx); err != nil {
+			return Moderated{}, fmt.Errorf("venue: commit: %w", err)
+		}
+		return current, nil
+	}
+	// The operator's own id is not a Submitter, so only Verified matches are disclosed to them.
+	if err := checkDuplicate(txCtx, tx, cmd.ActorID, &cmd.VenueID, draft); err != nil {
+		return Moderated{}, err
+	}
+	reservation, retryAfter, ok := s.writes.Reserve(cmd.ActorID)
+	if !ok {
+		return Moderated{}, &RateLimitError{RetryAfter: retryAfter}
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			reservation.Cancel()
+		}
+	}()
+	if err := applyDraft(txCtx, tx, cmd.VenueID, draft); err != nil {
+		return Moderated{}, err
+	}
+	if _, err := insertAudit(txCtx, tx, auditRow{
+		venueID: cmd.VenueID, action: "correct", prior: status, next: status, actorID: cmd.ActorID, at: now,
+	}); err != nil {
+		return Moderated{}, err
+	}
+	if err := resolveReports(txCtx, tx, cmd.VenueID, cmd.ActorID, now); err != nil {
+		return Moderated{}, err
+	}
+	got, err := moderated(txCtx, tx, cmd.VenueID)
+	if err != nil {
+		return Moderated{}, err
+	}
+	if err := tx.Commit(txCtx); err != nil {
+		return Moderated{}, fmt.Errorf("venue: commit: %w", err)
+	}
+	reservation.Commit()
+	committed = true
+	return got, nil
+}
+
+// shortcut: the detail lists at most 100 pending reports, oldest first; add a cursor if a Venue ever collects more.
+const detailReportLimit = 100
+
+func (s *Service) GetModerationVenue(ctx context.Context, venueID string) (ModerationVenue, error) {
+	if !CanonicalVenueID(venueID) {
+		return ModerationVenue{}, &ValidationError{Fields: map[string]string{"venue_id": "must be a canonical uuid"}}
+	}
+	queryCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	base, err := moderated(queryCtx, s.pool, venueID)
+	if err != nil {
+		return ModerationVenue{}, err
+	}
+	out := ModerationVenue{Moderated: base, Reports: []PendingReport{}}
+	var submitter nullableProfile
+	if err := s.pool.QueryRow(queryCtx, `
+		select `+profileColumns("sp")+`
+		from venues v left join profiles sp on sp.id = v.submitted_by
+		where v.id = $1::uuid`, venueID).Scan(submitter.dest()...); err != nil {
+		return ModerationVenue{}, fmt.Errorf("venue: submitter: %w", err)
+	}
+	out.Submitter = submitter.profile()
+	rows, err := s.pool.Query(queryCtx, `
+		select r.id::text, r.reason, r.note, r.created_at, `+profileColumns("rp")+`
+		from venue_reports r left join profiles rp on rp.id = r.reporter_user_id
+		where r.venue_id = $1::uuid and r.status = 'pending'
+		order by r.created_at, r.id
+		limit $2`, venueID, detailReportLimit)
+	if err != nil {
+		return ModerationVenue{}, fmt.Errorf("venue: reports: %w", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var item PendingReport
+		var reporter nullableProfile
+		if err := rows.Scan(append([]any{&item.ID, &item.Reason, &item.Note, &item.CreatedAt}, reporter.dest()...)...); err != nil {
+			return ModerationVenue{}, fmt.Errorf("venue: reports: %w", err)
+		}
+		item.CreatedAt = item.CreatedAt.UTC()
+		item.Reporter = reporter.profile()
+		out.Reports = append(out.Reports, item)
+	}
+	if err := rows.Err(); err != nil {
+		return ModerationVenue{}, fmt.Errorf("venue: reports: %w", err)
+	}
+	return out, nil
+}

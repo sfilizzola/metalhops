@@ -197,6 +197,20 @@ func replaceGenres(ctx context.Context, tx pgx.Tx, venueID string, ids []int) er
 	return nil
 }
 
+func applyDraft(ctx context.Context, tx pgx.Tx, venueID string, d Draft) error {
+	if _, err := tx.Exec(ctx, `
+		update venues set
+			name = $2, description = $3,
+			location = ST_SetSRID(ST_MakePoint($4::float8, $5::float8), 4326)::geography,
+			address = $6, city = $7, country_code = $8, venue_type = $9
+		where id = $1::uuid`,
+		venueID, d.Name, d.Description, d.Longitude, d.Latitude,
+		d.Address, d.City, d.CountryCode, d.VenueType); err != nil {
+		return fmt.Errorf("venue: correct: %w", err)
+	}
+	return replaceGenres(ctx, tx, venueID, d.GenreIDs)
+}
+
 func (s *Service) Correct(ctx context.Context, cmd CorrectCommand) (Submission, error) {
 	if !CanonicalVenueID(cmd.VenueID) {
 		return Submission{}, &ValidationError{Fields: map[string]string{"venue_id": "must be a canonical uuid"}}
@@ -262,17 +276,11 @@ func (s *Service) Correct(ctx context.Context, cmd CorrectCommand) (Submission, 
 		}
 	}()
 	if _, err := tx.Exec(txCtx, `
-		update venues set
-			name = $2, description = $3,
-			location = ST_SetSRID(ST_MakePoint($4::float8, $5::float8), 4326)::geography,
-			address = $6, city = $7, country_code = $8, venue_type = $9,
-			verification_status = 'pending', rejection_reason = null, rejection_note = null
-		where id = $1::uuid`,
-		cmd.VenueID, draft.Name, draft.Description, draft.Longitude, draft.Latitude,
-		draft.Address, draft.City, draft.CountryCode, draft.VenueType); err != nil {
+		update venues set verification_status = 'pending', rejection_reason = null, rejection_note = null
+		where id = $1::uuid`, cmd.VenueID); err != nil {
 		return Submission{}, fmt.Errorf("venue: correct: %w", err)
 	}
-	if err := replaceGenres(txCtx, tx, cmd.VenueID, draft.GenreIDs); err != nil {
+	if err := applyDraft(txCtx, tx, cmd.VenueID, draft); err != nil {
 		return Submission{}, err
 	}
 	got, err := ownSubmission(txCtx, tx, cmd.UserID, cmd.VenueID)
