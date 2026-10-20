@@ -31,6 +31,7 @@ func TestDataAPIClosed(t *testing.T) {
 		`update venues set name = 'nope' where false`,
 		`delete from venues where false`,
 		`select venue_name_key('Bar!')`,
+		`select venue_search_key('Bar!')`,
 		`select * from venue_genres`,
 		`insert into venue_genres (venue_id, genre_id) values ('00000000-0000-4000-8000-000000000001', 1)`,
 		`update venue_genres set genre_id = 1 where false`,

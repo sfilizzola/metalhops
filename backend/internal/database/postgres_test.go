@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"testing"
+	"time"
 
 	"github.com/metalhops/metalhops/backend/internal/pgtest"
 )
@@ -99,8 +100,30 @@ func TestMigrationVersions(t *testing.T) {
 	execSQL(t, pool, readMigration(t, "0005_venue_catalogue.sql"))
 	execSQL(t, pool, `insert into supabase_migrations.schema_migrations (version) values ('0005')`)
 	ready, reason = pool.Check(ctx)
-	if !ready || reason != "ok" {
+	if ready || reason != "migrations_behind" {
 		t.Fatalf("0005 ready %v reason %s", ready, reason)
+	}
+
+	execSQL(t, pool, `
+		insert into venues (name, location, address, city, country_code, updated_at)
+		values ('Old Bar', ST_MakePoint(0, 0)::geography, '1 Main Street', 'Oslo', 'NO', '2001-01-01T00:00:00Z')`)
+	execSQL(t, pool, readMigration(t, "0006_venue_discovery.sql"))
+	execSQL(t, pool, `insert into supabase_migrations.schema_migrations (version) values ('0006')`)
+	ready, reason = pool.Check(ctx)
+	if !ready || reason != "ok" {
+		t.Fatalf("0006 ready %v reason %s", ready, reason)
+	}
+	var searchName, searchCity string
+	var updated time.Time
+	if err := pool.pool.QueryRow(ctx, `
+		select search_name, search_city, updated_at from venues where name = 'Old Bar'`).Scan(&searchName, &searchCity, &updated); err != nil {
+		t.Fatal(err)
+	}
+	if searchName != "oldbar" || searchCity != "oslo" {
+		t.Fatalf("backfill %q %q", searchName, searchCity)
+	}
+	if !updated.Equal(time.Date(2001, 1, 1, 0, 0, 0, 0, time.UTC)) {
+		t.Fatalf("backfill moved updated_at to %s", updated)
 	}
 }
 
