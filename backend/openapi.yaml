@@ -229,6 +229,135 @@ paths:
           $ref: "#/components/responses/RateLimited"
         "500":
           $ref: "#/components/responses/Internal"
+    post:
+      operationId: createVenueSubmission
+      summary: Submit a venue
+      description: Creates a pending Venue whose Submitter is the caller. A pending Venue is in the public catalogue as not verified. Duplicate detection compares the normalized name, which folds case and accents, removes punctuation, and keeps single spaces, within 100 metres of a pending or verified Venue. A caller may create 10 Venue Submissions in a rolling 24 hours; corrections do not count.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          description: 8 to 128 printable ASCII characters. The idempotency operation is venue_submission. A replay returns the stored 201 body and takes no quota slot.
+          schema:
+            type: string
+            minLength: 8
+            maxLength: 128
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SubmissionRequest"
+            example:
+              name: Iron Maiden Pub
+              latitude: 59.91
+              longitude: 10.75
+              address: 1 Metal Street
+              city: Oslo
+              country_code: "NO"
+              venue_type: pub
+              genre_ids: [1, 4]
+      responses:
+        "201":
+          description: The pending Venue was stored.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SubmissionResponse"
+        "400":
+          description: The body or idempotency key is invalid, or a Genre id does not exist.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                field:
+                  value:
+                    error:
+                      code: validation_error
+                      message: The request is invalid.
+                      request_id: abc
+                      fields:
+                        genre_ids: must be an existing genre
+                key:
+                  value:
+                    error:
+                      code: validation_error
+                      message: The request is invalid.
+                      request_id: abc
+                      fields:
+                        idempotency_key: required
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/ContributionForbidden"
+        "409":
+          description: The caller has no profile, a strong duplicate exists, or the idempotency key was reused for a different command. Duplicate details appear only when the nearest disclosable match is verified or belongs to the caller.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                duplicate:
+                  value:
+                    error:
+                      code: duplicate_venue
+                      message: A matching venue already exists.
+                      request_id: abc
+                      details:
+                        venue_id: bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb
+                        verification_status: verified
+                duplicate_private:
+                  value:
+                    error:
+                      code: duplicate_venue
+                      message: A matching venue already exists.
+                      request_id: abc
+                profile:
+                  value:
+                    error:
+                      code: profile_required
+                      message: Create a profile first.
+                      request_id: abc
+                idempotency:
+                  value:
+                    error:
+                      code: idempotency_key_reused
+                      message: That idempotency key was already used.
+                      request_id: abc
+        "413":
+          $ref: "#/components/responses/BodyTooLarge"
+        "415":
+          $ref: "#/components/responses/UnsupportedMedia"
+        "429":
+          description: The submission quota or a write limit refused the request.
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                quota:
+                  value:
+                    error:
+                      code: quota_exceeded
+                      message: The submission limit has been reached.
+                      request_id: abc
+                rate:
+                  value:
+                    error:
+                      code: rate_limited
+                      message: Too many requests.
+                      request_id: abc
+        "500":
+          $ref: "#/components/responses/Internal"
+        "502":
+          $ref: "#/components/responses/AuthProvider"
   /v1/venues/{venueID}:
     get:
       operationId: getVenue
@@ -479,6 +608,169 @@ paths:
                   code: auth_provider_error
                   message: The authentication provider is unavailable.
                   request_id: abc
+  /v1/me/venues:
+    get:
+      operationId: listMyVenues
+      summary: List the caller's venue submissions
+      description: Every status, ordered by updated_at descending, then id descending. A rename_required or suspended caller can read this list. A caller without a profile receives an empty list.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: cursor
+          in: query
+          required: false
+          description: Opaque next_cursor from a previous page of this route.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: One page of the caller's submissions.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SubmissionListResponse"
+        "400":
+          description: The limit or cursor is invalid, or a parameter is repeated or unknown.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/ContributionForbidden"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/Internal"
+        "502":
+          $ref: "#/components/responses/AuthProvider"
+  /v1/me/venues/{venueID}:
+    parameters:
+      - name: venueID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          pattern: "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    get:
+      operationId: getMyVenue
+      summary: Read one of the caller's venue submissions
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: The caller's submission in any status.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SubmissionResponse"
+        "400":
+          description: The id is not a canonical UUID, or a query parameter was sent.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/ContributionForbidden"
+        "404":
+          description: The Venue does not exist or belongs to another User.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                error:
+                  code: venue_not_found
+                  message: Venue not found.
+                  request_id: abc
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/Internal"
+        "502":
+          $ref: "#/components/responses/AuthProvider"
+    put:
+      operationId: correctMyVenue
+      summary: Correct a pending venue submission
+      description: Replaces every editable field and the Genre set of a pending Venue the caller submitted. It does not require Idempotency-Key. An unchanged body returns 200 and leaves updated_at unchanged. Duplicate detection excludes this Venue. A correction does not count toward the submission quota.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SubmissionRequest"
+      responses:
+        "200":
+          description: The corrected submission, still pending.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SubmissionResponse"
+        "400":
+          description: The id or body is invalid, or a Genre id does not exist.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/ContributionForbidden"
+        "404":
+          description: The Venue does not exist or belongs to another User.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: The caller has no profile, the Venue is verified or rejected, or a strong duplicate exists.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                not_pending:
+                  value:
+                    error:
+                      code: venue_not_pending
+                      message: This venue can no longer be corrected.
+                      request_id: abc
+                rejected:
+                  value:
+                    error:
+                      code: venue_not_pending
+                      message: Only a pending venue can be corrected.
+                      request_id: abc
+                duplicate:
+                  value:
+                    error:
+                      code: duplicate_venue
+                      message: A matching venue already exists.
+                      request_id: abc
+        "413":
+          $ref: "#/components/responses/BodyTooLarge"
+        "415":
+          $ref: "#/components/responses/UnsupportedMedia"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/Internal"
+        "502":
+          $ref: "#/components/responses/AuthProvider"
   /v1/profiles/{username}/reports:
     post:
       operationId: createProfileReport
@@ -1179,6 +1471,116 @@ components:
           properties:
             next_cursor:
               type: [string, "null"]
+    SubmissionRequest:
+      type: object
+      additionalProperties: false
+      required: [name, latitude, longitude, address, city, country_code, venue_type, genre_ids]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 150
+          description: Trimmed and NFC-normalized. A single line.
+        description:
+          type: [string, "null"]
+          minLength: 1
+          maxLength: 2000
+          description: Trimmed and NFC-normalized. Line breaks are allowed. Omit or send null for none.
+        latitude:
+          type: number
+          minimum: -90
+          maximum: 90
+        longitude:
+          type: number
+          minimum: -180
+          maximum: 180
+        address:
+          type: string
+          minLength: 1
+          maxLength: 500
+          description: Trimmed and NFC-normalized. A single line.
+        city:
+          type: string
+          minLength: 1
+          maxLength: 120
+          description: Trimmed and NFC-normalized. A single line.
+        country_code:
+          type: string
+          description: Official ISO 3166-1 alpha-2 code, plus XK for Kosovo. Letter case is folded to uppercase. The United Kingdom is GB; UK is rejected.
+        venue_type:
+          type: string
+          enum: [bar, pub, club]
+        genre_ids:
+          type: array
+          minItems: 1
+          description: Existing Genre ids. Duplicates are removed.
+          items:
+            type: integer
+            minimum: 1
+            maximum: 2147483647
+    Submission:
+      type: object
+      additionalProperties: false
+      required: [id, name, description, latitude, longitude, address, city, country_code, venue_type, genres, verification_status, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+          pattern: "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        name:
+          type: string
+        description:
+          type: [string, "null"]
+        latitude:
+          type: number
+        longitude:
+          type: number
+        address:
+          type: string
+        city:
+          type: string
+        country_code:
+          type: string
+          pattern: "^[A-Z]{2}$"
+        venue_type:
+          type: string
+          enum: [bar, pub, club]
+        genres:
+          type: array
+          items:
+            $ref: "#/components/schemas/Genre"
+        verification_status:
+          type: string
+          enum: [pending, verified, rejected]
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    SubmissionResponse:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          $ref: "#/components/schemas/Submission"
+    SubmissionListResponse:
+      type: object
+      additionalProperties: false
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/Submission"
+        meta:
+          type: object
+          additionalProperties: false
+          required: [next_cursor]
+          properties:
+            next_cursor:
+              type: [string, "null"]
     Profile:
       type: object
       additionalProperties: false
@@ -1421,11 +1823,16 @@ components:
             details:
               type: object
               additionalProperties: false
-              required: [suspended_until]
               properties:
                 suspended_until:
                   type: string
                   format: date-time
+                venue_id:
+                  type: string
+                  format: uuid
+                verification_status:
+                  type: string
+                  enum: [pending, verified]
   responses:
     Unauthorized:
       description: The bearer token or live session was rejected.
@@ -1487,3 +1894,30 @@ components:
         application/json:
           schema:
             $ref: "#/components/schemas/Error"
+    ContributionForbidden:
+      description: The caller is a platform moderator, or, on a write, the caller's profile cannot contribute.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          examples:
+            forbidden:
+              value:
+                error:
+                  code: forbidden
+                  message: This action is unavailable for this account.
+                  request_id: abc
+            rename:
+              value:
+                error:
+                  code: profile_rename_required
+                  message: Rename this profile before continuing.
+                  request_id: abc
+            suspended:
+              value:
+                error:
+                  code: profile_suspended
+                  message: This profile is suspended.
+                  request_id: abc
+                  details:
+                    suspended_until: "2026-10-16T12:00:00Z"

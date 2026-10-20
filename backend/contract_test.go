@@ -42,13 +42,46 @@ func TestOpenAPIDocument(t *testing.T) {
 		"must be provided with latitude, longitude, and radius_km",
 		"XK",
 		"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+		"/v1/me/venues",
+		"/v1/me/venues/{venueID}",
+		"SubmissionRequest",
+		"Submission:",
+		"venue_submission",
+		"duplicate_venue",
+		"venue_not_pending",
+		"Only a pending venue can be corrected.",
+		"The submission limit has been reached.",
+		"genre_ids",
 	} {
 		if !bytes.Contains(OpenAPI, []byte(want)) {
 			t.Fatalf("missing %q", want)
 		}
 	}
-	me := bytes.Index(OpenAPI, []byte("/v1/me"))
-	if me < 0 || bytes.Contains(OpenAPI[:me], []byte("security:")) {
+	genres := bytes.Index(OpenAPI, []byte("/v1/genres"))
+	if genres < 0 || bytes.Contains(OpenAPI[:genres], []byte("security:")) {
 		t.Fatal("operational route requires security")
+	}
+	for _, op := range []string{"createVenueSubmission", "listMyVenues", "getMyVenue", "correctMyVenue"} {
+		start := bytes.Index(OpenAPI, []byte("operationId: "+op))
+		if start < 0 {
+			t.Fatalf("missing %s", op)
+		}
+		rest := OpenAPI[start+len("operationId: "+op):]
+		if next := bytes.Index(rest, []byte("operationId:")); next >= 0 {
+			rest = rest[:next]
+		}
+		if !bytes.Contains(rest, []byte("bearerAuth")) {
+			t.Fatalf("%s has no bearer security", op)
+		}
+	}
+	for _, op := range []string{"listGenres", "listVenues", "getVenue"} {
+		start := bytes.Index(OpenAPI, []byte("operationId: "+op))
+		rest := OpenAPI[start+len("operationId: "+op):]
+		if next := bytes.Index(rest, []byte("operationId:")); next >= 0 {
+			rest = rest[:next]
+		}
+		if bytes.Contains(rest, []byte("security:")) {
+			t.Fatalf("%s became protected", op)
+		}
 	}
 }

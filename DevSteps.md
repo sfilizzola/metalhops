@@ -3,7 +3,7 @@
 MetalHops MVP API roadmap. Refer to this document as **DevSteps** across every implementation session.
 
 **Date:** 2026-10-14
-**Status:** Sessions 1–8 are done. Session 9 is next. Sessions 10–14 are not started.
+**Status:** Sessions 1–9 are done. Session 10 is next. Sessions 11–14 are not started.
 
 ## Goal
 
@@ -1094,7 +1094,8 @@ The Check-in cooldown remains a separate domain rule and returns `409`.
 | 6. Profile safety and moderation API | Done |
 | 7. Venue catalogue | Done |
 | 8. Venue discovery | Done |
-| 9–14 | Not started |
+| 9. Venue submissions | Done |
+| 10–14 | Not started |
 
 ### Session 1: Repository boundaries
 
@@ -1239,7 +1240,7 @@ filters.
 
 ### Session 9: Venue submissions
 
-**Status:** Not started.
+**Status:** Done.
 
 Implement transactional pending submissions, correction of pending
 submissions, strong duplicate prevention, daily quotas, and the caller's
@@ -1253,6 +1254,11 @@ alphanumeric characters and whitespace and removes punctuation and symbols.
 Add any further migration required for submission quotas, duplicate locking,
 and RLS read policies. Do not repeat the `0005` column, country-code, or
 `updated_at` work.
+
+Migration `0007` adds the `(submitted_by, created_at)` and
+`(submitted_by, updated_at desc, id desc)` indexes that captured plans use and
+raises readiness to `0007`. Rejection feedback and correction of a rejected
+submission remain in Session 10.
 
 **Exit condition:** a signed-in User can submit a Venue, track its pending
 status, and correct it without creating strong duplicates.

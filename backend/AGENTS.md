@@ -20,7 +20,9 @@ PostGIS). Run commands from `backend/`.
 - `internal/profile`: Profile, report, and moderation behavior.
 - `internal/idempotency`: in-transaction retry helper. No HTTP route.
 - `internal/ratelimit`: public per-IP token buckets, client-IP walk, and the per-User write limiter.
-- `internal/venue`: Genre list, public catalogue, and discovery filters, sort modes, and filter-bound cursors.
+- `internal/venue`: Genre list, public catalogue, discovery filters, sort modes,
+  filter-bound cursors, and Venue submissions (create, correct while pending,
+  the caller's list and detail, duplicates, and the quota).
 - `internal/pgtest`: PostGIS test harness. Production code does not import it.
 - `openapi.yaml`: contract for implemented HTTP routes.
 
@@ -37,7 +39,7 @@ when that file exists. Variables already in the environment win.
 
 `GET /healthz` reports process health and does not check the database.
 `GET /readyz` returns 200 when the database ping succeeds and migration
-`0006` or newer is recorded. Otherwise it returns 503.
+`0007` or newer is recorded. Otherwise it returns 503.
 `GET /openapi.yaml` serves the embedded `openapi.yaml` in every environment.
 `GET /docs` serves the Scalar page when `DOCS_UI_ENABLED` is unset or `true`.
 The exact value `false` leaves `/docs` unregistered. Any other value stops
@@ -116,7 +118,8 @@ Never drift from it silently.
   is not used. JWKS is cached for ten minutes. An unknown `kid` forces one
   refresh. Every protected request then reads `auth.sessions` for that session
   and User.
-- App routes are `GET`, `PATCH`, and `DELETE /v1/me` and
+- App routes are `GET`, `PATCH`, and `DELETE /v1/me`, `POST /v1/venues`,
+  `GET /v1/me/venues`, `GET` and `PUT /v1/me/venues/{venueID}`, and
   `POST /v1/profiles/{username}/reports`. Privileged routes are
   `GET /v1/moderation/profile-reports`,
   `GET /v1/moderation/profiles/{userID}`,
@@ -128,7 +131,8 @@ Never drift from it silently.
 - `GET /v1/genres`, `GET /v1/venues`, and `GET /v1/venues/{venueID}` are
   public: they do not read `Authorization`, and only the per-IP limit
   applies.
-- Profile writes, profile reports, moderation actions, report dismissals, and
+- Profile writes, profile reports, Venue submissions, changed Venue
+  corrections, moderation actions, report dismissals, and
   account deletion reserve a per-User bucket of burst 60 and one token per
   second. The reservation is committed only after the state change succeeds
   and cancelled when it does not. `GET` does not reserve.
