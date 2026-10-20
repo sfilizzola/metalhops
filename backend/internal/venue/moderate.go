@@ -340,12 +340,7 @@ func (s *Service) GetModerationVenue(ctx context.Context, venueID string) (Moder
 		return ModerationVenue{}, fmt.Errorf("venue: submitter: %w", err)
 	}
 	out.Submitter = submitter.profile()
-	rows, err := s.pool.Query(queryCtx, `
-		select r.id::text, r.reason, r.note, r.created_at, `+profileColumns("rp")+`
-		from venue_reports r left join profiles rp on rp.id = r.reporter_user_id
-		where r.venue_id = $1::uuid and r.status = 'pending'
-		order by r.created_at, r.id
-		limit $2`, venueID, detailReportLimit)
+	rows, err := s.pool.Query(queryCtx, venueReportsSQL, venueID, detailReportLimit)
 	if err != nil {
 		return ModerationVenue{}, fmt.Errorf("venue: reports: %w", err)
 	}

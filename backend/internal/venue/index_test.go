@@ -144,3 +144,63 @@ func TestSubmissionIndexes(t *testing.T) {
 		}
 	}
 }
+
+func TestVenueReportIndexes(t *testing.T) {
+	ctx := context.Background()
+	pool := testPool(t)
+	if _, err := pool.Exec(ctx, `insert into auth.users (id) select gen_random_uuid() from generate_series(1, 500)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `
+		insert into venues (id, name, location, address, city, country_code, verification_status)
+		select gen_random_uuid(), 'Venue ' || i, ST_SetSRID(ST_MakePoint((i % 360) - 179.5, ((i / 360) % 170) - 85), 4326)::geography,
+		       i || ' Main Street', 'City', 'DE', 'verified'
+		from generate_series(1, 1000) as i`); err != nil {
+		t.Fatal(err)
+	}
+	// Pair (i % 500, (i / 5) % 1000) is unique for i in 0..4999, so the pending-pair index never collides.
+	if _, err := pool.Exec(ctx, `
+		with users as (select id, row_number() over (order by id) - 1 as n from auth.users),
+		     venues_n as (select id, row_number() over (order by id) - 1 as n from venues)
+		insert into venue_reports (reporter_user_id, venue_id, reason, created_at)
+		select users.id, venues_n.id, 'moved', now() - (i || ' minutes')::interval
+		from generate_series(0, 4999) as i
+		join users on users.n = i % 500
+		join venues_n on venues_n.n = (i / 5) % 1000`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, "vacuum analyze venue_reports"); err != nil {
+		t.Fatal(err)
+	}
+	var venueID string
+	if err := pool.QueryRow(ctx, `select venue_id::text from venue_reports limit 1`).Scan(&venueID); err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range []struct {
+		name, sql, index string
+		args             []any
+	}{
+		{"pending list", reportListSQL, "venue_reports_pending_list_key", []any{nil, nil, 21}},
+		{"venue reports", venueReportsSQL, "venue_reports_pending_venue_key", []any{venueID, 100}},
+	} {
+		rows, err := pool.Query(ctx, "explain "+c.sql, c.args...)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var plan strings.Builder
+		for rows.Next() {
+			var line string
+			if err := rows.Scan(&line); err != nil {
+				t.Fatal(err)
+			}
+			plan.WriteString(line + "\n")
+		}
+		rows.Close()
+		if err := rows.Err(); err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(plan.String(), c.index) {
+			t.Fatalf("%s plan does not use %s:\n%s", c.name, c.index, plan.String())
+		}
+	}
+}
