@@ -24,15 +24,16 @@ func (f ReadinessFunc) Check(ctx context.Context) (bool, string) {
 }
 
 type Options struct {
-	DocsEnabled bool
-	OpenAPI     []byte
-	Readiness   Readiness
-	PublicLimit func(http.Handler) http.Handler
-	Auth        Authenticator
-	Profiles    Profiles
-	Logger      *slog.Logger
-	Catalogue   Catalogue
-	Submissions Submissions
+	DocsEnabled     bool
+	OpenAPI         []byte
+	Readiness       Readiness
+	PublicLimit     func(http.Handler) http.Handler
+	Auth            Authenticator
+	Profiles        Profiles
+	Logger          *slog.Logger
+	Catalogue       Catalogue
+	Submissions     Submissions
+	VenueModeration VenueModeration
 }
 
 func New(options Options) http.Handler {
@@ -91,6 +92,24 @@ func New(options Options) http.Handler {
 	})))
 	mux.Handle("PATCH /v1/moderation/profile-reports/{reportID}", requireOperator(options.Auth, options.Logger, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		dismissProfileReport(w, r, options.Profiles, options.Logger)
+	})))
+	mux.Handle("POST /v1/venues/{venueID}/reports", requireApp(options.Auth, options.Logger, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		reportVenue(w, r, options.VenueModeration, options.Logger)
+	})))
+	mux.Handle("GET /v1/moderation/venue-reports", requireOperator(options.Auth, options.Logger, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		listVenueReports(w, r, options.VenueModeration, options.Logger)
+	})))
+	mux.Handle("GET /v1/moderation/venues/{venueID}", requireOperator(options.Auth, options.Logger, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		getModerationVenue(w, r, options.VenueModeration, options.Logger)
+	})))
+	mux.Handle("POST /v1/moderation/venues/{venueID}/actions", requireOperator(options.Auth, options.Logger, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		applyVenueAction(w, r, options.VenueModeration, options.Logger)
+	})))
+	mux.Handle("PUT /v1/moderation/venues/{venueID}", requireOperator(options.Auth, options.Logger, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		correctVenueAsOperator(w, r, options.VenueModeration, options.Logger)
+	})))
+	mux.Handle("PATCH /v1/moderation/venue-reports/{reportID}", requireOperator(options.Auth, options.Logger, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		dismissVenueReport(w, r, options.VenueModeration, options.Logger)
 	})))
 	return wrap(options.Logger, options.PublicLimit, mux)
 }
