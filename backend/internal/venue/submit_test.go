@@ -393,3 +393,131 @@ func TestSubmitContributionRules(t *testing.T) {
 		t.Fatalf("catalogue-only service %v", err)
 	}
 }
+
+func correct(h *harness, user, venueID string, raw RawSubmission) (Submission, error) {
+	return h.service.Correct(context.Background(), CorrectCommand{UserID: user, VenueID: venueID, Fields: raw})
+}
+
+func TestCorrectPendingSubmission(t *testing.T) {
+	ctx := context.Background()
+	h := newHarness(t)
+	insertUser(t, h.pool, userA, "active", nil)
+	insertUser(t, h.pool, userB, "active", nil)
+	punk := genreID(t, h.pool, "Punk")
+	classic := genreID(t, h.pool, "Classic rock")
+	created, err := submit(h, userA, "fix-key-01", rawVenue("Rust Bar", 15, 15, punk))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	renamed, err := correct(h, userA, created.ID, rawVenue("Rust Pub", 15, 15, classic))
+	if err != nil || renamed.Name != "Rust Pub" || renamed.VerificationStatus != "pending" || len(renamed.Genres) != 1 || renamed.Genres[0].ID != classic ||
+		!renamed.CreatedAt.Equal(submitNow) || !renamed.UpdatedAt.After(submitNow) {
+		t.Fatalf("renamed %+v %v", renamed, err)
+	}
+	var searchName string
+	if err := h.pool.QueryRow(ctx, `select search_name from venues where id = $1`, created.ID).Scan(&searchName); err != nil || searchName != "rustpub" {
+		t.Fatalf("search key %s %v", searchName, err)
+	}
+	if public, err := h.service.GetVenue(ctx, created.ID); err != nil || public.Name != "Rust Pub" {
+		t.Fatalf("public %+v %v", public, err)
+	}
+
+	genresOnly, err := correct(h, userA, created.ID, rawVenue("Rust Pub", 15, 15, classic, punk))
+	if err != nil || len(genresOnly.Genres) != 2 || !genresOnly.UpdatedAt.After(renamed.UpdatedAt) {
+		t.Fatalf("genre-only %+v %v", genresOnly, err)
+	}
+	tokens := tokensLeft(h.limiter, userA)
+	same, err := correct(h, userA, created.ID, rawVenue("Rust Pub", genresOnly.Latitude, genresOnly.Longitude, punk, classic))
+	if err != nil || !same.UpdatedAt.Equal(genresOnly.UpdatedAt) || tokensLeft(h.limiter, userA) != tokens {
+		t.Fatalf("unchanged %+v %v", same, err)
+	}
+	if tokens != 57 {
+		t.Fatalf("tokens %d", tokens)
+	}
+
+	seedVenue(t, h.pool, seed{id: vid(30), name: "Taken", lat: 15.0002, lon: 15})
+	var duplicate *DuplicateError
+	if _, err := correct(h, userA, created.ID, rawVenue("Taken", 15, 15, punk)); !errors.As(err, &duplicate) || duplicate.Match == nil || duplicate.Match.VenueID != vid(30) {
+		t.Fatalf("duplicate %v", err)
+	}
+	var validation *ValidationError
+	if _, err := correct(h, userA, created.ID, rawVenue("Rust Pub", 15, 15, 999999)); !errors.As(err, &validation) || validation.Fields["genre_ids"] != "must be an existing genre" {
+		t.Fatalf("unknown genre %v", err)
+	}
+
+	seedVenue(t, h.pool, seed{id: vid(31), name: "Verified Own", status: "verified", submitter: ptr(userA), lat: 16, lon: 15})
+	seedVenue(t, h.pool, seed{id: vid(32), name: "Rejected Own", status: "rejected", submitter: ptr(userA), lat: 17, lon: 15})
+	seedVenue(t, h.pool, seed{id: vid(33), name: "Orphan", status: "pending", lat: 18, lon: 15})
+	for _, c := range []struct{ id, status string }{{vid(31), "verified"}, {vid(32), "rejected"}} {
+		var notPending *NotPendingError
+		if _, err := correct(h, userA, c.id, rawVenue("Changed", 16, 15, 999999)); !errors.As(err, &notPending) || notPending.Status != c.status {
+			t.Fatalf("%s err %v", c.id, err)
+		}
+	}
+	for _, c := range []struct{ user, id string }{{userB, created.ID}, {userA, vid(33)}, {userA, vid(99)}} {
+		if _, err := correct(h, c.user, c.id, rawVenue("Changed", 19, 15, punk)); !errors.Is(err, ErrNotFound) {
+			t.Fatalf("%+v err %v", c, err)
+		}
+	}
+	if _, err := correct(h, userA, "not-a-uuid", rawVenue("Changed", 19, 15, punk)); !errors.As(err, &validation) || validation.Fields["venue_id"] != "must be a canonical uuid" {
+		t.Fatalf("id %v", err)
+	}
+}
+
+func TestCorrectThenReplay(t *testing.T) {
+	h := newHarness(t)
+	insertUser(t, h.pool, userA, "active", nil)
+	punk := genreID(t, h.pool, "Punk")
+	first, err := submit(h, userA, "keep-key-1", rawVenue("Original", 25, 25, punk))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := correct(h, userA, first.ID, rawVenue("Corrected", 25, 25, punk)); err != nil {
+		t.Fatal(err)
+	}
+	replay, err := submit(h, userA, "keep-key-1", rawVenue("Original", 25, 25, punk))
+	if err != nil || replay.Name != "Original" || !replay.UpdatedAt.Equal(first.UpdatedAt) {
+		t.Fatalf("replay %+v %v", replay, err)
+	}
+}
+
+func TestCorrectDoesNotTakeQuota(t *testing.T) {
+	ctx := context.Background()
+	h := newHarness(t)
+	insertUser(t, h.pool, userA, "active", nil)
+	punk := genreID(t, h.pool, "Punk")
+	for i := 0; i < 10; i++ {
+		seedVenue(t, h.pool, seed{
+			id: vid(300 + i), name: "Slot " + string(rune('A'+i)), status: "pending", submitter: ptr(userA),
+			lat: float64(i), lon: 45, created: submitNow.Add(-time.Hour),
+		})
+	}
+	if _, err := submit(h, userA, "slot-key-11", rawVenue("Over", 50, 45, punk)); err == nil {
+		t.Fatal("quota not full")
+	}
+	var created time.Time
+	if err := h.pool.QueryRow(ctx, `select created_at from venues where id = $1`, vid(300)).Scan(&created); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := correct(h, userA, vid(300), rawVenue("Slot Fixed", 0, 45, punk)); err != nil {
+		t.Fatalf("correction under full quota %v", err)
+	}
+	var after time.Time
+	if err := h.pool.QueryRow(ctx, `select created_at from venues where id = $1`, vid(300)).Scan(&after); err != nil || !after.Equal(created) {
+		t.Fatalf("correction moved created_at %s %v", after, err)
+	}
+}
+
+func TestCorrectContributionRules(t *testing.T) {
+	h := newHarness(t)
+	renamed := "dddddddd-dddd-4ddd-8ddd-dddddddddddd"
+	insertUser(t, h.pool, renamed, "rename_required", nil)
+	seedVenue(t, h.pool, seed{id: vid(40), name: "Mine", status: "pending", submitter: ptr(renamed), lat: 5, lon: 5})
+	if _, err := correct(h, renamed, vid(40), rawVenue("Mine Too", 5, 5, genreID(t, h.pool, "Punk"))); !errors.Is(err, profile.ErrRenameRequired) {
+		t.Fatalf("renamed %v", err)
+	}
+	if got, err := h.service.GetOwn(context.Background(), renamed, vid(40)); err != nil || got.Name != "Mine" {
+		t.Fatalf("read while renamed %+v %v", got, err)
+	}
+}

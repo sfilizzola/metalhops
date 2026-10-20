@@ -3,6 +3,7 @@ package venue
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
@@ -194,4 +195,93 @@ func replaceGenres(ctx context.Context, tx pgx.Tx, venueID string, ids []int) er
 		return fmt.Errorf("venue: genres: %w", err)
 	}
 	return nil
+}
+
+func (s *Service) Correct(ctx context.Context, cmd CorrectCommand) (Submission, error) {
+	if !CanonicalVenueID(cmd.VenueID) {
+		return Submission{}, &ValidationError{Fields: map[string]string{"venue_id": "must be a canonical uuid"}}
+	}
+	draft, err := ParseSubmission(cmd.Fields)
+	if err != nil {
+		return Submission{}, err
+	}
+	if s.profiles == nil || s.writes == nil {
+		return Submission{}, errWritesUnavailable
+	}
+	txCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	if err := s.profiles.NormalizeExpiry(txCtx, cmd.UserID); err != nil {
+		return Submission{}, err
+	}
+	tx, err := s.pool.Begin(txCtx)
+	if err != nil {
+		return Submission{}, fmt.Errorf("venue: begin: %w", err)
+	}
+	defer func() { _ = tx.Rollback(context.Background()) }()
+	if err := profile.RequireContributor(txCtx, tx, cmd.UserID); err != nil {
+		return Submission{}, err
+	}
+	var status string
+	err = tx.QueryRow(txCtx, `
+		select verification_status from venues
+		where id = $1::uuid and submitted_by = $2::uuid
+		for update`, cmd.VenueID, cmd.UserID).Scan(&status)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return Submission{}, ErrNotFound
+	}
+	if err != nil {
+		return Submission{}, fmt.Errorf("venue: correct: %w", err)
+	}
+	if status != "pending" {
+		return Submission{}, &NotPendingError{Status: status}
+	}
+	if err := checkGenres(txCtx, tx, draft.GenreIDs); err != nil {
+		return Submission{}, err
+	}
+	current, err := ownSubmission(txCtx, tx, cmd.UserID, cmd.VenueID)
+	if err != nil {
+		return Submission{}, err
+	}
+	if sameSubmission(current, draft) {
+		if err := tx.Commit(txCtx); err != nil {
+			return Submission{}, fmt.Errorf("venue: commit: %w", err)
+		}
+		return current, nil
+	}
+	if err := checkDuplicate(txCtx, tx, cmd.UserID, &cmd.VenueID, draft); err != nil {
+		return Submission{}, err
+	}
+	reservation, retryAfter, ok := s.writes.Reserve(cmd.UserID)
+	if !ok {
+		return Submission{}, &RateLimitError{RetryAfter: retryAfter}
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			reservation.Cancel()
+		}
+	}()
+	if _, err := tx.Exec(txCtx, `
+		update venues set
+			name = $2, description = $3,
+			location = ST_SetSRID(ST_MakePoint($4::float8, $5::float8), 4326)::geography,
+			address = $6, city = $7, country_code = $8, venue_type = $9
+		where id = $1::uuid`,
+		cmd.VenueID, draft.Name, draft.Description, draft.Longitude, draft.Latitude,
+		draft.Address, draft.City, draft.CountryCode, draft.VenueType); err != nil {
+		return Submission{}, fmt.Errorf("venue: correct: %w", err)
+	}
+	if err := replaceGenres(txCtx, tx, cmd.VenueID, draft.GenreIDs); err != nil {
+		return Submission{}, err
+	}
+	got, err := ownSubmission(txCtx, tx, cmd.UserID, cmd.VenueID)
+	if err != nil {
+		return Submission{}, err
+	}
+	if err := tx.Commit(txCtx); err != nil {
+		return Submission{}, fmt.Errorf("venue: commit: %w", err)
+	}
+	reservation.Commit()
+	committed = true
+	return got, nil
 }
