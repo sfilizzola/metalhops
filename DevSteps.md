@@ -635,21 +635,21 @@ verified-Venue, Venue-genre, and direct-submission policies without editing
   `latitude`, `longitude`, `radius_km`, `limit`, and `cursor`.
 - Multiple `genre_id` values use OR semantics: a Venue matches when it has any
   selected Genre.
-- Different filter groups combine with AND. City matches exactly after
-  case/accent normalization; country code and Venue type match exactly.
+- Different filter groups combine with AND. City matches by exact Discovery
+  text. Country code and Venue type match exactly.
 - Latitude, longitude, and radius must be supplied together.
 - `radius_km` accepts values from 1 through 100 inclusive.
 - When coordinates are supplied, each result includes rounded integer
   `distance_meters`; clients format distance in local units.
-- Text search is case- and accent-insensitive across Venue name, address, and
-  city. It does not perform typo-tolerant matching.
+- A query matches Discovery text of the Venue name, address, or city. It does
+  not tolerate typos.
 - Radius search uses PostGIS geography distance.
 - Radius-only results sort by distance ascending and UUID ascending.
 - Text results sort by deterministic relevance: exact Venue name, Venue-name
   prefix, Venue-name substring, exact city, then other city/address matches.
-  Without radius, ties sort by normalized Venue name and UUID ascending. With
-  radius, ties sort by distance and UUID ascending.
-- Results without radius or text search sort by normalized Venue name and UUID
+  Without a location, ties sort by Normalized name and UUID ascending. With
+  a location, ties sort by distance and UUID ascending.
+- Results without a location or text search sort by Normalized name and UUID
   ascending.
 
 `GET /v1/venues/{venueID}`
@@ -1219,8 +1219,8 @@ detail screen.
 
 Add every approved text, classification, location, and radius filter to the
 venue list endpoint. Add indexes justified by query plans and PostGIS
-integration coverage. Text matching ignores case and accents but not typos;
-tests pin the relevance and tie-breaking order.
+integration coverage. Text matching ignores case, accents, punctuation, and
+spaces, but not typos; tests pin the relevance and tie-breaking order.
 
 **Exit condition:** Android can implement map/list discovery with all MVP
 filters.

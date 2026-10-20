@@ -39,6 +39,12 @@ fields are valid, with pending Venues visibly not verified, and it excludes
 rejected and Delisted Venues.
 _Avoid_: Personal catalogue
 
+**Discovery**:
+A reading of the Public catalogue narrowed by Discovery text, city, Genre,
+Country code, Venue type, or location. It contains only Venues already in the
+Public catalogue.
+_Avoid_: Personal catalogue
+
 **Profile Report**:
 A User's request for a Platform Moderator to assess another Profile for abuse,
 impersonation, personal information, or spam. The reporter's own Profile is
@@ -137,6 +143,24 @@ A publicly accessible bar, pub, or club where rock or metal is a recurring
 part of the normal experience, not merely an occasional event.
 _Avoid_: Place, location, event venue
 
+**Venue type**:
+Bar, pub, or club.
+_Avoid_: Genre, category
+
+**Discovery text**:
+The letters and digits of a Venue name, address, or city, in order. Case,
+accents, punctuation, and spaces do not change it, so `Saint-Étienne` and
+`Saint Etienne` share one, and a value with no letter or digit, such as
+`!!!`, has none.
+_Avoid_: Normalized name
+
+**Normalized name**:
+The Venue name with case and accents folded, punctuation removed, and spaces
+collapsed to one, so `Iron Maiden` and `IronMaiden` do not share one. A
+Duplicate Venue Submission shares a Normalized name and lies within 100
+metres.
+_Avoid_: Discovery text
+
 **Country code**:
 The canonical uppercase code for a Venue's country. It is an officially
 assigned ISO 3166-1 alpha-2 code, with `XK` as the sole product exception for
@@ -192,7 +216,7 @@ _Avoid_: Venue edit, Venue Submission
 
 **Genre**:
 A rock- or metal-related music category associated with a Venue. A Venue may
-have many Genres, and discovery may match any selected Genre.
+have many Genres, and a Discovery may match any selected Genre.
 _Avoid_: Music category, tag
 
 **Rejection Feedback**:
@@ -382,3 +406,23 @@ report change?
 
 **Domain expert:** No. It stays resolved by the suspension. Dismissal
 resolves a pending report only.
+
+**Developer:** The city is stored as `Saint-Étienne`. Does a city of
+`Saint Etienne` match it?
+
+**Domain expert:** Yes. They share one Discovery text. Case, accents,
+punctuation, and spaces do not change it.
+
+**Developer:** Someone searches for `IronMaiden`. Is the Venue named
+`Iron Maiden` a match, and is a submission of `IronMaiden` a duplicate of it?
+
+**Domain expert:** The search matches, because they share Discovery text.
+They are not duplicates. Their Normalized names differ, because the space
+still counts.
+
+**Developer:** Does a city filter of `York` include a Venue in `New York`?
+Does the query `york`?
+
+**Domain expert:** The city filter does not, because the Discovery text must
+be the same. The query does, because `york` occurs inside the city's
+Discovery text. A query matches the name, the address, or the city.
