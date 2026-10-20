@@ -347,3 +347,33 @@ func tokensLeft(limiter *ratelimit.UserLimiter, userID string) int {
 	}
 	return len(held)
 }
+
+func TestReportQuotaHelpers(t *testing.T) {
+	pool := testPool(t)
+	ctx := context.Background()
+	user := "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+	if _, err := pool.Exec(ctx, `insert into auth.users (id) values ($1)`, user); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Date(2026, 10, 20, 12, 0, 0, 0, time.UTC)
+	tx, err := pool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	for i := 0; i < 20; i++ {
+		if err := CheckReportQuota(ctx, tx, user, now); err != nil {
+			t.Fatalf("report %d: %v", i, err)
+		}
+		if err := RecordReportEvent(ctx, tx, user, now.Add(-time.Duration(i)*time.Minute)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var quota *QuotaError
+	if err := CheckReportQuota(ctx, tx, user, now); !errors.As(err, &quota) || quota.RetryAfter < 1 {
+		t.Fatalf("expected quota error, got %v", err)
+	}
+	if err := CheckReportQuota(ctx, tx, user, now.Add(25*time.Hour)); err != nil {
+		t.Fatalf("old events still counted: %v", err)
+	}
+}
