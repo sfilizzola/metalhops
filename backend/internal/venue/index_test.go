@@ -87,3 +87,60 @@ func TestDiscoveryIndexes(t *testing.T) {
 		}
 	}
 }
+
+func TestSubmissionIndexes(t *testing.T) {
+	ctx := context.Background()
+	pool := testPool(t)
+	if _, err := pool.Exec(ctx, `insert into auth.users (id) select gen_random_uuid() from generate_series(1, 500)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `
+		with users as (select id, row_number() over (order by id) as n from auth.users)
+		insert into venues (name, location, address, city, country_code, verification_status, submitted_by, created_at, updated_at)
+		select 'Venue ' || i,
+		       ST_SetSRID(ST_MakePoint((i % 360) - 179.5, ((i / 360) % 170) - 85), 4326)::geography,
+		       i || ' Main Street', 'City', 'DE', 'pending', users.id,
+		       now() - (i || ' minutes')::interval, now() - (i || ' minutes')::interval
+		from generate_series(1, 5000) as i
+		join users on users.n = (i % 500) + 1`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, "vacuum analyze venues"); err != nil {
+		t.Fatal(err)
+	}
+	var user string
+	if err := pool.QueryRow(ctx, `select id::text from auth.users order by id limit 1`).Scan(&user); err != nil {
+		t.Fatal(err)
+	}
+	cases := []struct {
+		name  string
+		sql   string
+		args  []any
+		index string
+	}{
+		{"quota", quotaSQL, []any{user, time.Now().Add(-24 * time.Hour)}, "venues_submitted_by_created_at_idx"},
+		{"own list", ownListSQL(false), []any{user, 21}, "venues_submitted_by_updated_at_idx"},
+		{"own list after", ownListSQL(true), []any{user, time.Now(), "ffffffff-ffff-4fff-8fff-ffffffffffff", 21}, "venues_submitted_by_updated_at_idx"},
+	}
+	for _, c := range cases {
+		rows, err := pool.Query(ctx, "explain "+c.sql, c.args...)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var lines []string
+		for rows.Next() {
+			var line string
+			if err := rows.Scan(&line); err != nil {
+				t.Fatal(err)
+			}
+			lines = append(lines, line)
+		}
+		rows.Close()
+		if err := rows.Err(); err != nil {
+			t.Fatal(err)
+		}
+		if plan := strings.Join(lines, "\n"); !strings.Contains(plan, c.index) {
+			t.Fatalf("%s plan does not use %s:\n%s", c.name, c.index, plan)
+		}
+	}
+}
