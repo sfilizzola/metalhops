@@ -35,7 +35,7 @@ func TestDiscoveryIndexes(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, table := range []string{"venues", "venue_genres"} {
-		if _, err := pool.Exec(ctx, "analyze "+table); err != nil {
+		if _, err := pool.Exec(ctx, "vacuum analyze "+table); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -45,6 +45,7 @@ func TestDiscoveryIndexes(t *testing.T) {
 		raw     RawQuery
 		indexes []string
 	}{
+		{"text", RawQuery{Query: "venue4321"}, []string{"venues_search_name_trgm_idx", "venues_search_address_trgm_idx", "venues_search_city_trgm_idx"}},
 		{"city", RawQuery{City: "City 7"}, []string{"venues_search_city_idx"}},
 		{"country", RawQuery{CountryCode: "NO"}, []string{"venues_country_code_idx"}},
 		{"genre", RawQuery{GenreIDs: []string{strconv.Itoa(rare)}}, []string{"venue_genres_genre_id_idx"}},
