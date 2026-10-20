@@ -5,6 +5,7 @@ import (
 	"errors"
 	"regexp"
 	"strings"
+	"unicode/utf8"
 )
 
 type Genre struct {
@@ -67,6 +68,9 @@ func DecodeCursor(cursor string) (string, string, error) {
 	}
 	parts := strings.Split(string(raw), "|")
 	if len(parts) != 3 || parts[0] != "name-v1" || !CanonicalVenueID(parts[2]) {
+		return "", "", invalid
+	}
+	if !utf8.ValidString(parts[1]) || strings.ContainsRune(parts[1], 0) {
 		return "", "", invalid
 	}
 	return parts[1], parts[2], nil

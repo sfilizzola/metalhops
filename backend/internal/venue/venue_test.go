@@ -31,6 +31,8 @@ func TestCursorRejectsMalformedValues(t *testing.T) {
 		base64.RawURLEncoding.EncodeToString([]byte("name-v1|the bar")),
 		EncodeCursor("the bar", "AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA"),
 		EncodeCursor("the bar", "not-a-uuid"),
+		base64.RawURLEncoding.EncodeToString([]byte("name-v1|\xff|" + id)),
+		base64.RawURLEncoding.EncodeToString([]byte("name-v1|bad\x00key|" + id)),
 	} {
 		if _, _, err := DecodeCursor(cursor); !errors.As(err, new(*ValidationError)) {
 			t.Fatalf("cursor %q err %v", cursor, err)

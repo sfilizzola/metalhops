@@ -125,6 +125,9 @@ Never drift from it silently.
   route, or an app User on a privileged route, receives `403 forbidden`.
   JSON bodies are at most 64 KiB, valid UTF-8, one object, and reject unknown
   fields.
+- `GET /v1/genres`, `GET /v1/venues`, and `GET /v1/venues/{venueID}` are
+  public: they do not read `Authorization`, and only the per-IP limit
+  applies.
 - Profile writes, profile reports, moderation actions, report dismissals, and
   account deletion reserve a per-User bucket of burst 60 and one token per
   second. The reservation is committed only after the state change succeeds
