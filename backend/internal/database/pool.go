@@ -11,7 +11,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-const requiredMigrationVersion = "0008"
+const requiredMigrationVersion = "0009"
 
 type Pool struct {
 	pool *pgxpool.Pool

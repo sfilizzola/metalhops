@@ -71,6 +71,14 @@ func TestDataAPIClosed(t *testing.T) {
 		`insert into profile_moderation_actions (action, actor_type, reason) values ('suspended', 'system', 'spam')`,
 		`update profile_moderation_actions set reason = 'spam' where false`,
 		`delete from profile_moderation_actions where false`,
+		`select * from reviews`,
+		`insert into reviews (venue_id, user_id, rating, created_at, updated_at) values ('00000000-0000-4000-8000-000000000002', '00000000-0000-4000-8000-000000000001', 3, now(), now())`,
+		`update reviews set rating = 3 where false`,
+		`delete from reviews where false`,
+	}
+	var rls bool
+	if err := pool.QueryRow(ctx, `select relrowsecurity from pg_class where relname = 'reviews'`).Scan(&rls); err != nil || !rls {
+		t.Fatalf("reviews rls %v %v", rls, err)
 	}
 	for _, role := range []string{"anon", "authenticated", "service_role"} {
 		for _, sql := range statements {
