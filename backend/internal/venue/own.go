@@ -17,7 +17,7 @@ const ownDiscriminator = "submission-v1"
 const submissionColumns = `
 	v.id::text, v.name, v.description,
 	ST_Y(v.location::geometry), ST_X(v.location::geometry),
-	v.address, v.city, v.country_code, v.venue_type, v.verification_status,
+	v.address, v.city, v.country_code, v.venue_type, v.verification_status, v.rejection_reason, v.rejection_note,
 	` + genresJSON + `,
 	v.created_at, v.updated_at`
 
@@ -106,7 +106,7 @@ func scanSubmission(row venueScanner) (Submission, error) {
 	var genres []byte
 	if err := row.Scan(
 		&got.ID, &got.Name, &got.Description, &got.Latitude, &got.Longitude,
-		&got.Address, &got.City, &got.CountryCode, &got.VenueType, &got.VerificationStatus,
+		&got.Address, &got.City, &got.CountryCode, &got.VenueType, &got.VerificationStatus, &got.RejectionReason, &got.RejectionNote,
 		&genres, &got.CreatedAt, &got.UpdatedAt,
 	); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {

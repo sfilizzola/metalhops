@@ -3,7 +3,7 @@
 MetalHops MVP API roadmap. Refer to this document as **DevSteps** across every implementation session.
 
 **Date:** 2026-10-14
-**Status:** Sessions 1–9 are done. Session 10 is next. Sessions 11–14 are not started.
+**Status:** Sessions 1–10 are done. Session 11 is next. Sessions 12–14 are not started.
 
 ## Goal
 
@@ -330,8 +330,9 @@ hidden. A Submitter cannot change a verified or Delisted Venue.
 
 `venue_moderation_actions` is an append-only audit log containing the Venue
 Submission, prior and new status, rejection reason and note when applicable,
-delisting reason and note when applicable, operator User ID, and timestamp.
-It never stores a copy of the full Venue Submission.
+delisting reason and note when applicable, acting User ID (the operator, or
+the Submitter when a correction returns a rejected Venue to pending), and
+timestamp. It never stores a copy of the full Venue Submission.
 
 `venue_reports` stores the reporter User, Venue, reason, optional note, status
 (`pending`, `actioned`, or `dismissed`), creation time, and resolution
@@ -1095,7 +1096,8 @@ The Check-in cooldown remains a separate domain rule and returns `409`.
 | 7. Venue catalogue | Done |
 | 8. Venue discovery | Done |
 | 9. Venue submissions | Done |
-| 10–14 | Not started |
+| 10. Venue safety and moderation API | Done |
+| 11–14 | Not started |
 
 ### Session 1: Repository boundaries
 
@@ -1265,7 +1267,7 @@ status, and correct it without creating strong duplicates.
 
 ### Session 10: Venue safety and moderation API
 
-**Status:** Not started.
+**Status:** Done.
 
 Add rejection feedback, correction of rejected submissions, Venue Reports,
 the Delisted Venue lifecycle, append-only moderation audit, and privileged
@@ -1274,6 +1276,19 @@ Reports. The session plan names the routes and how the existing `403` rule
 recognizes an operator. Any `POST` moderation action that appends an audit
 entry requires `Idempotency-Key`; state-setting `PUT`/`PATCH` and `DELETE`
 routes do not. Do not add an operator-provisioning model.
+
+`POST /v1/venues/{venueID}/reports` files a Venue Report and requires
+`Idempotency-Key`. `GET /v1/moderation/venue-reports` lists pending reports.
+`GET /v1/moderation/venues/{venueID}` reads one Venue with its Submitter,
+pending reports, and newest 20 audit rows. `POST /v1/moderation/venues/{venueID}/actions` applies
+`verify`, `reject`, `delist`, or `reopen` and requires `Idempotency-Key`.
+`PUT /v1/moderation/venues/{venueID}` corrects a pending or verified Venue.
+`PATCH /v1/moderation/venue-reports/{reportID}` dismisses one report. Neither
+requires `Idempotency-Key`. The existing `403` rule recognizes an operator
+by a `platform_operators` row through `requireOperator`. Migration `0008` adds
+the Delisted status, rejection and delisting feedback, Venue Reports, and the
+audit, and raises readiness to `0008`. Profile and Venue Reports share one
+report quota. The Review Report effect of delisting moves to Session 12.
 
 **Exit condition:** operators can verify, reject, correct, or delist Venues
 through those endpoints; Users can report a Venue in the public catalogue;

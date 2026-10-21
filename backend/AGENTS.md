@@ -21,8 +21,9 @@ PostGIS). Run commands from `backend/`.
 - `internal/idempotency`: in-transaction retry helper. No HTTP route.
 - `internal/ratelimit`: public per-IP token buckets, client-IP walk, and the per-User write limiter.
 - `internal/venue`: Genre list, public catalogue, discovery filters, sort modes,
-  filter-bound cursors, and Venue submissions (create, correct while pending,
-  the caller's list and detail, duplicates, and the quota).
+  filter-bound cursors, Venue submissions, Venue reports, and operator
+  moderation (verify, reject, correct, delist, reopen, and the append-only
+  audit).
 - `internal/pgtest`: PostGIS test harness. Production code does not import it.
 - `openapi.yaml`: contract for implemented HTTP routes.
 
@@ -39,7 +40,7 @@ when that file exists. Variables already in the environment win.
 
 `GET /healthz` reports process health and does not check the database.
 `GET /readyz` returns 200 when the database ping succeeds and migration
-`0007` or newer is recorded. Otherwise it returns 503.
+`0008` or newer is recorded. Otherwise it returns 503.
 `GET /openapi.yaml` serves the embedded `openapi.yaml` in every environment.
 `GET /docs` serves the Scalar page when `DOCS_UI_ENABLED` is unset or `true`.
 The exact value `false` leaves `/docs` unregistered. Any other value stops
@@ -119,22 +120,28 @@ Never drift from it silently.
   refresh. Every protected request then reads `auth.sessions` for that session
   and User.
 - App routes are `GET`, `PATCH`, and `DELETE /v1/me`, `POST /v1/venues`,
-  `GET /v1/me/venues`, `GET` and `PUT /v1/me/venues/{venueID}`, and
-  `POST /v1/profiles/{username}/reports`. Privileged routes are
+  `GET /v1/me/venues`, `GET` and `PUT /v1/me/venues/{venueID}`,
+  `POST /v1/profiles/{username}/reports`, and
+  `POST /v1/venues/{venueID}/reports`. Privileged routes are
   `GET /v1/moderation/profile-reports`,
   `GET /v1/moderation/profiles/{userID}`,
-  `POST /v1/moderation/profiles/{userID}/actions`, and
-  `PATCH /v1/moderation/profile-reports/{reportID}`. An operator on an app
-  route, or an app User on a privileged route, receives `403 forbidden`.
+  `POST /v1/moderation/profiles/{userID}/actions`,
+  `PATCH /v1/moderation/profile-reports/{reportID}`,
+  `GET /v1/moderation/venue-reports`,
+  `GET` and `PUT /v1/moderation/venues/{venueID}`,
+  `POST /v1/moderation/venues/{venueID}/actions`, and
+  `PATCH /v1/moderation/venue-reports/{reportID}`. A `platform_operators` row
+  marks an operator. An operator on an app route, or an app User on a
+  privileged route, receives `403 forbidden`.
   JSON bodies are at most 64 KiB, valid UTF-8, one object, and reject unknown
   fields.
 - `GET /v1/genres`, `GET /v1/venues`, and `GET /v1/venues/{venueID}` are
   public: they do not read `Authorization`, and only the per-IP limit
   applies.
-- Profile writes, profile reports, Venue submissions, changed Venue
-  corrections, moderation actions, report dismissals, and
-  account deletion reserve a per-User bucket of burst 60 and one token per
-  second. The reservation is committed only after the state change succeeds
-  and cancelled when it does not. `GET` does not reserve.
+- Profile writes, profile and Venue reports, Venue submissions, changed Venue
+  corrections (by a Submitter or an operator), moderation actions, report
+  dismissals, and account deletion reserve a per-User bucket of burst 60 and
+  one token per second. The reservation is committed only after the state
+  change succeeds and cancelled when it does not. `GET` does not reserve.
 - Deleting a User removes the Profile and idempotency rows. Venue submissions
   remain with `submitted_by` null.

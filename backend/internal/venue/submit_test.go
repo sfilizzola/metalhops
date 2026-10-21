@@ -85,14 +85,18 @@ func seedVenue(t *testing.T, pool *pgxpool.Pool, s seed) {
 	if s.updated.IsZero() {
 		s.updated = s.created
 	}
+	var rejectionReason, rejectionNote *string
+	if s.status == "rejected" {
+		rejectionReason, rejectionNote = ptr("other"), ptr("seed")
+	}
 	if _, err := pool.Exec(ctx, `
 		insert into venues (
 			id, name, location, address, city, country_code, venue_type,
-			verification_status, submitted_by, created_at, updated_at
+			verification_status, submitted_by, created_at, updated_at, rejection_reason, rejection_note
 		) values (
 			$1, $2, ST_SetSRID(ST_MakePoint($3::float8, $4::float8), 4326)::geography,
-			'1 Metal Street', 'Oslo', 'NO', 'pub', $5, $6::uuid, $7, $8
-		)`, s.id, s.name, s.lon, s.lat, s.status, s.submitter, s.created, s.updated); err != nil {
+			'1 Metal Street', 'Oslo', 'NO', 'pub', $5, $6::uuid, $7, $8, $9, $10
+		)`, s.id, s.name, s.lon, s.lat, s.status, s.submitter, s.created, s.updated, rejectionReason, rejectionNote); err != nil {
 		t.Fatal(err)
 	}
 	if s.genre == 0 {
@@ -447,9 +451,8 @@ func TestCorrectPendingSubmission(t *testing.T) {
 	}
 
 	seedVenue(t, h.pool, seed{id: vid(31), name: "Verified Own", status: "verified", submitter: ptr(userA), lat: 16, lon: 15})
-	seedVenue(t, h.pool, seed{id: vid(32), name: "Rejected Own", status: "rejected", submitter: ptr(userA), lat: 17, lon: 15})
 	seedVenue(t, h.pool, seed{id: vid(33), name: "Orphan", status: "pending", lat: 18, lon: 15})
-	for _, c := range []struct{ id, status string }{{vid(31), "verified"}, {vid(32), "rejected"}} {
+	for _, c := range []struct{ id, status string }{{vid(31), "verified"}} {
 		var notPending *NotPendingError
 		if _, err := correct(h, userA, c.id, rawVenue("Changed", 16, 15, 999999)); !errors.As(err, &notPending) || notPending.Status != c.status {
 			t.Fatalf("%s err %v", c.id, err)
@@ -519,5 +522,72 @@ func TestCorrectContributionRules(t *testing.T) {
 	}
 	if got, err := h.service.GetOwn(context.Background(), renamed, vid(40)); err != nil || got.Name != "Mine" {
 		t.Fatalf("read while renamed %+v %v", got, err)
+	}
+}
+
+func TestCorrectRejectedVenue(t *testing.T) {
+	h := newHarness(t)
+	insertUser(t, h.pool, userA, "active", nil)
+	seedVenue(t, h.pool, seed{id: vid(40), name: "Old Name", status: "rejected", submitter: ptr(userA), lat: 30, lon: 10})
+	punk := genreID(t, h.pool, "Punk")
+
+	got, err := h.service.Correct(context.Background(), CorrectCommand{UserID: userA, VenueID: vid(40), Fields: rawVenue("New Name", 30, 10, punk)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.VerificationStatus != "pending" || got.RejectionReason != nil || got.RejectionNote != nil || got.Name != "New Name" {
+		t.Fatalf("corrected %+v", got)
+	}
+	var reason *string
+	if err := h.pool.QueryRow(context.Background(), `select rejection_reason from venues where id = $1`, vid(40)).Scan(&reason); err != nil || reason != nil {
+		t.Fatalf("feedback not cleared %v %v", reason, err)
+	}
+	var action, prior, next string
+	var actor, rejection, delisting *string
+	if err := h.pool.QueryRow(context.Background(), `
+		select action, prior_status, new_status, actor_user_id::text, rejection_reason, delisting_reason
+		from venue_moderation_actions where venue_id = $1`, vid(40)).Scan(&action, &prior, &next, &actor, &rejection, &delisting); err != nil ||
+		action != "resubmit" || prior != "rejected" || next != "pending" || actor == nil || *actor != userA || rejection != nil || delisting != nil {
+		t.Fatalf("resubmit audit %s %s %s %v %v %v %v", action, prior, next, actor, rejection, delisting, err)
+	}
+	if _, err := h.service.Correct(context.Background(), CorrectCommand{UserID: userA, VenueID: vid(40), Fields: rawVenue("New Name", 30, 10, punk)}); err != nil {
+		t.Fatalf("pending recorrection: %v", err)
+	}
+	// A changed correction of a pending Venue is not a moderation event.
+	if _, err := h.service.Correct(context.Background(), CorrectCommand{UserID: userA, VenueID: vid(40), Fields: rawVenue("Newer Name", 30, 10, punk)}); err != nil {
+		t.Fatalf("pending change: %v", err)
+	}
+	if n := countRows(t, h, `select count(*) from venue_moderation_actions where venue_id = $1`, vid(40)); n != 1 {
+		t.Fatalf("audit rows %d", n)
+	}
+}
+
+func TestCorrectRejectedWithSameContent(t *testing.T) {
+	h := newHarness(t)
+	insertUser(t, h.pool, userA, "active", nil)
+	seedVenue(t, h.pool, seed{id: vid(41), name: "Same", status: "rejected", submitter: ptr(userA), lat: 31, lon: 10})
+	punk := genreID(t, h.pool, "Punk")
+	got, err := h.service.Correct(context.Background(), CorrectCommand{UserID: userA, VenueID: vid(41), Fields: rawVenue("Same", 31, 10, punk)})
+	if err != nil || got.VerificationStatus != "pending" || got.RejectionReason != nil {
+		t.Fatalf("unchanged rejected correction stayed rejected: %+v %v", got, err)
+	}
+}
+
+func TestCorrectRefusesVerifiedAndDelisted(t *testing.T) {
+	h := newHarness(t)
+	insertUser(t, h.pool, userA, "active", nil)
+	seedVenue(t, h.pool, seed{id: vid(42), name: "Live", status: "verified", submitter: ptr(userA), lat: 32, lon: 10})
+	if _, err := h.pool.Exec(context.Background(), `
+		insert into venues (id, name, location, address, city, country_code, venue_type, verification_status, delisting_reason, submitted_by)
+		values ($1, 'Gone', ST_MakePoint(10, 33)::geography, '1 Street', 'Oslo', 'NO', 'pub', 'delisted', 'duplicate', $2)`, vid(43), userA); err != nil {
+		t.Fatal(err)
+	}
+	punk := genreID(t, h.pool, "Punk")
+	for _, id := range []string{vid(42), vid(43)} {
+		_, err := h.service.Correct(context.Background(), CorrectCommand{UserID: userA, VenueID: id, Fields: rawVenue("X", 1, 1, punk)})
+		var notPending *NotPendingError
+		if !errors.As(err, &notPending) {
+			t.Fatalf("%s: %v", id, err)
+		}
 	}
 }

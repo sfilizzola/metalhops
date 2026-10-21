@@ -49,9 +49,27 @@ func TestOpenAPIDocument(t *testing.T) {
 		"venue_submission",
 		"duplicate_venue",
 		"venue_not_pending",
-		"Only a pending venue can be corrected.",
+		"This venue can no longer be corrected.",
 		"The submission limit has been reached.",
 		"genre_ids",
+		"/v1/venues/{venueID}/reports",
+		"/v1/moderation/venue-reports",
+		"/v1/moderation/venue-reports/{reportID}",
+		"/v1/moderation/venues/{venueID}",
+		"/v1/moderation/venues/{venueID}/actions",
+		"venue_report",
+		"venue_moderation_action",
+		"venue_already_reported",
+		"venue_report_not_found",
+		"invalid_venue_transition",
+		"rejection_reason",
+		"delisting_reason",
+		"delisted",
+		"The report limit has been reached.",
+		"venue_incomplete",
+		"This venue needs at least one genre before it can be verified.",
+		"actor_user_id",
+		"resubmit",
 	} {
 		if !bytes.Contains(OpenAPI, []byte(want)) {
 			t.Fatalf("missing %q", want)
@@ -61,7 +79,10 @@ func TestOpenAPIDocument(t *testing.T) {
 	if genres < 0 || bytes.Contains(OpenAPI[:genres], []byte("security:")) {
 		t.Fatal("operational route requires security")
 	}
-	for _, op := range []string{"createVenueSubmission", "listMyVenues", "getMyVenue", "correctMyVenue"} {
+	for _, op := range []string{
+		"createVenueSubmission", "listMyVenues", "getMyVenue", "correctMyVenue",
+		"reportVenue", "listVenueReports", "getModerationVenue", "applyVenueAction", "correctVenueAsOperator", "dismissVenueReport",
+	} {
 		start := bytes.Index(OpenAPI, []byte("operationId: "+op))
 		if start < 0 {
 			t.Fatalf("missing %s", op)

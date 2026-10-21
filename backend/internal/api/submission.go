@@ -50,6 +50,8 @@ type submissionView struct {
 	VenueType          string      `json:"venue_type"`
 	Genres             []genreView `json:"genres"`
 	VerificationStatus string      `json:"verification_status"`
+	RejectionReason    *string     `json:"rejection_reason"`
+	RejectionNote      *string     `json:"rejection_note"`
 	CreatedAt          time.Time   `json:"created_at"`
 	UpdatedAt          time.Time   `json:"updated_at"`
 }
@@ -63,6 +65,7 @@ func submissionJSON(got venue.Submission) submissionView {
 		ID: got.ID, Name: got.Name, Description: got.Description, Latitude: got.Latitude, Longitude: got.Longitude,
 		Address: got.Address, City: got.City, CountryCode: got.CountryCode, VenueType: got.VenueType,
 		Genres: genres, VerificationStatus: got.VerificationStatus,
+		RejectionReason: got.RejectionReason, RejectionNote: got.RejectionNote,
 		CreatedAt: got.CreatedAt.UTC(), UpdatedAt: got.UpdatedAt.UTC(),
 	}
 }
@@ -163,6 +166,11 @@ func getSubmission(w http.ResponseWriter, r *http.Request, submissions Submissio
 }
 
 func writeSubmissionError(logger *slog.Logger, w http.ResponseWriter, r *http.Request, err error) {
+	writeLabeledSubmissionError(logger, "venue submission", w, r, err)
+}
+
+// writeLabeledSubmissionError maps the shared venue errors; label names the route family in the 500 log.
+func writeLabeledSubmissionError(logger *slog.Logger, label string, w http.ResponseWriter, r *http.Request, err error) {
 	id := requestID(r.Context())
 	if writeContributionError(w, id, err) {
 		return
@@ -182,11 +190,7 @@ func writeSubmissionError(logger *slog.Logger, w http.ResponseWriter, r *http.Re
 	case errors.Is(err, venue.ErrNotFound):
 		WriteError(w, http.StatusNotFound, "venue_not_found", "Venue not found.", id, nil)
 	case errors.As(err, &notPending):
-		message := "This venue can no longer be corrected."
-		if notPending.Status == "rejected" {
-			message = "Only a pending venue can be corrected."
-		}
-		WriteError(w, http.StatusConflict, "venue_not_pending", message, id, nil)
+		WriteError(w, http.StatusConflict, "venue_not_pending", "This venue can no longer be corrected.", id, nil)
 	case errors.As(err, &duplicate):
 		var details map[string]any
 		if duplicate.Match != nil {
@@ -203,7 +207,7 @@ func writeSubmissionError(logger *slog.Logger, w http.ResponseWriter, r *http.Re
 		w.Header().Set("Retry-After", strconv.Itoa(limited.RetryAfter))
 		WriteError(w, http.StatusTooManyRequests, "rate_limited", "Too many requests.", id, nil)
 	default:
-		logger.Error("venue submission", "request_id", id, "err", err)
+		logger.Error(label, "request_id", id, "err", err)
 		WriteError(w, http.StatusInternalServerError, "internal_error", "The server could not complete the request.", id, nil)
 	}
 }

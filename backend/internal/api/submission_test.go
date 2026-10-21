@@ -176,7 +176,7 @@ func TestSubmissionErrors(t *testing.T) {
 		{&profile.SuspendedError{Until: &until}, 403, "profile_suspended", `"suspended_until":"2026-11-01T00:00:00Z"`, ""},
 		{venue.ErrNotFound, 404, "venue_not_found", "Venue not found.", ""},
 		{&venue.NotPendingError{Status: "verified"}, 409, "venue_not_pending", "This venue can no longer be corrected.", ""},
-		{&venue.NotPendingError{Status: "rejected"}, 409, "venue_not_pending", "Only a pending venue can be corrected.", ""},
+		{&venue.NotPendingError{Status: "delisted"}, 409, "venue_not_pending", "This venue can no longer be corrected.", ""},
 		{&venue.DuplicateError{Match: &venue.DuplicateMatch{VenueID: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", VerificationStatus: "verified"}}, 409, "duplicate_venue", `"details":{"venue_id":"bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb","verification_status":"verified"}`, ""},
 		{&venue.QuotaError{RetryAfter: 3600}, 429, "quota_exceeded", "The submission limit has been reached.", "3600"},
 		{&venue.RateLimitError{RetryAfter: 2}, 429, "rate_limited", "Too many requests.", "2"},
