@@ -34,6 +34,7 @@ type Options struct {
 	Catalogue       Catalogue
 	Submissions     Submissions
 	VenueModeration VenueModeration
+	Reviews         Reviews
 }
 
 func New(options Options) http.Handler {
@@ -95,6 +96,18 @@ func New(options Options) http.Handler {
 	})))
 	mux.Handle("POST /v1/venues/{venueID}/reports", requireApp(options.Auth, options.Logger, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		reportVenue(w, r, options.VenueModeration, options.Logger)
+	})))
+	mux.HandleFunc("GET /v1/venues/{venueID}/reviews", func(w http.ResponseWriter, r *http.Request) {
+		listReviews(w, r, options.Reviews, options.Logger)
+	})
+	mux.Handle("GET /v1/venues/{venueID}/reviews/me", requireApp(options.Auth, options.Logger, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		getOwnReview(w, r, options.Reviews, options.Logger)
+	})))
+	mux.Handle("PUT /v1/venues/{venueID}/reviews/me", requireApp(options.Auth, options.Logger, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		saveReview(w, r, options.Reviews, options.Logger)
+	})))
+	mux.Handle("DELETE /v1/venues/{venueID}/reviews/me", requireApp(options.Auth, options.Logger, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		deleteReview(w, r, options.Reviews, options.Logger)
 	})))
 	mux.Handle("GET /v1/moderation/venue-reports", requireOperator(options.Auth, options.Logger, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		listVenueReports(w, r, options.VenueModeration, options.Logger)

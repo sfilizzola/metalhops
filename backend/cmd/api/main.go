@@ -16,6 +16,7 @@ import (
 	"github.com/metalhops/metalhops/backend/internal/database"
 	"github.com/metalhops/metalhops/backend/internal/profile"
 	"github.com/metalhops/metalhops/backend/internal/ratelimit"
+	"github.com/metalhops/metalhops/backend/internal/review"
 	"github.com/metalhops/metalhops/backend/internal/venue"
 )
 
@@ -42,6 +43,7 @@ func main() {
 	admin := profile.NewAdminClient(cfg.SupabaseURL, cfg.SupabaseServiceRoleKey, httpClient)
 	profiles := profile.New(pool.Raw(), userLimiter, admin, time.Now)
 	venues := venue.New(pool.Raw(), profiles, userLimiter, time.Now)
+	reviews := review.New(pool.Raw(), profiles, userLimiter, time.Now)
 	srv := &http.Server{
 		Addr: ":" + cfg.Port,
 		Handler: api.New(api.Options{
@@ -54,6 +56,7 @@ func main() {
 			Catalogue:       venues,
 			Submissions:     venues,
 			VenueModeration: venues,
+			Reviews:         reviews,
 		}),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       10 * time.Second,
