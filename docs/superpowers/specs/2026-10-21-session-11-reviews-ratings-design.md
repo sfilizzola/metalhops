@@ -6,7 +6,8 @@
 ## Goal
 
 Android can show, create, edit, and delete a Review. A Review is one User's
-rating of 1 through 5 and optional commentary on one Verified Venue. One User
+rating of 1 through 5 and optional commentary on one Verified Venue. Five is
+the strongest assessment and one is the weakest. One User
 has at most one Review for a Venue.
 
 The session adds:
@@ -67,9 +68,12 @@ Reads and writes use a 2-second timeout, matching venue queries.
 - `updated_at timestamptz` not null;
 - unique `(venue_id, user_id)`, named `reviews_venue_user_key`.
 
-The service applies `strings.TrimSpace` to commentary and stores null when the
-trimmed value is empty.
-The check never sees `""`. The service writes both timestamps from its clock.
+Commentary follows the venue-description text rule. The service rejects a null
+byte or a non-whitespace control character before storing. It trims, normalizes
+the rest to Unicode NFC, and stores null when that value is empty. The length
+check runs after normalization. The check never sees `""`. An unchanged save
+compares this normalized commentary, so the same words in decomposed form are
+not an edit. The service writes both timestamps from its clock.
 There is no `updated_at` trigger. An unchanged save issues no `UPDATE`.
 
 User deletion and deletion of the Venue row cascade the Review away. Rejecting
@@ -183,13 +187,15 @@ type, and malformed-body errors match the existing JSON rules.
 `rating` must be a JSON integer from 1 through 5. A fraction, including `4.0`,
 an exponent, a string, null, or omission is
 `rating: must be between 1 and 5`. `commentary`, when present, is a string or
-null. Any other JSON type is `commentary: must be text`. Commentary uses the `strings.TrimSpace` rule above.
-Omitted, null, or whitespace-only commentary is stored as null. Longer than
-2,000 characters after trim is `commentary: must be at most 2000 characters`.
-Several field errors return together.
+null. Any other JSON type, a null byte, or a non-whitespace control character
+is `commentary: must be text`. Line feeds are allowed. The service trims and
+normalizes to Unicode NFC. Omitted, null, or whitespace-only commentary is
+stored as null. Longer than 2,000 characters after that is
+`commentary: must be at most 2000 characters`. Several field errors return
+together.
 
 The first insert returns `201` and the own-Review document. A later change
-returns `200` and that document. An unchanged rating and commentary returns
+returns `200` and that document. An unchanged rating and normalized commentary returns
 `200` with the stored Review, leaves `updated_at` at the earlier timestamp,
 and spends no write token. The clock moving between the two calls is how the
 test shows the second call did not write.
@@ -205,6 +211,9 @@ venue_not_found` for a suspended caller as well, and a stored Review stays
 unchanged. A pending public Venue is `409 venue_not_verified` with
 `Reviews open after this venue is verified.` The row, if one were present,
 stays unchanged.
+
+The Submitter may Review that Venue once it is verified. The write does not
+look up `submitted_by`.
 
 After the Venue check, an active Profile is required:
 
@@ -274,7 +283,7 @@ existing Docker-unavailable reason. CI treats failures as blocking. Cover:
 - create, replace, and the unchanged no-op, including a clock that moves while
   `updated_at` stays put and the token count stays 60;
 - a token spent only on a committed insert, update, or delete;
-- commentary trim, null, 2,000 characters accepted, 2,001 rejected, and rating
+- commentary trim, NFC, null, rejected control characters, 2,000 characters accepted, 2,001 rejected, and rating
   bounds;
 - two concurrent first saves leaving one row;
 - a pending write returning `409` and inserting nothing;

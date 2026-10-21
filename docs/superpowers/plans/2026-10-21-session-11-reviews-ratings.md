@@ -30,7 +30,7 @@
 - A User whose suspension already expired must be able to save a Review on the first request. Pinned in Task 4 (`TestSaveAfterExpiredSuspension`).
 - A Review written while verified, then the Venue is delisted: list, own read, `PUT`, and `DELETE` must all hide it and leave the row intact. Pinned in Task 4 (`TestDelistedVenueKeepsReview`).
 - A cursor copied from one Venue's list and replayed on another Venue must be `400 cursor: invalid`, not a silently wrong page. Pinned in Task 2 (`TestCursorRoundTrip`) and Task 3 (`TestListPagination`).
-- Commentary of only Unicode spaces (e.g. `"\u00a0 \n"`) must store null, not fail the 1–2,000 check. Pinned in Task 2 (`TestParseDraft`).
+- Commentary follows the venue-description text rule: a null byte or non-whitespace control is `commentary: must be text`; trim then Unicode NFC; length is counted after that; whitespace-only, including `"\u00a0 \n"`, stores null. The same words in decomposed form are not an edit. Pinned in Task 2 (`TestParseDraft`) and Task 4 (`TestSaveNormalizedCommentaryNoop`).
 
 ---
 
@@ -189,7 +189,8 @@ func decodeCursor(cursor, venueID string) (time.Time, string, error)
 - `rating` `1`, `5` → OK; `0`, `6`, `-1`, `4.0`, `4e0`, `"4"`, `true`, `null`, omitted (nil) → `{"rating": "must be between 1 and 5"}`;
 - `commentary` omitted, `null`, `"   "`, `"\u00a0 \n"` → `Commentary == nil`;
 - `"  loud  "` → `"loud"`;
-- `strings.Repeat("é", 2000)` → OK; 2001 runes → `{"commentary": "must be at most 2000 characters"}`;
+- `"e\u0301"` → `"é"` (NFC); a null byte and a bell (`"\u0007"`) → `{"commentary": "must be text"}`; a line feed inside the text is kept;
+- `strings.Repeat("é", 2000)` → OK; 2001 NFC runes → `{"commentary": "must be at most 2000 characters"}`; 2001 decomposed `e` + combining-acute pairs normalize under the cap and succeed;
 - `5`, `{}`, `[]` as commentary → `{"commentary": "must be text"}`;
 - bad rating and bad commentary together → both keys.
 
@@ -207,7 +208,7 @@ Expected: FAIL (package does not compile).
 
 - [ ] **Step 3: Implement `review.go`**
 
-- `ParseDraft`: rating is valid only when `bytes.TrimSpace(rating)` matches `^[1-5]$` (rejects fractions, exponents, strings, booleans, null in one rule). Commentary: nil or `null` → nil; otherwise `json.Unmarshal` into `string`, failure → `must be text`; `strings.TrimSpace`; empty → nil; `utf8.RuneCountInString > 2000` → length error. Collect both fields before returning.
+- `ParseDraft`: rating is valid only when `bytes.TrimSpace(rating)` matches `^[1-5]$` (rejects fractions, exponents, strings, booleans, null in one rule). Commentary: nil or `null` → nil; otherwise `json.Unmarshal` into `string`, failure → `must be text`. On the raw string, a null byte or a non-whitespace control (`unicode.IsControl` and not `unicode.IsSpace`, the venue-description rule) → `must be text`. Then `norm.NFC.String(strings.TrimSpace(...))`; empty → nil; `utf8.RuneCountInString > 2000` → length error. `golang.org/x/text/unicode/norm` is already a dependency. Collect both fields before returning.
 - `CanonicalID`: same regexp as `venue.CanonicalVenueID` (lowercase canonical UUID). Duplicated on purpose; review must not import venue.
 - Cursor payload: `review-v1|{venueID}|{createdAt.UTC().Format(time.RFC3339Nano)}|{id}`, `base64.RawURLEncoding`. Decode rejects anything other than exactly four parts, discriminator `review-v1`, venue id equal to the argument, parseable time, canonical id.
 
@@ -313,12 +314,15 @@ Advance the clock by 1 ms before each later call, so refill stays below one toke
 - save rating `2`, commentary omitted → `Created: false`, `Commentary == nil`, `UpdatedAt == t0+2ms`, `CreatedAt == t0`, `tokensLeft == 58`;
 - `select count(*) from reviews` == 1.
 
-`TestSaveValidation`: invalid rating → `*ValidationError`, no row, no token.
+`TestSaveNormalizedCommentaryNoop`: save commentary `"e\u0301"` → stored `"é"`, one token spent; save `"é"` after the clock advances → `Created: false`, `UpdatedAt` unchanged, token count unchanged.
+
+`TestSaveValidation`: invalid rating → `*ValidationError`, no row, no token. Also a null byte in commentary → `*ValidationError`, no row, no token.
 
 `TestSaveOutcomes`:
 - pending venue → `ErrVenueNotVerified`, no row, no token;
 - rejected, delisted, bare, unknown → `ErrVenueNotFound`;
 - caller with no Profile → `profile.ErrProfileRequired`; `rename_required` → `profile.ErrRenameRequired`; suspended with future `until` → `*profile.SuspendedError`;
+- the Venue's Submitter saves a Review → `Created: true`. The test inserts `submitted_by` and does not assert on it;
 - suspended caller on a delisted venue → `ErrVenueNotFound` (Venue before Profile).
 
 `TestSaveAfterExpiredSuspension`: caller `suspended` with `until` = `t0 - 1h` → `Save` succeeds, `Created: true`.
@@ -346,7 +350,7 @@ Order for both (spec's Transaction section):
 3. In the transaction, read the venue status `for share of v` with the public predicate. Hidden → `ErrVenueNotFound`; `pending` → `ErrVenueNotVerified`.
 4. `profile.RequireContributor(txCtx, tx, userID)`.
 5. `select … from reviews where venue_id = $1 and user_id = $2` (no extra lock; the profile `for update` serializes this User).
-6. `Save` no-op when rating and commentary equal the stored row: commit, return the stored `Own`, no reservation. `Delete` with no row → `ErrReviewNotFound`.
+6. `Save` no-op when rating and normalized commentary equal the stored row: commit, return the stored `Own`, no reservation. `Delete` with no row → `ErrReviewNotFound`.
 7. `Reserve`; refusal → `&RateLimitError{RetryAfter: retryAfter}`.
 8. Insert (`created_at = updated_at = s.clock()`), `update … set rating, commentary, updated_at = s.clock()`, or `delete`. Insert and update use `returning` plus a join to `profiles` for the `Own` fields (or a follow-up read in the same tx).
 9. Commit, then `reservation.Commit()`; any earlier return cancels via the same deferred pattern as `venue.ReportVenue`.

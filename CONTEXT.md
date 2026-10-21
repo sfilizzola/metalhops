@@ -183,7 +183,7 @@ The User who created a Venue Submission, not its owner, and not shown in the
 public catalogue. User deletion leaves the Venue Submission with no Submitter,
 nobody else becomes one, and any User may report that public Venue. The User
 recognizes their own Venue from their submission list, not from the public
-catalogue.
+catalogue. Once that Venue is verified, the Submitter may Review it.
 _Avoid_: Owner
 
 **Verified Venue Owner**:
@@ -229,10 +229,14 @@ Submission was rejected and what the Submitter may need to correct.
 _Avoid_: Rejection message
 
 **Review**:
-A User's assessment of one Verified Venue, containing a required rating and
-optional written commentary. It cannot target a Venue that is not verified. A
+One User's assessment of a Verified Venue. That User has one Review for a
+Venue, containing a required whole-number rating from 1 through 5 and optional
+written commentary. Five is the strongest assessment and one is the weakest. It
+cannot target a Venue that is not verified, and a pending Venue has none. A
 rating without commentary is still a complete Review; if a Platform Moderator
-removes commentary, that Review remains rating-only.
+removes commentary, that Review remains rating-only. The User may end their
+Review, and assessing that Venue again is a new Review. The average of a
+Venue's ratings belongs to that Venue and is the same for every reader.
 _Avoid_: Rating record, comment
 
 **Hidden Commentary**:
@@ -278,6 +282,34 @@ review, but the Submitter is not necessarily the Venue's owner.
 **Developer:** Is a four-star rating without text a Review?
 
 **Domain expert:** Yes. Commentary is optional, but every Review has a rating.
+
+**Developer:** This Venue is still pending, and it is on the public catalogue. Are there Reviews on it?
+
+**Domain expert:** No. A pending Venue has none. Reviews open once it is verified.
+
+**Developer:** The User saves the same rating and the same commentary again. Has the Review changed?
+
+**Domain expert:** No. It is the same assessment.
+
+**Developer:** The Submitter rates a Venue after it is verified. Is that Review allowed?
+
+**Domain expert:** Yes. Submitting a Venue does not keep its Submitter from reviewing it.
+
+**Developer:** Two saves for the same User and Venue arrive together, with different ratings. How many Reviews remain?
+
+**Domain expert:** One. The assessment that lands last is the Review.
+
+**Developer:** Is a rating of four and a half a Review?
+
+**Domain expert:** No. The rating is a whole number from 1 through 5. Five is the strongest assessment and one is the weakest.
+
+**Developer:** The User removes their Review, then rates the Venue again. Is it the same Review?
+
+**Domain expert:** No. The first one has ended. The later assessment is a new Review.
+
+**Developer:** This User rated the Venue 5, and the public average is 4.2. Does that User see a different average?
+
+**Domain expert:** No. The average belongs to the Venue and is the same for every reader. That User's Review is their own.
 
 **Developer:** Can a Verified Venue Owner delete a negative Review?
 
