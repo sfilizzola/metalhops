@@ -7,6 +7,10 @@
 # Local git worktrees
 .worktrees/
 
+# Local Claude Code state
+.claude/worktrees/
+.claude/settings.local.json
+
 # Android / Gradle
 .gradle/
 build/
