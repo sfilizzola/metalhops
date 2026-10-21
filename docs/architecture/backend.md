@@ -126,6 +126,11 @@ For example, the Venue module owns submission validation, Genre assignment,
 duplicate detection, the advisory lock, the transaction, and safe duplicate
 details. Splitting those rules among public packages would reduce locality.
 
+The Review module owns Review validation, authorship, the write transaction,
+the public list, and the caller's own Review. The Venue catalogue query reads
+`reviews` for `average_rating` and `review_count`, so list and detail stay one
+round trip. `internal/venue` does not import `internal/review`.
+
 File names may describe implementation roles:
 
 ```text

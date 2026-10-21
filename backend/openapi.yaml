@@ -377,6 +377,24 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/VenueResponse"
+              example:
+                data:
+                  id: bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb
+                  name: Iron Maiden Pub
+                  description: null
+                  latitude: 59.91
+                  longitude: 10.75
+                  address: 1 Metal Street
+                  city: Oslo
+                  country_code: "NO"
+                  venue_type: pub
+                  verification_status: verified
+                  genres:
+                    - id: 1
+                      name: Classic rock
+                  average_rating: 4.3
+                  review_count: 3
+                  check_in_count: 0
         "400":
           description: The id is not a canonical UUID, or a query parameter was sent.
           content:
@@ -405,6 +423,254 @@ paths:
           $ref: "#/components/responses/RateLimited"
         "500":
           $ref: "#/components/responses/Internal"
+  /v1/venues/{venueID}/reviews:
+    get:
+      operationId: listVenueReviews
+      summary: List a public venue's reviews
+      description: Ordered by created_at descending, then id descending. Editing a Review does not move it. A pending Venue returns an empty page. An author who must rename or is suspended appears as MetalHops User with a null username, for every viewer.
+      parameters:
+        - name: venueID
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+            pattern: "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: cursor
+          in: query
+          required: false
+          description: Opaque next_cursor from a previous page of this Venue's reviews. A cursor from another Venue fails with cursor invalid.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: One page of Reviews.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReviewListResponse"
+              example:
+                data:
+                  - id: dddddddd-dddd-4ddd-8ddd-dddddddddddd
+                    rating: 4
+                    commentary: loud and cold
+                    author:
+                      username: metal_fan
+                      display_name: Metal Fan
+                    created_at: "2026-10-21T09:00:00Z"
+                    updated_at: "2026-10-21T09:00:00Z"
+                meta:
+                  next_cursor: null
+        "400":
+          description: The id is not a canonical UUID, the limit or cursor is invalid, or a parameter is repeated or unknown.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                error:
+                  code: validation_error
+                  message: The request is invalid.
+                  request_id: abc
+                  fields:
+                    cursor: invalid
+        "404":
+          description: The Venue is not in the public catalogue.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                error:
+                  code: venue_not_found
+                  message: Venue not found.
+                  request_id: abc
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/Internal"
+  /v1/venues/{venueID}/reviews/me:
+    parameters:
+      - name: venueID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          pattern: "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    get:
+      operationId: getMyReview
+      summary: Read the caller's review of a venue
+      description: Shows the stored Username and display name. A caller who must rename or is suspended can read it.
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: The caller's Review on a verified Venue.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OwnReviewResponse"
+        "400":
+          description: The id is not a canonical UUID, or a query parameter was sent.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/ContributionForbidden"
+        "404":
+          description: The caller has no Review on this Venue, the Venue is pending, or it is not in the public catalogue.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                error:
+                  code: review_not_found
+                  message: Review not found.
+                  request_id: abc
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/Internal"
+        "502":
+          $ref: "#/components/responses/AuthProvider"
+    put:
+      operationId: putMyReview
+      summary: Set the caller's review of a verified venue
+      description: Replaces the caller's whole Review. It does not take an Idempotency-Key. An unchanged rating and normalized commentary returns 200 with the stored Review, leaves updated_at unchanged, and spends no write token.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReviewRequest"
+            example:
+              rating: 4
+              commentary: loud and cold
+      responses:
+        "200":
+          description: The Review was replaced or was already equal.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OwnReviewResponse"
+        "201":
+          description: The Review was created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OwnReviewResponse"
+              example:
+                data:
+                  id: dddddddd-dddd-4ddd-8ddd-dddddddddddd
+                  user_id: eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee
+                  rating: 4
+                  commentary: loud and cold
+                  author:
+                    username: metal_fan
+                    display_name: Metal Fan
+                  created_at: "2026-10-21T09:00:00Z"
+                  updated_at: "2026-10-21T09:00:00Z"
+        "400":
+          description: The id or body is invalid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                error:
+                  code: validation_error
+                  message: The request is invalid.
+                  request_id: abc
+                  fields:
+                    rating: must be between 1 and 5
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/ContributionForbidden"
+        "404":
+          description: The Venue is not in the public catalogue.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                error:
+                  code: venue_not_found
+                  message: Venue not found.
+                  request_id: abc
+        "409":
+          $ref: "#/components/responses/ReviewConflict"
+        "413":
+          $ref: "#/components/responses/BodyTooLarge"
+        "415":
+          $ref: "#/components/responses/UnsupportedMedia"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/Internal"
+        "502":
+          $ref: "#/components/responses/AuthProvider"
+    delete:
+      operationId: deleteMyReview
+      summary: Delete the caller's review of a verified venue
+      description: Reads no body. It does not take an Idempotency-Key.
+      security:
+        - bearerAuth: []
+      responses:
+        "204":
+          description: The Review was deleted.
+        "400":
+          description: The id is not a canonical UUID.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/ContributionForbidden"
+        "404":
+          description: The Venue is not in the public catalogue, or the caller has no Review on this verified Venue.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                venue:
+                  value:
+                    error:
+                      code: venue_not_found
+                      message: Venue not found.
+                      request_id: abc
+                review:
+                  value:
+                    error:
+                      code: review_not_found
+                      message: Review not found.
+                      request_id: abc
+        "409":
+          $ref: "#/components/responses/ReviewConflict"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/Internal"
+        "502":
+          $ref: "#/components/responses/AuthProvider"
   /v1/me:
     get:
       operationId: getMe
@@ -2054,6 +2320,107 @@ components:
           properties:
             next_cursor:
               type: [string, "null"]
+    ReviewRequest:
+      type: object
+      additionalProperties: false
+      required: [rating]
+      properties:
+        rating:
+          type: integer
+          minimum: 1
+          maximum: 5
+          description: A JSON integer. A fraction, including 4.0, an exponent, a string, or null fails with rating must be between 1 and 5.
+        commentary:
+          type: [string, "null"]
+          maxLength: 2000
+          description: Trimmed and NFC-normalized. Line breaks are allowed. Omitted, null, or whitespace-only is stored as null.
+    Review:
+      type: object
+      additionalProperties: false
+      required: [id, rating, commentary, author, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        rating:
+          type: integer
+          minimum: 1
+          maximum: 5
+        commentary:
+          type: [string, "null"]
+        author:
+          type: object
+          additionalProperties: false
+          required: [username, display_name]
+          properties:
+            username:
+              type: [string, "null"]
+              description: Null when the author must rename or is suspended.
+            display_name:
+              type: string
+              description: MetalHops User when the author must rename or is suspended.
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    ReviewListResponse:
+      type: object
+      additionalProperties: false
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/Review"
+        meta:
+          type: object
+          additionalProperties: false
+          required: [next_cursor]
+          properties:
+            next_cursor:
+              type: [string, "null"]
+    OwnReview:
+      type: object
+      additionalProperties: false
+      description: The Review fields plus user_id and the stored Username. Review sets additionalProperties false, so the properties are listed here rather than composed with allOf.
+      required: [id, user_id, rating, commentary, author, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+          format: uuid
+        rating:
+          type: integer
+          minimum: 1
+          maximum: 5
+        commentary:
+          type: [string, "null"]
+        author:
+          type: object
+          additionalProperties: false
+          required: [username, display_name]
+          properties:
+            username:
+              type: string
+            display_name:
+              type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    OwnReviewResponse:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          $ref: "#/components/schemas/OwnReview"
     SubmissionRequest:
       type: object
       additionalProperties: false
@@ -2805,6 +3172,25 @@ components:
         application/json:
           schema:
             $ref: "#/components/schemas/Error"
+    ReviewConflict:
+      description: The Venue is pending, or the caller has no profile.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          examples:
+            not_verified:
+              value:
+                error:
+                  code: venue_not_verified
+                  message: Reviews open after this venue is verified.
+                  request_id: abc
+            profile:
+              value:
+                error:
+                  code: profile_required
+                  message: Create a profile first.
+                  request_id: abc
     ContributionForbidden:
       description: The caller is a platform moderator, or, on a write, the caller's profile cannot contribute.
       content:

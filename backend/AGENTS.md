@@ -24,6 +24,8 @@ PostGIS). Run commands from `backend/`.
   filter-bound cursors, Venue submissions, Venue reports, and operator
   moderation (verify, reject, correct, delist, reopen, and the append-only
   audit).
+- `internal/review`: Review validation, public list, the caller's own Review,
+  save and delete.
 - `internal/pgtest`: PostGIS test harness. Production code does not import it.
 - `openapi.yaml`: contract for implemented HTTP routes.
 
@@ -40,7 +42,7 @@ when that file exists. Variables already in the environment win.
 
 `GET /healthz` reports process health and does not check the database.
 `GET /readyz` returns 200 when the database ping succeeds and migration
-`0008` or newer is recorded. Otherwise it returns 503.
+`0009` or newer is recorded. Otherwise it returns 503.
 `GET /openapi.yaml` serves the embedded `openapi.yaml` in every environment.
 `GET /docs` serves the Scalar page when `DOCS_UI_ENABLED` is unset or `true`.
 The exact value `false` leaves `/docs` unregistered. Any other value stops
@@ -121,8 +123,9 @@ Never drift from it silently.
   and User.
 - App routes are `GET`, `PATCH`, and `DELETE /v1/me`, `POST /v1/venues`,
   `GET /v1/me/venues`, `GET` and `PUT /v1/me/venues/{venueID}`,
-  `POST /v1/profiles/{username}/reports`, and
-  `POST /v1/venues/{venueID}/reports`. Privileged routes are
+  `POST /v1/profiles/{username}/reports`,
+  `POST /v1/venues/{venueID}/reports`, and `GET`, `PUT`, and
+  `DELETE /v1/venues/{venueID}/reviews/me`. Privileged routes are
   `GET /v1/moderation/profile-reports`,
   `GET /v1/moderation/profiles/{userID}`,
   `POST /v1/moderation/profiles/{userID}/actions`,
@@ -135,12 +138,12 @@ Never drift from it silently.
   privileged route, receives `403 forbidden`.
   JSON bodies are at most 64 KiB, valid UTF-8, one object, and reject unknown
   fields.
-- `GET /v1/genres`, `GET /v1/venues`, and `GET /v1/venues/{venueID}` are
-  public: they do not read `Authorization`, and only the per-IP limit
+- `GET /v1/genres`, `GET /v1/venues`, `GET /v1/venues/{venueID}`, and
+  `GET /v1/venues/{venueID}/reviews` are public: they do not read `Authorization`, and only the per-IP limit
   applies.
 - Profile writes, profile and Venue reports, Venue submissions, changed Venue
-  corrections (by a Submitter or an operator), moderation actions, report
-  dismissals, and account deletion reserve a per-User bucket of burst 60 and
+  corrections (by a Submitter or an operator), changed Review saves and Review
+  deletes, moderation actions, report dismissals, and account deletion reserve a per-User bucket of burst 60 and
   one token per second. The reservation is committed only after the state
   change succeeds and cancelled when it does not. `GET` does not reserve.
 - Deleting a User removes the Profile and idempotency rows. Venue submissions

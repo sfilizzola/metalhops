@@ -70,9 +70,27 @@ func TestOpenAPIDocument(t *testing.T) {
 		"This venue needs at least one genre before it can be verified.",
 		"actor_user_id",
 		"resubmit",
+		"/v1/venues/{venueID}/reviews",
+		"/v1/venues/{venueID}/reviews/me",
+		"listVenueReviews",
+		"getMyReview",
+		"putMyReview",
+		"deleteMyReview",
+		"review_not_found",
+		"venue_not_verified",
+		"Reviews open after this venue is verified.",
+		"must be between 1 and 5",
+		"Review:",
+		"OwnReview:",
+		"ReviewRequest:",
 	} {
 		if !bytes.Contains(OpenAPI, []byte(want)) {
 			t.Fatalf("missing %q", want)
+		}
+	}
+	for _, unwanted := range []string{"commentary_locked", "commentary_removed"} {
+		if bytes.Contains(OpenAPI, []byte(unwanted)) {
+			t.Fatalf("documents %q", unwanted)
 		}
 	}
 	genres := bytes.Index(OpenAPI, []byte("/v1/genres"))
@@ -82,6 +100,7 @@ func TestOpenAPIDocument(t *testing.T) {
 	for _, op := range []string{
 		"createVenueSubmission", "listMyVenues", "getMyVenue", "correctMyVenue",
 		"reportVenue", "listVenueReports", "getModerationVenue", "applyVenueAction", "correctVenueAsOperator", "dismissVenueReport",
+		"getMyReview", "putMyReview", "deleteMyReview",
 	} {
 		start := bytes.Index(OpenAPI, []byte("operationId: "+op))
 		if start < 0 {
@@ -95,8 +114,11 @@ func TestOpenAPIDocument(t *testing.T) {
 			t.Fatalf("%s has no bearer security", op)
 		}
 	}
-	for _, op := range []string{"listGenres", "listVenues", "getVenue"} {
+	for _, op := range []string{"listGenres", "listVenues", "getVenue", "listVenueReviews"} {
 		start := bytes.Index(OpenAPI, []byte("operationId: "+op))
+		if start < 0 {
+			t.Fatalf("missing %s", op)
+		}
 		rest := OpenAPI[start+len("operationId: "+op):]
 		if next := bytes.Index(rest, []byte("operationId:")); next >= 0 {
 			rest = rest[:next]

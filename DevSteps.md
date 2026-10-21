@@ -3,7 +3,7 @@
 MetalHops MVP API roadmap. Refer to this document as **DevSteps** across every implementation session.
 
 **Date:** 2026-10-14
-**Status:** Sessions 1–10 are done. Session 11 is next. Sessions 12–14 are not started.
+**Status:** Sessions 1–11 are done. Session 12 is next. Sessions 12–14 are not started.
 
 ## Goal
 
@@ -1097,7 +1097,8 @@ The Check-in cooldown remains a separate domain rule and returns `409`.
 | 8. Venue discovery | Done |
 | 9. Venue submissions | Done |
 | 10. Venue safety and moderation API | Done |
-| 11–14 | Not started |
+| 11. Reviews and ratings | Done |
+| 12–14 | Not started |
 
 ### Session 1: Repository boundaries
 
@@ -1296,12 +1297,20 @@ catalogue history is retained.
 
 ### Session 11: Reviews and ratings
 
-**Status:** Not started.
+**Status:** Done.
 
 Add the review migration, RLS policies, public review list, authenticated
 upsert/delete operations, and venue rating aggregates.
 Neither `PUT` nor `DELETE /v1/venues/{venueID}/reviews/me` requires an
 `Idempotency-Key`; both target the caller's single Review.
+
+`GET /v1/venues/{venueID}/reviews` is public. `GET`, `PUT`, and
+`DELETE /v1/venues/{venueID}/reviews/me` read, set, and remove the caller's
+Review. Migration `0009` adds `reviews` and raises readiness to `0009`. The
+Venue catalogue query computes `average_rating` and `review_count`, so list
+and detail stay one round trip. A pending Venue lists no Reviews, and a write
+on it is `409 venue_not_verified`. `commentary_removed` and the commentary
+lock move to Session 12.
 
 **Exit condition:** Android can display, create, edit, and delete ratings and
 reviews.
