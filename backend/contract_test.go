@@ -66,6 +66,10 @@ func TestOpenAPIDocument(t *testing.T) {
 		"delisting_reason",
 		"delisted",
 		"The report limit has been reached.",
+		"venue_incomplete",
+		"This venue needs at least one genre before it can be verified.",
+		"actor_user_id",
+		"resubmit",
 	} {
 		if !bytes.Contains(OpenAPI, []byte(want)) {
 			t.Fatalf("missing %q", want)

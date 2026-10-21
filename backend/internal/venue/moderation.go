@@ -39,10 +39,25 @@ type PendingReport struct {
 	Reporter  *profile.Profile
 }
 
+// ModerationAction is one audit row. ActorUserID is null once that User is deleted.
+type ModerationAction struct {
+	ID              string
+	Action          string
+	PriorStatus     string
+	NewStatus       string
+	RejectionReason *string
+	RejectionNote   *string
+	DelistingReason *string
+	DelistingNote   *string
+	ActorUserID     *string
+	CreatedAt       time.Time
+}
+
 type ModerationVenue struct {
 	Moderated
 	Submitter *profile.Profile
 	Reports   []PendingReport
+	History   []ModerationAction
 }
 
 type OperatorCorrectCommand struct {
@@ -101,6 +116,8 @@ var (
 	ErrReportPending  = errors.New("venue: report pending")
 	ErrReportNotFound = errors.New("venue: report not found")
 	ErrReportResolved = errors.New("venue: report resolved")
+	// ErrIncomplete refuses verify and reopen for a Venue with no Genre.
+	ErrIncomplete = errors.New("venue: incomplete")
 )
 
 var rejectionReasons = set("duplicate", "not_eligible", "inaccurate_details", "insufficient_information", "cannot_verify", "other")

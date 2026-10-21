@@ -150,20 +150,28 @@ func (s *Service) ModerateVenue(ctx context.Context, cmd ModerationCommand) (Mod
 		if state.to == "verified" {
 			curReason, curNote = nil, nil
 		}
-		if !textEqual(curReason, state.reason) || !textEqual(curNote, state.note) {
-			return ModerationResult{}, &InvalidTransitionError{Action: cmd.Action, Status: status}
+		// Same status with another reason or note falls through to a feedback-only change.
+		if textEqual(curReason, state.reason) && textEqual(curNote, state.note) {
+			current, err := moderated(txCtx, tx, cmd.VenueID)
+			if err != nil {
+				return ModerationResult{}, err
+			}
+			if err := tx.Commit(txCtx); err != nil {
+				return ModerationResult{}, fmt.Errorf("venue: commit: %w", err)
+			}
+			return ModerationResult{Created: false, Venue: current}, nil
 		}
-		current, err := moderated(txCtx, tx, cmd.VenueID)
-		if err != nil {
-			return ModerationResult{}, err
-		}
-		if err := tx.Commit(txCtx); err != nil {
-			return ModerationResult{}, fmt.Errorf("venue: commit: %w", err)
-		}
-		return ModerationResult{Created: false, Venue: current}, nil
-	}
-	if status != state.from {
+	} else if status != state.from {
 		return ModerationResult{}, &InvalidTransitionError{Action: cmd.Action, Status: status}
+	}
+	if state.to == "verified" {
+		var hasGenre bool
+		if err := tx.QueryRow(txCtx, `select exists (select 1 from venue_genres where venue_id = $1::uuid)`, cmd.VenueID).Scan(&hasGenre); err != nil {
+			return ModerationResult{}, fmt.Errorf("venue: moderate: %w", err)
+		}
+		if !hasGenre {
+			return ModerationResult{}, ErrIncomplete
+		}
 	}
 
 	var reservation *ratelimit.Reservation
@@ -318,8 +326,19 @@ func (s *Service) CorrectVenue(ctx context.Context, cmd OperatorCorrectCommand) 
 	return got, nil
 }
 
+var venueHistorySQL = `
+	select id::text, action, prior_status, new_status,
+		rejection_reason, rejection_note, delisting_reason, delisting_note, actor_user_id::text, created_at
+	from venue_moderation_actions
+	where venue_id = $1::uuid
+	order by created_at desc, id desc
+	limit $2`
+
 // shortcut: the detail lists at most 100 pending reports, oldest first; add a cursor if a Venue ever collects more.
 const detailReportLimit = 100
+
+// The detail shows the newest 20 audit rows.
+const detailHistoryLimit = 20
 
 func (s *Service) GetModerationVenue(ctx context.Context, venueID string) (ModerationVenue, error) {
 	if !CanonicalVenueID(venueID) {
@@ -327,36 +346,60 @@ func (s *Service) GetModerationVenue(ctx context.Context, venueID string) (Moder
 	}
 	queryCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
-	base, err := moderated(queryCtx, s.pool, venueID)
+	// One snapshot, so the Venue, its reports, and its history agree.
+	tx, err := s.pool.BeginTx(queryCtx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
+	if err != nil {
+		return ModerationVenue{}, fmt.Errorf("venue: begin: %w", err)
+	}
+	defer func() { _ = tx.Rollback(context.Background()) }()
+	base, err := moderated(queryCtx, tx, venueID)
 	if err != nil {
 		return ModerationVenue{}, err
 	}
-	out := ModerationVenue{Moderated: base, Reports: []PendingReport{}}
+	out := ModerationVenue{Moderated: base, Reports: []PendingReport{}, History: []ModerationAction{}}
 	var submitter nullableProfile
-	if err := s.pool.QueryRow(queryCtx, `
+	if err := tx.QueryRow(queryCtx, `
 		select `+profileColumns("sp")+`
 		from venues v left join profiles sp on sp.id = v.submitted_by
 		where v.id = $1::uuid`, venueID).Scan(submitter.dest()...); err != nil {
 		return ModerationVenue{}, fmt.Errorf("venue: submitter: %w", err)
 	}
 	out.Submitter = submitter.profile()
-	rows, err := s.pool.Query(queryCtx, venueReportsSQL, venueID, detailReportLimit)
+	rows, err := tx.Query(queryCtx, venueReportsSQL, venueID, detailReportLimit)
 	if err != nil {
 		return ModerationVenue{}, fmt.Errorf("venue: reports: %w", err)
 	}
-	defer rows.Close()
 	for rows.Next() {
 		var item PendingReport
 		var reporter nullableProfile
 		if err := rows.Scan(append([]any{&item.ID, &item.Reason, &item.Note, &item.CreatedAt}, reporter.dest()...)...); err != nil {
+			rows.Close()
 			return ModerationVenue{}, fmt.Errorf("venue: reports: %w", err)
 		}
 		item.CreatedAt = item.CreatedAt.UTC()
 		item.Reporter = reporter.profile()
 		out.Reports = append(out.Reports, item)
 	}
+	rows.Close()
 	if err := rows.Err(); err != nil {
 		return ModerationVenue{}, fmt.Errorf("venue: reports: %w", err)
+	}
+	rows, err = tx.Query(queryCtx, venueHistorySQL, venueID, detailHistoryLimit)
+	if err != nil {
+		return ModerationVenue{}, fmt.Errorf("venue: history: %w", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var a ModerationAction
+		if err := rows.Scan(&a.ID, &a.Action, &a.PriorStatus, &a.NewStatus,
+			&a.RejectionReason, &a.RejectionNote, &a.DelistingReason, &a.DelistingNote, &a.ActorUserID, &a.CreatedAt); err != nil {
+			return ModerationVenue{}, fmt.Errorf("venue: history: %w", err)
+		}
+		a.CreatedAt = a.CreatedAt.UTC()
+		out.History = append(out.History, a)
+	}
+	if err := rows.Err(); err != nil {
+		return ModerationVenue{}, fmt.Errorf("venue: history: %w", err)
 	}
 	return out, nil
 }

@@ -136,6 +136,7 @@ func TestVenueModerationReads(t *testing.T) {
 	at := time.Date(2026, 10, 20, 12, 0, 0, 0, time.UTC)
 	reporter := &profile.Profile{ID: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", Username: "rep", DisplayName: "Rep", Status: "active", CreatedAt: at, UpdatedAt: at}
 	cursor := "next"
+	rejection := "duplicate"
 	fake := &fakeVenueModeration{
 		page: venue.ReportPage{Items: []venue.ReportItem{{
 			ID: reportUUID, Reason: "moved", Status: "pending", CreatedAt: at, Reporter: reporter,
@@ -144,6 +145,10 @@ func TestVenueModerationReads(t *testing.T) {
 		detail: venue.ModerationVenue{
 			Moderated: venue.Moderated{Submission: sampleSubmission()},
 			Reports:   []venue.PendingReport{{ID: reportUUID, Reason: "moved", CreatedAt: at, Reporter: reporter}},
+			History: []venue.ModerationAction{{
+				ID: reportUUID, Action: "reject", PriorStatus: "rejected", NewStatus: "rejected",
+				RejectionReason: &rejection, CreatedAt: at,
+			}},
 		},
 	}
 	authenticator := &fakeAuth{caller: auth.Caller{UserID: "dddddddd-dddd-4ddd-8ddd-dddddddddddd"}}
@@ -178,7 +183,12 @@ func TestVenueModerationReads(t *testing.T) {
 	if detail.Code != http.StatusOK || fake.detailID != venueUUID {
 		t.Fatalf("detail %d %s", detail.Code, detail.Body.String())
 	}
-	for _, want := range []string{`"delisting_reason":null`, `"rejection_reason":null`, `"submitter":null`, `"reports":[{`} {
+	for _, want := range []string{
+		`"delisting_reason":null`, `"rejection_reason":null`, `"submitter":null`, `"reports":[{`,
+		`"history":[{"id":"` + reportUUID + `","action":"reject","prior_status":"rejected","new_status":"rejected",` +
+			`"rejection_reason":"duplicate","rejection_note":null,"delisting_reason":null,"delisting_note":null,` +
+			`"actor_user_id":null,"created_at":"2026-10-20T12:00:00Z"}]`,
+	} {
 		if !bytes.Contains(detail.Body.Bytes(), []byte(want)) {
 			t.Fatalf("missing %s in %s", want, detail.Body.String())
 		}
@@ -241,6 +251,8 @@ func TestVenueModerationWrites(t *testing.T) {
 	}
 	fake.err = &venue.InvalidTransitionError{Action: "verify", Status: "rejected"}
 	assertCode(t, requestWith(handler, http.MethodPost, actionPath, "Bearer t", []byte(`{"action":"verify"}`), keyed), http.StatusConflict, "invalid_venue_transition")
+	fake.err = venue.ErrIncomplete
+	assertCode(t, requestWith(handler, http.MethodPost, actionPath, "Bearer t", []byte(`{"action":"verify"}`), keyed), http.StatusConflict, "venue_incomplete")
 	fake.err = nil
 
 	put := requestWith(handler, http.MethodPut, putPath, "Bearer t", []byte(submissionBodyJSON), plain)
@@ -263,5 +275,18 @@ func TestVenueModerationWrites(t *testing.T) {
 	} {
 		fake.err = c.err
 		assertCode(t, requestWith(handler, http.MethodPatch, patchPath, "Bearer t", []byte(`{"status":"dismissed"}`), plain), c.status, c.code)
+	}
+}
+
+func TestVenueModerationLogsItsOwnLabel(t *testing.T) {
+	var logs bytes.Buffer
+	fake := &fakeVenueModeration{err: errors.New("boom")}
+	handler := New(Options{
+		Readiness: readyOK(), PublicLimit: allowAll, Auth: &fakeAuth{operator: true}, VenueModeration: fake,
+		Logger: slog.New(slog.NewJSONHandler(&logs, nil)),
+	})
+	assertCode(t, authed(handler, http.MethodGet, "/v1/moderation/venues/"+venueUUID, "", nil), http.StatusInternalServerError, "internal_error")
+	if !bytes.Contains(logs.Bytes(), []byte(`"msg":"venue moderation"`)) || bytes.Contains(logs.Bytes(), []byte("venue submission")) {
+		t.Fatalf("log %s", logs.String())
 	}
 }

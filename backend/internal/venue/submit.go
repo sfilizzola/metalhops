@@ -283,6 +283,13 @@ func (s *Service) Correct(ctx context.Context, cmd CorrectCommand) (Submission, 
 	if err := applyDraft(txCtx, tx, cmd.VenueID, draft); err != nil {
 		return Submission{}, err
 	}
+	if status == "rejected" {
+		if _, err := insertAudit(txCtx, tx, auditRow{
+			venueID: cmd.VenueID, action: "resubmit", prior: status, next: "pending", actorID: cmd.UserID, at: s.clock(),
+		}); err != nil {
+			return Submission{}, err
+		}
+	}
 	got, err := ownSubmission(txCtx, tx, cmd.UserID, cmd.VenueID)
 	if err != nil {
 		return Submission{}, err

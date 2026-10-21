@@ -113,9 +113,6 @@ func (s *Service) ReportVenue(ctx context.Context, cmd ReportCommand) (VenueRepo
 	result, err := idempotency.Execute(txCtx, tx, now, idempotency.Request{
 		UserID: cmd.ReporterID, Operation: "venue_report", Key: cmd.Key, Command: command,
 	}, func(ctx context.Context) (idempotency.Result, error) {
-		if err := profile.CheckReportQuota(ctx, tx, cmd.ReporterID, now); err != nil {
-			return idempotency.Result{}, err
-		}
 		var pending bool
 		if err := tx.QueryRow(ctx, `
 			select exists (
@@ -126,6 +123,10 @@ func (s *Service) ReportVenue(ctx context.Context, cmd ReportCommand) (VenueRepo
 		}
 		if pending {
 			return idempotency.Result{}, ErrReportPending
+		}
+		// After the pending check, so a User at quota who repeats a report hears 409, not 429.
+		if err := profile.CheckReportQuota(ctx, tx, cmd.ReporterID, now); err != nil {
+			return idempotency.Result{}, err
 		}
 		next, retryAfter, ok := s.writes.Reserve(cmd.ReporterID)
 		if !ok {

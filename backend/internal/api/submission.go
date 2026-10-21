@@ -166,6 +166,11 @@ func getSubmission(w http.ResponseWriter, r *http.Request, submissions Submissio
 }
 
 func writeSubmissionError(logger *slog.Logger, w http.ResponseWriter, r *http.Request, err error) {
+	writeLabeledSubmissionError(logger, "venue submission", w, r, err)
+}
+
+// writeLabeledSubmissionError maps the shared venue errors; label names the route family in the 500 log.
+func writeLabeledSubmissionError(logger *slog.Logger, label string, w http.ResponseWriter, r *http.Request, err error) {
 	id := requestID(r.Context())
 	if writeContributionError(w, id, err) {
 		return
@@ -202,7 +207,7 @@ func writeSubmissionError(logger *slog.Logger, w http.ResponseWriter, r *http.Re
 		w.Header().Set("Retry-After", strconv.Itoa(limited.RetryAfter))
 		WriteError(w, http.StatusTooManyRequests, "rate_limited", "Too many requests.", id, nil)
 	default:
-		logger.Error("venue submission", "request_id", id, "err", err)
+		logger.Error(label, "request_id", id, "err", err)
 		WriteError(w, http.StatusInternalServerError, "internal_error", "The server could not complete the request.", id, nil)
 	}
 }

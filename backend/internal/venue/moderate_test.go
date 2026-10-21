@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/metalhops/metalhops/backend/internal/idempotency"
 )
@@ -71,9 +72,23 @@ func TestModerateRejectAndTransitions(t *testing.T) {
 			t.Fatalf("%s from rejected: %v", c.action, err)
 		}
 	}
-	// A different reason on an already rejected venue is a conflict, not a silent change.
-	if _, err := act(h, vid(51), "reject", "reject-key-2", "duplicate", nil); !errors.As(err, &bad) {
-		t.Fatalf("re-reject with another reason: %v", err)
+	// A different reason on an already rejected venue updates the feedback and audits it.
+	res, err = act(h, vid(51), "reject", "reject-key-2", "duplicate", nil)
+	if err != nil || !res.Created || res.ActionID == nil || res.Venue.RejectionReason == nil || *res.Venue.RejectionReason != "duplicate" || res.Venue.RejectionNote != nil {
+		t.Fatalf("re-reject with another reason %+v %v", res, err)
+	}
+	var prior, next, reason string
+	var note *string
+	if err := h.pool.QueryRow(context.Background(), `
+		select prior_status, new_status, rejection_reason, rejection_note from venue_moderation_actions where id = $1`, *res.ActionID).
+		Scan(&prior, &next, &reason, &note); err != nil || prior != "rejected" || next != "rejected" || reason != "duplicate" || note != nil {
+		t.Fatalf("feedback audit %s %s %s %v %v", prior, next, reason, note, err)
+	}
+	if noop, err := act(h, vid(51), "reject", "reject-key-3", "duplicate", nil); err != nil || noop.Created || noop.ActionID != nil {
+		t.Fatalf("identical re-reject %+v %v", noop, err)
+	}
+	if n := countRows(t, h, `select count(*) from venue_moderation_actions where venue_id = $1`, vid(51)); n != 2 {
+		t.Fatalf("audit rows %d", n)
 	}
 	if _, err := act(h, vid(52), "verify", "missing-key-1", "", nil); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("missing venue: %v", err)
@@ -129,6 +144,79 @@ func TestModerateResolvesPendingReports(t *testing.T) {
 	var by *string
 	if err := h.pool.QueryRow(context.Background(), `select status, resolved_by_user_id::text from venue_reports where venue_id = $1`, vid(54)).Scan(&status, &by); err != nil || status != "actioned" || by == nil || *by != operatorID {
 		t.Fatalf("report %s %v %v", status, by, err)
+	}
+}
+
+func TestModerateDelistFeedbackChange(t *testing.T) {
+	h := newHarness(t)
+	insertOperator(t, h)
+	insertUser(t, h.pool, userA, "active", nil)
+	seedVenue(t, h.pool, seed{id: vid(55), name: "Closing", status: "verified", lat: 44, lon: 10})
+	if _, err := act(h, vid(55), "delist", "delist-fb-key1", "permanently_closed", nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := h.pool.Exec(context.Background(), `
+		insert into venue_reports (reporter_user_id, venue_id, reason) values ($1, $2, 'duplicate')`, userA, vid(55)); err != nil {
+		t.Fatal(err)
+	}
+	before := tokensLeft(h.limiter, operatorID)
+	res, err := act(h, vid(55), "delist", "delist-fb-key2", "other", ptr("Moved to a new venue"))
+	if err != nil || !res.Created || res.ActionID == nil || res.Venue.DelistingReason == nil || *res.Venue.DelistingReason != "other" ||
+		res.Venue.DelistingNote == nil || *res.Venue.DelistingNote != "Moved to a new venue" {
+		t.Fatalf("re-delist %+v %v", res, err)
+	}
+	if after := tokensLeft(h.limiter, operatorID); after != before-1 {
+		t.Fatalf("feedback change spent %d tokens", before-after)
+	}
+	var prior, next, reason string
+	var note *string
+	if err := h.pool.QueryRow(context.Background(), `
+		select prior_status, new_status, delisting_reason, delisting_note from venue_moderation_actions where id = $1`, *res.ActionID).
+		Scan(&prior, &next, &reason, &note); err != nil || prior != "delisted" || next != "delisted" || reason != "other" || note == nil || *note != "Moved to a new venue" {
+		t.Fatalf("feedback audit %s %s %s %v %v", prior, next, reason, note, err)
+	}
+	if n := countRows(t, h, `select count(*) from venue_reports where venue_id = $1 and status = 'actioned'`, vid(55)); n != 1 {
+		t.Fatalf("report not actioned: %d", n)
+	}
+	if noop, err := act(h, vid(55), "delist", "delist-fb-key3", "other", ptr("Moved to a new venue")); err != nil || noop.Created {
+		t.Fatalf("identical re-delist %+v %v", noop, err)
+	}
+	if n := countRows(t, h, `select count(*) from venue_moderation_actions where venue_id = $1`, vid(55)); n != 2 {
+		t.Fatalf("audit rows %d", n)
+	}
+}
+
+func TestModerateNeedsGenre(t *testing.T) {
+	h := newHarness(t)
+	insertOperator(t, h)
+	seedVenue(t, h.pool, seed{id: vid(56), name: "Bare", status: "pending", lat: 45, lon: 10})
+	seedVenue(t, h.pool, seed{id: vid(57), name: "Bare Delisted", status: "verified", lat: 46, lon: 10})
+	if _, err := h.pool.Exec(context.Background(), `
+		update venues set verification_status = 'delisted', delisting_reason = 'duplicate' where id = $1`, vid(57)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := h.pool.Exec(context.Background(), `delete from venue_genres where venue_id in ($1, $2)`, vid(56), vid(57)); err != nil {
+		t.Fatal(err)
+	}
+	before := tokensLeft(h.limiter, operatorID)
+	if _, err := act(h, vid(56), "verify", "bare-verify-1", "", nil); !errors.Is(err, ErrIncomplete) {
+		t.Fatalf("verify without genre: %v", err)
+	}
+	if _, err := act(h, vid(57), "reopen", "bare-reopen-1", "", nil); !errors.Is(err, ErrIncomplete) {
+		t.Fatalf("reopen without genre: %v", err)
+	}
+	if after := tokensLeft(h.limiter, operatorID); after != before {
+		t.Fatalf("refusal spent a write token: %d to %d", before, after)
+	}
+	if status, _, _ := venueStatus(t, h, vid(56)); status != "pending" {
+		t.Fatalf("status %s", status)
+	}
+	if n := countRows(t, h, `select count(*) from venue_moderation_actions where venue_id in ($1, $2)`, vid(56), vid(57)); n != 0 {
+		t.Fatalf("audit rows %d", n)
+	}
+	// Rejecting a Venue without a genre stays possible.
+	if _, err := act(h, vid(56), "reject", "bare-reject-1", "insufficient_information", nil); err != nil {
+		t.Fatalf("reject without genre: %v", err)
 	}
 }
 
@@ -191,13 +279,43 @@ func TestGetModerationVenue(t *testing.T) {
 	if _, err := h.pool.Exec(context.Background(), `insert into venue_reports (reporter_user_id, venue_id, reason) values ($1, $2, 'moved')`, userB, vid(70)); err != nil {
 		t.Fatal(err)
 	}
+	// 22 corrections a minute apart, then a delist: history is the newest 20, newest first.
+	if _, err := h.pool.Exec(context.Background(), `
+		insert into venue_moderation_actions (venue_id, action, prior_status, new_status, actor_user_id, created_at)
+		select $1, 'correct', 'verified', 'verified', $2, $3::timestamptz + (i || ' minutes')::interval
+		from generate_series(1, 22) as i`, vid(70), operatorID, submitNow); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := h.pool.Exec(context.Background(), `
+		insert into venue_moderation_actions (venue_id, action, prior_status, new_status, delisting_reason, delisting_note, actor_user_id, created_at)
+		values ($1, 'delist', 'verified', 'delisted', 'other', 'Gone', $2, $3)`, vid(70), operatorID, submitNow.Add(time.Hour)); err != nil {
+		t.Fatal(err)
+	}
 	got, err := h.service.GetModerationVenue(context.Background(), vid(70))
 	if err != nil || got.Submitter == nil || got.Submitter.ID != userA || len(got.Reports) != 1 || got.Reports[0].Reporter == nil || got.Reports[0].Reporter.ID != userB {
 		t.Fatalf("%+v %v", got, err)
 	}
+	if len(got.History) != 20 {
+		t.Fatalf("history %d", len(got.History))
+	}
+	newest := got.History[0]
+	if newest.Action != "delist" || newest.PriorStatus != "verified" || newest.NewStatus != "delisted" ||
+		newest.DelistingReason == nil || *newest.DelistingReason != "other" || newest.DelistingNote == nil || *newest.DelistingNote != "Gone" ||
+		newest.RejectionReason != nil || newest.ActorUserID == nil || *newest.ActorUserID != operatorID ||
+		!newest.CreatedAt.Equal(submitNow.Add(time.Hour)) || newest.CreatedAt.Location() != time.UTC || newest.ID == "" {
+		t.Fatalf("newest %+v", newest)
+	}
+	for i := 1; i < len(got.History); i++ {
+		if !got.History[i].CreatedAt.Before(got.History[i-1].CreatedAt) {
+			t.Fatalf("history out of order at %d", i)
+		}
+	}
+	if last := got.History[19]; last.Action != "correct" || !last.CreatedAt.Equal(submitNow.Add(4*time.Minute)) {
+		t.Fatalf("oldest kept %+v", last)
+	}
 	seedVenue(t, h.pool, seed{id: vid(71), name: "Orphan", status: "pending", lat: 61, lon: 10})
 	orphan, err := h.service.GetModerationVenue(context.Background(), vid(71))
-	if err != nil || orphan.Submitter != nil || len(orphan.Reports) != 0 {
+	if err != nil || orphan.Submitter != nil || len(orphan.Reports) != 0 || orphan.History == nil || len(orphan.History) != 0 {
 		t.Fatalf("%+v %v", orphan, err)
 	}
 	if _, err := h.service.GetModerationVenue(context.Background(), vid(72)); !errors.Is(err, ErrNotFound) {

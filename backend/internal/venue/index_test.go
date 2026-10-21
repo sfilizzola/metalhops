@@ -169,8 +169,18 @@ func TestVenueReportIndexes(t *testing.T) {
 		join venues_n on venues_n.n = (i / 5) % 1000`); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := pool.Exec(ctx, "vacuum analyze venue_reports"); err != nil {
+	if _, err := pool.Exec(ctx, `
+		with venues_n as (select id, row_number() over (order by id) - 1 as n from venues)
+		insert into venue_moderation_actions (venue_id, action, prior_status, new_status, actor_user_id, created_at)
+		select venues_n.id, 'correct', 'verified', 'verified', (select id from auth.users limit 1), now() - (i || ' minutes')::interval
+		from generate_series(0, 4999) as i
+		join venues_n on venues_n.n = i % 1000`); err != nil {
 		t.Fatal(err)
+	}
+	for _, table := range []string{"venue_reports", "venue_moderation_actions"} {
+		if _, err := pool.Exec(ctx, "vacuum analyze "+table); err != nil {
+			t.Fatal(err)
+		}
 	}
 	var venueID string
 	if err := pool.QueryRow(ctx, `select venue_id::text from venue_reports limit 1`).Scan(&venueID); err != nil {
@@ -182,6 +192,7 @@ func TestVenueReportIndexes(t *testing.T) {
 	}{
 		{"pending list", reportListSQL, "venue_reports_pending_list_key", []any{nil, nil, 21}},
 		{"venue reports", venueReportsSQL, "venue_reports_pending_venue_key", []any{venueID, 100}},
+		{"moderation history", venueHistorySQL, "venue_moderation_actions_venue_key", []any{venueID, 20}},
 	} {
 		rows, err := pool.Query(ctx, "explain "+c.sql, c.args...)
 		if err != nil {

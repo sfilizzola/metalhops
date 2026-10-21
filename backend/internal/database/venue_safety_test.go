@@ -111,17 +111,53 @@ func TestVenueSafetyConstraints(t *testing.T) {
 		values ($1, 'delist', 'verified', 'delisted', 'duplicate', $2)`, venue, operator); err != nil {
 		t.Fatal(err)
 	}
+	// Feedback changes on reject or delist and a Submitter resubmission are allowed.
+	for _, c := range []struct{ name, sql string }{
+		{"feedback-only reject", `insert into venue_moderation_actions (venue_id, action, prior_status, new_status, rejection_reason, actor_user_id)
+			values ($1, 'reject', 'rejected', 'rejected', 'duplicate', $2)`},
+		{"feedback-only delist", `insert into venue_moderation_actions (venue_id, action, prior_status, new_status, delisting_reason, delisting_note, actor_user_id)
+			values ($1, 'delist', 'delisted', 'delisted', 'other', 'moved', $2)`},
+		{"resubmit", `insert into venue_moderation_actions (venue_id, action, prior_status, new_status, actor_user_id)
+			values ($1, 'resubmit', 'rejected', 'pending', $2)`},
+	} {
+		if _, err := pool.Exec(ctx, c.sql, venue, operator); err != nil {
+			t.Fatalf("%s: %v", c.name, err)
+		}
+	}
+	for _, c := range []struct{ name, sql string }{
+		{"same-status verify", `insert into venue_moderation_actions (venue_id, action, prior_status, new_status, actor_user_id)
+			values ($1, 'verify', 'verified', 'verified', $2)`},
+		{"same-status reopen", `insert into venue_moderation_actions (venue_id, action, prior_status, new_status, actor_user_id)
+			values ($1, 'reopen', 'verified', 'verified', $2)`},
+		{"reject on a pending row without change", `insert into venue_moderation_actions (venue_id, action, prior_status, new_status, rejection_reason, actor_user_id)
+			values ($1, 'reject', 'pending', 'pending', 'duplicate', $2)`},
+		{"cross-status delist", `insert into venue_moderation_actions (venue_id, action, prior_status, new_status, delisting_reason, actor_user_id)
+			values ($1, 'delist', 'rejected', 'rejected', 'duplicate', $2)`},
+		{"resubmit from delisted", `insert into venue_moderation_actions (venue_id, action, prior_status, new_status, actor_user_id)
+			values ($1, 'resubmit', 'delisted', 'pending', $2)`},
+		{"resubmit with a reason", `insert into venue_moderation_actions (venue_id, action, prior_status, new_status, rejection_reason, actor_user_id)
+			values ($1, 'resubmit', 'rejected', 'pending', 'duplicate', $2)`},
+	} {
+		if _, err := pool.Exec(ctx, c.sql, venue, operator); vsCode(err) != "23514" {
+			t.Fatalf("%s: %v", c.name, err)
+		}
+	}
+	if _, err := pool.Exec(ctx, `
+		insert into venue_moderation_actions (venue_id, action, prior_status, new_status, actor_user_id)
+		values ($1, 'resubmit', 'rejected', 'pending', $2)`, venue, user); err != nil {
+		t.Fatalf("resubmit by the Submitter: %v", err)
+	}
 	if _, err := pool.Exec(ctx, `update venue_moderation_actions set delisting_reason = 'other' where venue_id = $1`, venue); vsCode(err) != "55000" {
 		t.Fatalf("audit update: %v", err)
 	}
 	if _, err := pool.Exec(ctx, `delete from venue_moderation_actions where venue_id = $1`, venue); vsCode(err) != "55000" {
 		t.Fatalf("audit delete: %v", err)
 	}
-	if _, err := pool.Exec(ctx, `delete from auth.users where id = $1`, operator); err != nil {
-		t.Fatalf("deleting the operator: %v", err)
+	if _, err := pool.Exec(ctx, `delete from auth.users where id in ($1, $2)`, operator, user); err != nil {
+		t.Fatalf("deleting the actors: %v", err)
 	}
-	var actor *string
-	if err := pool.QueryRow(ctx, `select actor_user_id::text from venue_moderation_actions where venue_id = $1`, venue).Scan(&actor); err != nil || actor != nil {
-		t.Fatalf("actor after delete %v %v", actor, err)
+	var total, withActor int
+	if err := pool.QueryRow(ctx, `select count(*), count(actor_user_id) from venue_moderation_actions where venue_id = $1`, venue).Scan(&total, &withActor); err != nil || total != 5 || withActor != 0 {
+		t.Fatalf("actors after delete: %d of %d kept, %v", withActor, total, err)
 	}
 }

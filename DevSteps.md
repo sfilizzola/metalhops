@@ -330,8 +330,9 @@ hidden. A Submitter cannot change a verified or Delisted Venue.
 
 `venue_moderation_actions` is an append-only audit log containing the Venue
 Submission, prior and new status, rejection reason and note when applicable,
-delisting reason and note when applicable, operator User ID, and timestamp.
-It never stores a copy of the full Venue Submission.
+delisting reason and note when applicable, acting User ID (the operator, or
+the Submitter when a correction returns a rejected Venue to pending), and
+timestamp. It never stores a copy of the full Venue Submission.
 
 `venue_reports` stores the reporter User, Venue, reason, optional note, status
 (`pending`, `actioned`, or `dismissed`), creation time, and resolution
@@ -1278,8 +1279,8 @@ routes do not. Do not add an operator-provisioning model.
 
 `POST /v1/venues/{venueID}/reports` files a Venue Report and requires
 `Idempotency-Key`. `GET /v1/moderation/venue-reports` lists pending reports.
-`GET /v1/moderation/venues/{venueID}` reads one Venue with its Submitter and
-pending reports. `POST /v1/moderation/venues/{venueID}/actions` applies
+`GET /v1/moderation/venues/{venueID}` reads one Venue with its Submitter,
+pending reports, and newest 20 audit rows. `POST /v1/moderation/venues/{venueID}/actions` applies
 `verify`, `reject`, `delist`, or `reopen` and requires `Idempotency-Key`.
 `PUT /v1/moderation/venues/{venueID}` corrects a pending or verified Venue.
 `PATCH /v1/moderation/venue-reports/{reportID}` dismisses one report. Neither

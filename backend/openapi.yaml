@@ -704,7 +704,7 @@ paths:
     put:
       operationId: correctMyVenue
       summary: Correct a pending or rejected venue submission
-      description: Replaces every editable field and the Genre set of a pending or rejected Venue the caller submitted. It does not require Idempotency-Key. Correcting a rejected Venue returns it to pending and clears rejection_reason and rejection_note. An unchanged body on a pending Venue returns 200 and leaves updated_at unchanged. Duplicate detection excludes this Venue. A correction does not count toward the submission quota.
+      description: Replaces every editable field and the Genre set of a pending or rejected Venue the caller submitted. It does not require Idempotency-Key. Correcting a rejected Venue returns it to pending, clears rejection_reason and rejection_note, and appends a resubmit audit row. An unchanged body on a pending Venue returns 200 and leaves updated_at unchanged. Duplicate detection excludes this Venue. A correction does not count toward the submission quota.
       security:
         - bearerAuth: []
       requestBody:
@@ -1685,12 +1685,12 @@ paths:
     get:
       operationId: getModerationVenue
       summary: Read one venue for moderation
-      description: Returns a Venue in any status with its feedback fields, the Submitter's full profile, and its pending reports.
+      description: Returns a Venue in any status with its feedback fields, the Submitter's full profile, its pending reports, and its newest 20 audit rows. Every part is read from one consistent snapshot.
       security:
         - bearerAuth: []
       responses:
         "200":
-          description: The Venue, its Submitter (null when deleted or without a profile), and its pending reports.
+          description: The Venue, its Submitter (null when deleted or without a profile), its pending reports, and its moderation history.
           content:
             application/json:
               schema:
@@ -1820,7 +1820,7 @@ paths:
     post:
       operationId: applyVenueAction
       summary: Apply verify, reject, delist, or reopen
-      description: verify and reject apply to pending Venues, delist to verified Venues, and reopen to delisted Venues; reopen returns the Venue to verified. reject needs a rejection reason and delist a delisting reason; a note is required when the reason is other. An action on a Venue already in the target state with the same reason and note returns 200 with action_id null, writes nothing, and spends no write token. A change returns 201, appends one audit row, and marks the Venue's pending reports actioned. A retry with the same key returns the stored 201.
+      description: verify and reject apply to pending Venues, delist to verified Venues, and reopen to delisted Venues; reopen returns the Venue to verified. reject needs a rejection reason and delist a delisting reason; a note is required when the reason is other. An action on a Venue already in the target state with the same reason and note returns 200 with action_id null, writes nothing, and spends no write token; reopen on a verified Venue that was never delisted is such a no-op. reject on a rejected Venue, or delist on a delisted Venue, with a different reason or note updates the feedback and returns 201 with an audit row whose prior and new status are equal. A change returns 201, appends one audit row, and marks the Venue's pending reports actioned. verify and reopen return 409 venue_incomplete when the Venue has no Genre. reopen does not re-run the strong-duplicate check (known gap). A retry with the same key returns the stored 201.
       security:
         - bearerAuth: []
       parameters:
@@ -1864,13 +1864,13 @@ paths:
                   action: reopen
       responses:
         "200":
-          description: The Venue was already in the target state. action_id is null.
+          description: The Venue was already in the target state with the same reason and note. action_id is null.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/VenueActionResponse"
         "201":
-          description: The moderation action was stored.
+          description: The moderation action, or a feedback-only change, was stored.
           content:
             application/json:
               schema:
@@ -1913,7 +1913,7 @@ paths:
                   message: Venue not found.
                   request_id: abc
         "409":
-          description: The action is not available from the Venue's status, the Venue is already in the target state with a different reason or note, or the idempotency key was already used for a different command.
+          description: The action is not available from the Venue's status, verify or reopen found no Genre on the Venue, or the idempotency key was already used for a different command.
           content:
             application/json:
               schema:
@@ -1924,6 +1924,12 @@ paths:
                     error:
                       code: invalid_venue_transition
                       message: This action is not available for a venue with that status.
+                      request_id: abc
+                incomplete:
+                  value:
+                    error:
+                      code: venue_incomplete
+                      message: This venue needs at least one genre before it can be verified.
                       request_id: abc
                 idempotency:
                   value:
@@ -2593,7 +2599,7 @@ components:
         data:
           type: object
           additionalProperties: false
-          required: [id, name, description, latitude, longitude, address, city, country_code, venue_type, genres, verification_status, rejection_reason, rejection_note, delisting_reason, delisting_note, created_at, updated_at, submitter, reports]
+          required: [id, name, description, latitude, longitude, address, city, country_code, venue_type, genres, verification_status, rejection_reason, rejection_note, delisting_reason, delisting_note, created_at, updated_at, submitter, reports, history]
           properties:
             id:
               type: string
@@ -2667,6 +2673,44 @@ components:
                     oneOf:
                       - $ref: "#/components/schemas/ModeratorProfile"
                       - type: "null"
+            history:
+              type: array
+              description: Audit rows, newest first, at most 20.
+              items:
+                type: object
+                additionalProperties: false
+                required: [id, action, prior_status, new_status, rejection_reason, rejection_note, delisting_reason, delisting_note, actor_user_id, created_at]
+                properties:
+                  id:
+                    type: string
+                    format: uuid
+                  action:
+                    type: string
+                    enum: [verify, reject, delist, reopen, correct, resubmit]
+                    description: correct is an operator correction; resubmit is the Submitter's correction of a rejected Venue.
+                  prior_status:
+                    type: string
+                    enum: [pending, verified, rejected, delisted]
+                  new_status:
+                    type: string
+                    enum: [pending, verified, rejected, delisted]
+                  rejection_reason:
+                    type: [string, "null"]
+                    enum: [duplicate, not_eligible, inaccurate_details, insufficient_information, cannot_verify, other, null]
+                  rejection_note:
+                    type: [string, "null"]
+                  delisting_reason:
+                    type: [string, "null"]
+                    enum: [permanently_closed, duplicate, no_longer_eligible, other, null]
+                  delisting_note:
+                    type: [string, "null"]
+                  actor_user_id:
+                    type: [string, "null"]
+                    format: uuid
+                    description: The operator, or the Submitter for resubmit. Null after that User is deleted.
+                  created_at:
+                    type: string
+                    format: date-time
     Error:
       type: object
       additionalProperties: false

@@ -68,10 +68,24 @@ type moderatedView struct {
 	DelistingNote   *string `json:"delisting_note"`
 }
 
+type moderationActionView struct {
+	ID              string    `json:"id"`
+	Action          string    `json:"action"`
+	PriorStatus     string    `json:"prior_status"`
+	NewStatus       string    `json:"new_status"`
+	RejectionReason *string   `json:"rejection_reason"`
+	RejectionNote   *string   `json:"rejection_note"`
+	DelistingReason *string   `json:"delisting_reason"`
+	DelistingNote   *string   `json:"delisting_note"`
+	ActorUserID     *string   `json:"actor_user_id"`
+	CreatedAt       time.Time `json:"created_at"`
+}
+
 type moderationVenueView struct {
 	moderatedView
-	Submitter *profile.Profile    `json:"submitter"`
-	Reports   []pendingReportView `json:"reports"`
+	Submitter *profile.Profile       `json:"submitter"`
+	Reports   []pendingReportView    `json:"reports"`
+	History   []moderationActionView `json:"history"`
 }
 
 type venueActionView struct {
@@ -180,7 +194,18 @@ func getModerationVenue(w http.ResponseWriter, r *http.Request, moderation Venue
 			ID: item.ID, Reason: item.Reason, Note: item.Note, CreatedAt: item.CreatedAt.UTC(), Reporter: profilePtr(item.Reporter),
 		})
 	}
-	WriteData(w, http.StatusOK, moderationVenueView{moderatedView: moderatedJSON(got.Moderated), Submitter: profilePtr(got.Submitter), Reports: reports})
+	history := make([]moderationActionView, 0, len(got.History))
+	for _, a := range got.History {
+		history = append(history, moderationActionView{
+			ID: a.ID, Action: a.Action, PriorStatus: a.PriorStatus, NewStatus: a.NewStatus,
+			RejectionReason: a.RejectionReason, RejectionNote: a.RejectionNote,
+			DelistingReason: a.DelistingReason, DelistingNote: a.DelistingNote,
+			ActorUserID: a.ActorUserID, CreatedAt: a.CreatedAt.UTC(),
+		})
+	}
+	WriteData(w, http.StatusOK, moderationVenueView{
+		moderatedView: moderatedJSON(got.Moderated), Submitter: profilePtr(got.Submitter), Reports: reports, History: history,
+	})
 }
 
 func applyVenueAction(w http.ResponseWriter, r *http.Request, moderation VenueModeration, logger *slog.Logger) {
@@ -286,10 +311,12 @@ func writeVenueModerationError(logger *slog.Logger, w http.ResponseWriter, r *ht
 		WriteError(w, http.StatusConflict, "report_already_resolved", "That report is already resolved.", id, nil)
 	case errors.As(err, &transition):
 		WriteError(w, http.StatusConflict, "invalid_venue_transition", "This action is not available for a venue with that status.", id, nil)
+	case errors.Is(err, venue.ErrIncomplete):
+		WriteError(w, http.StatusConflict, "venue_incomplete", "This venue needs at least one genre before it can be verified.", id, nil)
 	case errors.As(err, &quota):
 		w.Header().Set("Retry-After", strconv.Itoa(quota.RetryAfter))
 		WriteError(w, http.StatusTooManyRequests, "quota_exceeded", "The report limit has been reached.", id, nil)
 	default:
-		writeSubmissionError(logger, w, r, err)
+		writeLabeledSubmissionError(logger, "venue moderation", w, r, err)
 	}
 }

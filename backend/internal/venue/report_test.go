@@ -84,6 +84,23 @@ func TestReportQuotaIsShared(t *testing.T) {
 	}
 }
 
+// A User at quota who re-reports a Venue they already reported hears about the pending report, not the quota.
+func TestReportPendingBeforeQuota(t *testing.T) {
+	h := newHarness(t)
+	insertUser(t, h.pool, userB, "active", nil)
+	seedVenue(t, h.pool, seed{id: vid(87), name: "Again", status: "verified", lat: 76, lon: 10})
+	if _, err := report(h, userB, vid(87), "again-key-001", "moved", nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := h.pool.Exec(context.Background(), `
+		insert into report_quota_events (user_id, created_at) select $1, $2 from generate_series(1, 20)`, userB, submitNow.Add(-time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := report(h, userB, vid(87), "again-key-002", "duplicate", nil); !errors.Is(err, ErrReportPending) {
+		t.Fatalf("want pending, got %v", err)
+	}
+}
+
 // A report racing a delist waits on the Venue row lock and then sees the new status.
 func TestReportWaitsForDelist(t *testing.T) {
 	h := newHarness(t)

@@ -542,8 +542,23 @@ func TestCorrectRejectedVenue(t *testing.T) {
 	if err := h.pool.QueryRow(context.Background(), `select rejection_reason from venues where id = $1`, vid(40)).Scan(&reason); err != nil || reason != nil {
 		t.Fatalf("feedback not cleared %v %v", reason, err)
 	}
+	var action, prior, next string
+	var actor, rejection, delisting *string
+	if err := h.pool.QueryRow(context.Background(), `
+		select action, prior_status, new_status, actor_user_id::text, rejection_reason, delisting_reason
+		from venue_moderation_actions where venue_id = $1`, vid(40)).Scan(&action, &prior, &next, &actor, &rejection, &delisting); err != nil ||
+		action != "resubmit" || prior != "rejected" || next != "pending" || actor == nil || *actor != userA || rejection != nil || delisting != nil {
+		t.Fatalf("resubmit audit %s %s %s %v %v %v %v", action, prior, next, actor, rejection, delisting, err)
+	}
 	if _, err := h.service.Correct(context.Background(), CorrectCommand{UserID: userA, VenueID: vid(40), Fields: rawVenue("New Name", 30, 10, punk)}); err != nil {
 		t.Fatalf("pending recorrection: %v", err)
+	}
+	// A changed correction of a pending Venue is not a moderation event.
+	if _, err := h.service.Correct(context.Background(), CorrectCommand{UserID: userA, VenueID: vid(40), Fields: rawVenue("Newer Name", 30, 10, punk)}); err != nil {
+		t.Fatalf("pending change: %v", err)
+	}
+	if n := countRows(t, h, `select count(*) from venue_moderation_actions where venue_id = $1`, vid(40)); n != 1 {
+		t.Fatalf("audit rows %d", n)
 	}
 }
 

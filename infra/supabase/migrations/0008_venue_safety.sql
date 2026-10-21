@@ -98,6 +98,11 @@ create table venue_moderation_actions (
     or (action = 'delist' and prior_status = 'verified' and new_status = 'delisted')
     or (action = 'reopen' and prior_status = 'delisted' and new_status = 'verified')
     or (action = 'correct' and prior_status = new_status and new_status in ('pending', 'verified'))
+    -- A feedback-only change: same status, new reason or note.
+    or (action = 'reject' and prior_status = 'rejected' and new_status = 'rejected')
+    or (action = 'delist' and prior_status = 'delisted' and new_status = 'delisted')
+    -- The Submitter's correction of a rejected Venue; actor_user_id is then the Submitter.
+    or (action = 'resubmit' and prior_status = 'rejected' and new_status = 'pending')
   ),
   constraint venue_moderation_actions_reason_check check (
     ((rejection_reason is not null) = (action = 'reject'))
