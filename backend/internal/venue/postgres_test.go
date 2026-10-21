@@ -108,6 +108,115 @@ func TestCatalogueMembershipAndAggregates(t *testing.T) {
 	}
 }
 
+func TestRatingAggregates(t *testing.T) {
+	ctx := context.Background()
+	pool := testPool(t)
+	punk := genreID(t, pool, "Punk")
+	verified := "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+	pending := "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+	insertVenue(t, pool, verified, "Alpha", "verified", punk)
+	insertVenue(t, pool, pending, "Beta", "pending", punk)
+
+	users := []string{
+		"00000000-0000-4000-8000-000000000001",
+		"00000000-0000-4000-8000-000000000002",
+		"00000000-0000-4000-8000-000000000003",
+		"00000000-0000-4000-8000-000000000004",
+	}
+	for _, id := range users {
+		insertUser(t, pool, id, "", nil)
+	}
+
+	service := New(pool, nil, nil, time.Now)
+	assertAggregate := func(label, venueID string, wantAvg *float64, wantCount int) {
+		t.Helper()
+		page, err := service.ListVenues(ctx, Query{Limit: 20})
+		if err != nil {
+			t.Fatalf("%s: list err %v", label, err)
+		}
+		var listed *Venue
+		for i := range page.Venues {
+			if page.Venues[i].ID == venueID {
+				listed = &page.Venues[i]
+			}
+		}
+		if listed == nil {
+			t.Fatalf("%s: venue missing from list", label)
+		}
+		checkAggregate(t, label+" list", *listed, wantAvg, wantCount)
+		got, err := service.GetVenue(ctx, venueID)
+		if err != nil {
+			t.Fatalf("%s: detail err %v", label, err)
+		}
+		checkAggregate(t, label+" detail", got, wantAvg, wantCount)
+	}
+
+	assertAggregate("no reviews", verified, nil, 0)
+
+	ratings := []int{1, 1, 1, 2}
+	for i, rating := range ratings {
+		insertReview(t, pool, verified, users[i], rating)
+	}
+	oneThree := 1.3
+	assertAggregate("four reviews", verified, &oneThree, 4)
+
+	insertReview(t, pool, pending, users[0], 5)
+	assertAggregate("pending with seeded review", pending, nil, 0)
+
+	if _, err := pool.Exec(ctx, `delete from reviews where venue_id = $1`, verified); err != nil {
+		t.Fatal(err)
+	}
+	assertAggregate("after delete", verified, nil, 0)
+
+	insertReview(t, pool, verified, users[0], 5)
+	if _, err := pool.Exec(ctx, `update venues set verification_status = 'delisted', delisting_reason = 'duplicate' where id = $1`, verified); err != nil {
+		t.Fatal(err)
+	}
+	page, err := service.ListVenues(ctx, Query{Limit: 20})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, v := range page.Venues {
+		if v.ID == verified {
+			t.Fatalf("delisted venue present in list")
+		}
+	}
+	if _, err := service.GetVenue(ctx, verified); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("delisted detail err %v", err)
+	}
+
+	if _, err := pool.Exec(ctx, `update venues set verification_status = 'verified', delisting_reason = null where id = $1`, verified); err != nil {
+		t.Fatal(err)
+	}
+	five := 5.0
+	assertAggregate("reopened", verified, &five, 1)
+}
+
+func checkAggregate(t *testing.T, label string, got Venue, wantAvg *float64, wantCount int) {
+	t.Helper()
+	switch {
+	case wantAvg == nil && got.AverageRating != nil:
+		t.Fatalf("%s: average rating %v, want nil", label, *got.AverageRating)
+	case wantAvg != nil && (got.AverageRating == nil || *got.AverageRating != *wantAvg):
+		t.Fatalf("%s: average rating %v, want %v", label, got.AverageRating, *wantAvg)
+	}
+	if got.ReviewCount != wantCount {
+		t.Fatalf("%s: review count %d, want %d", label, got.ReviewCount, wantCount)
+	}
+	if got.CheckInCount != 0 {
+		t.Fatalf("%s: check-in count %d", label, got.CheckInCount)
+	}
+}
+
+func insertReview(t *testing.T, pool *pgxpool.Pool, venueID, userID string, rating int) {
+	t.Helper()
+	if _, err := pool.Exec(context.Background(), `
+		insert into reviews (venue_id, user_id, rating, created_at, updated_at)
+		values ($1, $2, $3, now(), now())`, venueID, userID, rating); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestVenueWithTwoGenresCountsOnce(t *testing.T) {
 	ctx := context.Background()
 	pool := testPool(t)

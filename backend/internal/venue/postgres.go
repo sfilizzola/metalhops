@@ -235,7 +235,13 @@ func venueSelect(distance, tier string) string {
 		ST_Y(v.location::geometry), ST_X(v.location::geometry),
 		v.address, v.city, v.country_code, v.venue_type, v.verification_status,
 		` + genresJSON + `,
-		null::float8, 0, 0,
+		case when v.verification_status = 'verified' then
+			(select round(avg(r.rating)::numeric, 1)::float8 from reviews r where r.venue_id = v.id)
+		end,
+		case when v.verification_status = 'verified' then
+			(select count(*)::int from reviews r where r.venue_id = v.id)
+		else 0 end,
+		0,
 		venue_name_key(v.name), ` + distance + `, ` + tier + `
 	from venues v`
 }
