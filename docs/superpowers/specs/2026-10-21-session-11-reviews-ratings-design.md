@@ -38,9 +38,11 @@ reviews.
 
 `internal/review` owns validation, visibility, authorship, the write
 transaction, the public list, and the caller's own Review. Its constructor
-takes the pool, the per-User write limiter, and the clock. It calls
-`profile.RequireContributor` and `profile.PublicIdentity`. It does not import
-`internal/venue` and it does not hold a `profile.Service`.
+takes the pool, the `*profile.Service`, the per-User write limiter, and the
+clock, matching `venue.New`. Writes call `profiles.NormalizeExpiry` before the
+transaction, as Venue submissions and reports do, so an expired suspension
+does not block a Review. It calls `profile.RequireContributor` and
+`profile.PublicIdentity`. It does not import `internal/venue`.
 
 HTTP adapters stay in `internal/api`. That package gains a `Reviews` interface
 with two adapters: the PostgreSQL service, and a fake used by HTTP tests. The
@@ -211,8 +213,9 @@ After the Venue check, an active Profile is required:
 - `403 profile_suspended`, `This profile is suspended.`, with
   `suspended_until` when the Profile has one.
 
-`PUT` and `DELETE` call `profile.RequireContributor` and use its current
-rules. This session does not add a new suspension-expiry path.
+`PUT` and `DELETE` call `profiles.NormalizeExpiry` and then
+`profile.RequireContributor`, the existing pair used by Venue writes. This
+session does not add a new suspension-expiry path.
 
 | Venue | GET list | GET me | PUT | DELETE |
 | --- | --- | --- | --- | --- |
@@ -226,17 +229,19 @@ rules. This session does not add a new suspension-expiry path.
 `PUT` and `DELETE` run in one transaction. A hidden or pending Venue returns
 from step 1, before the Profile lock and before a write token is reserved.
 
-1. Load the Venue and apply the outcome table above.
-2. `RequireContributor` locks the Profile row.
-3. Take `pg_advisory_xact_lock(hashtextextended('review' || chr(31) || userID || chr(31) || venueID, 0))`.
-4. Read the caller's Review. For `PUT`, an equal rating and commentary is a
+0. Before the transaction, `profiles.NormalizeExpiry` for the caller.
+1. Load the Venue `for share` and apply the outcome table above. A concurrent
+   moderation action either commits first or waits for this write.
+2. `RequireContributor` locks the Profile row `for update`. That lock
+   serializes every write by one User, so no advisory lock is needed.
+3. Read the caller's Review. For `PUT`, an equal rating and commentary is a
    no-op: commit, spend no write token, return the stored Review, and stop.
    For `DELETE`, a missing row on a verified public Venue is
    `404 review_not_found` and stops before a token is reserved.
-5. Reserve a write token. A refusal is `429 rate_limited` with `Retry-After`,
+4. Reserve a write token. A refusal is `429 rate_limited` with `Retry-After`,
    the transaction rolls back, and the row stays unchanged.
-6. Insert, update, or delete. The unique key remains the backstop.
-7. Commit. Only a committed insert, update, or delete keeps the token. A
+5. Insert, update, or delete. The unique key remains the backstop.
+6. Commit. Only a committed insert, update, or delete keeps the token. A
    failure cancels the reservation.
 
 Two concurrent first saves for the same User and Venue leave one row. Both
