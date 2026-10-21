@@ -24,6 +24,8 @@ func New(pool *pgxpool.Pool, profiles *profile.Service, writes *ratelimit.UserLi
 	return &Service{pool: pool, profiles: profiles, writes: writes, clock: clock}
 }
 
+var errWritesUnavailable = errors.New("review: writes are not configured")
+
 func invalidVenueID() error {
 	return &ValidationError{Fields: map[string]string{"venue_id": "must be a canonical uuid"}}
 }
@@ -140,4 +142,173 @@ func (s *Service) GetOwn(ctx context.Context, userID, venueID string) (Own, erro
 	}
 	own.CreatedAt, own.UpdatedAt = own.CreatedAt.UTC(), own.UpdatedAt.UTC()
 	return own, nil
+}
+
+const ownSQL = `
+	select r.id::text, r.user_id::text, r.rating, r.commentary, p.username, p.display_name, r.created_at, r.updated_at
+	from reviews r
+	join profiles p on p.id = r.user_id
+	where r.venue_id = $1::uuid and r.user_id = $2::uuid`
+
+func scanOwn(row pgx.Row) (Own, error) {
+	var own Own
+	if err := row.Scan(&own.ID, &own.UserID, &own.Rating, &own.Commentary, &own.Username, &own.DisplayName, &own.CreatedAt, &own.UpdatedAt); err != nil {
+		return Own{}, err
+	}
+	own.CreatedAt, own.UpdatedAt = own.CreatedAt.UTC(), own.UpdatedAt.UTC()
+	return own, nil
+}
+
+// requireWritable resolves the Venue before the Profile, so a hidden Venue is 404 even for a
+// suspended caller. for share: a concurrent moderation action (for update) either commits first,
+// and this write sees the new status, or waits for this write. RequireContributor then locks the
+// Profile for update, which serializes every write by one User.
+func requireWritable(ctx context.Context, tx pgx.Tx, userID, venueID string) error {
+	var status string
+	err := tx.QueryRow(ctx, `
+		select v.verification_status from venues v
+		where v.id = $1::uuid
+		  and v.verification_status in ('pending', 'verified')
+		  and exists (select 1 from venue_genres g where g.venue_id = v.id)
+		for share of v`, venueID).Scan(&status)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ErrVenueNotFound
+	}
+	if err != nil {
+		return fmt.Errorf("review: venue: %w", err)
+	}
+	if status != "verified" {
+		return ErrVenueNotVerified
+	}
+	return profile.RequireContributor(ctx, tx, userID)
+}
+
+func (s *Service) Save(ctx context.Context, cmd SaveCommand) (SaveResult, error) {
+	if !CanonicalID(cmd.VenueID) {
+		return SaveResult{}, invalidVenueID()
+	}
+	draft, err := ParseDraft(cmd.Rating, cmd.Commentary)
+	if err != nil {
+		return SaveResult{}, err
+	}
+	if s.profiles == nil || s.writes == nil {
+		return SaveResult{}, errWritesUnavailable
+	}
+	txCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	if err := s.profiles.NormalizeExpiry(txCtx, cmd.UserID); err != nil {
+		return SaveResult{}, err
+	}
+	tx, err := s.pool.Begin(txCtx)
+	if err != nil {
+		return SaveResult{}, fmt.Errorf("review: begin: %w", err)
+	}
+	defer func() { _ = tx.Rollback(context.Background()) }()
+	if err := requireWritable(txCtx, tx, cmd.UserID, cmd.VenueID); err != nil {
+		return SaveResult{}, err
+	}
+	current, err := scanOwn(tx.QueryRow(txCtx, ownSQL, cmd.VenueID, cmd.UserID))
+	found := err == nil
+	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		return SaveResult{}, fmt.Errorf("review: read: %w", err)
+	}
+	if found && current.Rating == draft.Rating && sameText(current.Commentary, draft.Commentary) {
+		if err := tx.Commit(txCtx); err != nil {
+			return SaveResult{}, fmt.Errorf("review: commit: %w", err)
+		}
+		return SaveResult{Review: current}, nil
+	}
+	reservation, retryAfter, ok := s.writes.Reserve(cmd.UserID)
+	if !ok {
+		return SaveResult{}, &RateLimitError{RetryAfter: retryAfter}
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			reservation.Cancel()
+		}
+	}()
+	now := s.clock()
+	if found {
+		_, err = tx.Exec(txCtx, `
+			update reviews set rating = $3, commentary = $4, updated_at = $5
+			where venue_id = $1::uuid and user_id = $2::uuid`,
+			cmd.VenueID, cmd.UserID, draft.Rating, draft.Commentary, now)
+	} else {
+		_, err = tx.Exec(txCtx, `
+			insert into reviews (venue_id, user_id, rating, commentary, created_at, updated_at)
+			values ($1::uuid, $2::uuid, $3, $4, $5, $5)`,
+			cmd.VenueID, cmd.UserID, draft.Rating, draft.Commentary, now)
+	}
+	if err != nil {
+		return SaveResult{}, fmt.Errorf("review: write: %w", err)
+	}
+	stored, err := scanOwn(tx.QueryRow(txCtx, ownSQL, cmd.VenueID, cmd.UserID))
+	if err != nil {
+		return SaveResult{}, fmt.Errorf("review: read: %w", err)
+	}
+	if err := tx.Commit(txCtx); err != nil {
+		return SaveResult{}, fmt.Errorf("review: commit: %w", err)
+	}
+	reservation.Commit()
+	committed = true
+	return SaveResult{Review: stored, Created: !found}, nil
+}
+
+func sameText(a, b *string) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	return *a == *b
+}
+
+func (s *Service) Delete(ctx context.Context, userID, venueID string) error {
+	if !CanonicalID(venueID) {
+		return invalidVenueID()
+	}
+	if s.profiles == nil || s.writes == nil {
+		return errWritesUnavailable
+	}
+	txCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	if err := s.profiles.NormalizeExpiry(txCtx, userID); err != nil {
+		return err
+	}
+	tx, err := s.pool.Begin(txCtx)
+	if err != nil {
+		return fmt.Errorf("review: begin: %w", err)
+	}
+	defer func() { _ = tx.Rollback(context.Background()) }()
+	if err := requireWritable(txCtx, tx, userID, venueID); err != nil {
+		return err
+	}
+	var exists bool
+	if err := tx.QueryRow(txCtx, `
+		select exists (select 1 from reviews where venue_id = $1::uuid and user_id = $2::uuid)`,
+		venueID, userID).Scan(&exists); err != nil {
+		return fmt.Errorf("review: read: %w", err)
+	}
+	if !exists {
+		return ErrReviewNotFound
+	}
+	reservation, retryAfter, ok := s.writes.Reserve(userID)
+	if !ok {
+		return &RateLimitError{RetryAfter: retryAfter}
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			reservation.Cancel()
+		}
+	}()
+	if _, err := tx.Exec(txCtx, `
+		delete from reviews where venue_id = $1::uuid and user_id = $2::uuid`, venueID, userID); err != nil {
+		return fmt.Errorf("review: delete: %w", err)
+	}
+	if err := tx.Commit(txCtx); err != nil {
+		return fmt.Errorf("review: commit: %w", err)
+	}
+	reservation.Commit()
+	committed = true
+	return nil
 }
