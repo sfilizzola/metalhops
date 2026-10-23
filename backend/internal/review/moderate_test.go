@@ -175,3 +175,68 @@ func TestModerateOnDelistedVenue(t *testing.T) {
 		t.Fatalf("delisted %+v %v", got, err)
 	}
 }
+
+func TestGetModerationReview(t *testing.T) {
+	h := newWriteHarness(t)
+	insertVenue(t, h.pool, delistedVenue, "delisted")
+	insertVenue(t, h.pool, verifiedVenue, "verified")
+	insertUser(t, h.pool, userA, "active", nil)
+	insertUser(t, h.pool, userB, "active", nil)
+	insertUser(t, h.pool, userC, "", nil)
+
+	reviewID := insertReview(t, h.pool, delistedVenue, userA, 4, ptr("loud"), t0)
+	insertPendingReport(t, h.pool, userB, reviewID, "spam", nil)
+	if _, err := h.pool.Exec(context.Background(), `
+		insert into review_reports (reporter_user_id, review_id, reason, status, resolved_at, resolved_by_user_id)
+		values ($1, $2, 'harassment', 'dismissed', $3, $4)`, userB, reviewID, t0, userC); err != nil {
+		t.Fatal(err)
+	}
+	actionID := insertModerationAction(t, h.pool, reviewID, userA, delistedVenue, userC, "commentary_removed", "spam", nil, t0)
+
+	got, err := h.service.GetModerationReview(context.Background(), reviewID)
+	if err != nil || got.Review.ID != reviewID || got.Review.VenueID != delistedVenue ||
+		len(got.Reports) != 1 || got.Reports[0].Reason != "spam" || len(got.History) != 1 ||
+		got.History[0].ID != actionID || got.Restriction != nil {
+		t.Fatalf("detail %+v %v", got, err)
+	}
+
+	// History capped at 20.
+	for i := 0; i < 22; i++ {
+		insertModerationAction(t, h.pool, reviewID, userA, delistedVenue, userC, "commentary_removed", "spam", nil, t0.Add(time.Duration(i+1)*time.Minute))
+	}
+	got, err = h.service.GetModerationReview(context.Background(), reviewID)
+	if err != nil || len(got.History) != 20 {
+		t.Fatalf("history cap %d %v", len(got.History), err)
+	}
+
+	// Restriction from a deleted earlier Review on the same Venue.
+	early := insertReview(t, h.pool, verifiedVenue, userA, 2, ptr("early"), t0)
+	started := t0.Add(2 * time.Hour)
+	sourceID := insertModerationAction(t, h.pool, early, userA, verifiedVenue, userC, "review_deleted", "spam", ptr("source"), t0.Add(time.Hour))
+	if _, err := h.pool.Exec(context.Background(), `
+		insert into review_commentary_restrictions (user_id, venue_id, source_action_id, created_at)
+		values ($1, $2, $3, $4)`, userA, verifiedVenue, sourceID, started); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := h.pool.Exec(context.Background(), `delete from reviews where id = $1`, early); err != nil {
+		t.Fatal(err)
+	}
+	later := insertReview(t, h.pool, verifiedVenue, userA, 5, nil, t0.Add(3*time.Hour))
+	laterAction := insertModerationAction(t, h.pool, later, userA, verifiedVenue, userC, "commentary_removed", "off_topic", nil, t0.Add(4*time.Hour))
+
+	got, err = h.service.GetModerationReview(context.Background(), later)
+	if err != nil || got.Restriction == nil || !got.Restriction.CreatedAt.Equal(started) ||
+		got.Restriction.Source.ID != sourceID || got.Restriction.Source.Note == nil ||
+		*got.Restriction.Source.Note != "source" {
+		t.Fatalf("restriction %+v %v", got.Restriction, err)
+	}
+	for _, a := range got.History {
+		if a.ID == sourceID {
+			t.Fatalf("source leaked into history: %s (later action %s)", sourceID, laterAction)
+		}
+	}
+
+	if _, err := h.service.GetModerationReview(context.Background(), unknownVenue); !errors.Is(err, ErrReviewNotFound) {
+		t.Fatalf("missing: %v", err)
+	}
+}

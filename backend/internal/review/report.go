@@ -2,9 +2,11 @@ package review
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -12,6 +14,34 @@ import (
 	"github.com/metalhops/metalhops/backend/internal/profile"
 	"github.com/metalhops/metalhops/backend/internal/ratelimit"
 )
+
+const reportCursorDiscriminator = "review-report-v1"
+
+// reportListSQL is used by ListReviewReports and the index plan test.
+var reportListSQL = `
+	select r.id::text, r.reason, r.note, r.status, r.created_at,
+	       rev.id::text, rev.venue_id::text, rev.rating, rev.commentary,
+	       rev.commentary_removed_at is not null,
+	       ` + profileColumns("rp") + `, ` + profileColumns("ap") + `
+	from review_reports r
+	join reviews rev on rev.id = r.review_id
+	left join profiles rp on rp.id = r.reporter_user_id
+	left join profiles ap on ap.id = rev.user_id
+	where r.status = 'pending'
+	  and ($1::timestamptz is null or (r.created_at, r.id) > ($1::timestamptz, $2::uuid))
+	order by r.created_at, r.id
+	limit $3`
+
+var reportItemSQL = `
+	select r.id::text, r.reason, r.note, r.status, r.created_at,
+	       rev.id::text, rev.venue_id::text, rev.rating, rev.commentary,
+	       rev.commentary_removed_at is not null,
+	       ` + profileColumns("rp") + `, ` + profileColumns("ap") + `
+	from review_reports r
+	join reviews rev on rev.id = r.review_id
+	left join profiles rp on rp.id = r.reporter_user_id
+	left join profiles ap on ap.id = rev.user_id
+	where r.id = $1::uuid`
 
 type reviewReportCommand struct {
 	ReviewID string  `json:"review_id"`
@@ -169,4 +199,141 @@ func (s *Service) ReportReview(ctx context.Context, cmd ReportCommand) (Report, 
 		ID: stored.ID, ReviewID: stored.ReviewID, VenueID: stored.VenueID,
 		Reason: stored.Reason, Note: stored.Note, Status: stored.Status, CreatedAt: stored.CreatedAt,
 	}, nil
+}
+
+func scanReportItem(row pgx.Row) (ReportItem, error) {
+	var item ReportItem
+	var reporter, author nullableProfile
+	dest := []any{
+		&item.ID, &item.Reason, &item.Note, &item.Status, &item.CreatedAt,
+		&item.ReviewID, &item.VenueID, &item.Rating, &item.Commentary, &item.CommentaryRemoved,
+	}
+	dest = append(dest, reporter.dest()...)
+	dest = append(dest, author.dest()...)
+	if err := row.Scan(dest...); err != nil {
+		return ReportItem{}, err
+	}
+	item.CreatedAt = item.CreatedAt.UTC()
+	item.Reporter = reporter.profile()
+	item.Author = author.profile()
+	return item, nil
+}
+
+func (s *Service) ListReviewReports(ctx context.Context, limit int, cursor string) (ReportPage, error) {
+	if err := ValidateLimit(limit); err != nil {
+		return ReportPage{}, err
+	}
+	var cursorAt *time.Time
+	var cursorID *string
+	if cursor != "" {
+		at, id, err := decodeReportCursor(cursor)
+		if err != nil {
+			return ReportPage{}, err
+		}
+		cursorAt, cursorID = &at, &id
+	}
+	queryCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	rows, err := s.pool.Query(queryCtx, reportListSQL, cursorAt, cursorID, limit+1)
+	if err != nil {
+		return ReportPage{}, fmt.Errorf("review: reports: %w", err)
+	}
+	defer rows.Close()
+	items := make([]ReportItem, 0)
+	for rows.Next() {
+		item, err := scanReportItem(rows)
+		if err != nil {
+			return ReportPage{}, fmt.Errorf("review: reports: %w", err)
+		}
+		items = append(items, item)
+	}
+	if err := rows.Err(); err != nil {
+		return ReportPage{}, fmt.Errorf("review: reports: %w", err)
+	}
+	var next *string
+	if len(items) > limit {
+		items = items[:limit]
+		encoded := encodeReportCursor(items[limit-1].CreatedAt, items[limit-1].ID)
+		next = &encoded
+	}
+	return ReportPage{Items: items, NextCursor: next}, nil
+}
+
+func (s *Service) DismissReviewReport(ctx context.Context, actorID, reportID string) (ReportItem, error) {
+	if !CanonicalID(reportID) {
+		return ReportItem{}, &ValidationError{Fields: map[string]string{"report_id": "must be a canonical uuid"}}
+	}
+	if s.writes == nil {
+		return ReportItem{}, errWritesUnavailable
+	}
+	txCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	tx, err := s.pool.Begin(txCtx)
+	if err != nil {
+		return ReportItem{}, fmt.Errorf("review: begin: %w", err)
+	}
+	defer func() { _ = tx.Rollback(context.Background()) }()
+	var status string
+	err = tx.QueryRow(txCtx, `select status from review_reports where id = $1::uuid for update`, reportID).Scan(&status)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ReportItem{}, ErrReportNotFound
+	}
+	if err != nil {
+		return ReportItem{}, fmt.Errorf("review: report: %w", err)
+	}
+	if status == "actioned" || status == "author_resolved" {
+		return ReportItem{}, ErrReportResolved
+	}
+	var reservation *ratelimit.Reservation
+	committed := false
+	defer func() {
+		if reservation != nil && !committed {
+			reservation.Cancel()
+		}
+	}()
+	if status == "pending" {
+		next, retryAfter, ok := s.writes.Reserve(actorID)
+		if !ok {
+			return ReportItem{}, &RateLimitError{RetryAfter: retryAfter}
+		}
+		reservation = next
+		if _, err := tx.Exec(txCtx, `
+			update review_reports set status = 'dismissed', resolved_at = $2, resolved_by_user_id = $3::uuid
+			where id = $1::uuid`, reportID, s.clock(), actorID); err != nil {
+			return ReportItem{}, fmt.Errorf("review: report: %w", err)
+		}
+	}
+	item, err := scanReportItem(tx.QueryRow(txCtx, reportItemSQL, reportID))
+	if err != nil {
+		return ReportItem{}, fmt.Errorf("review: report: %w", err)
+	}
+	if err := tx.Commit(txCtx); err != nil {
+		return ReportItem{}, fmt.Errorf("review: commit: %w", err)
+	}
+	if reservation != nil {
+		reservation.Commit()
+		committed = true
+	}
+	return item, nil
+}
+
+func encodeReportCursor(createdAt time.Time, id string) string {
+	return base64.RawURLEncoding.EncodeToString([]byte(reportCursorDiscriminator + "|" + createdAt.UTC().Format(time.RFC3339Nano) + "|" + id))
+}
+
+func decodeReportCursor(cursor string) (time.Time, string, error) {
+	invalid := &ValidationError{Fields: map[string]string{"cursor": "invalid"}}
+	raw, err := base64.RawURLEncoding.DecodeString(cursor)
+	if err != nil {
+		return time.Time{}, "", invalid
+	}
+	parts := strings.Split(string(raw), "|")
+	if len(parts) != 3 || parts[0] != reportCursorDiscriminator || !CanonicalID(parts[2]) {
+		return time.Time{}, "", invalid
+	}
+	at, err := time.Parse(time.RFC3339Nano, parts[1])
+	if err != nil {
+		return time.Time{}, "", invalid
+	}
+	return at.UTC(), parts[2], nil
 }

@@ -296,3 +296,110 @@ func (n nullableProfile) profile() *profile.Profile {
 	}
 	return &p
 }
+
+const detailHistoryLimit = 20
+
+var reviewDetailReportsSQL = `
+	select r.id::text, r.reason, r.note, r.created_at, ` + profileColumns("rp") + `
+	from review_reports r
+	left join profiles rp on rp.id = r.reporter_user_id
+	where r.review_id = $1::uuid and r.status = 'pending'
+	order by r.created_at, r.id`
+
+var reviewHistorySQL = `
+	select id::text, action, reason, note, review_id::text, reviewer_user_id::text,
+	       venue_id::text, operator_user_id::text, created_at
+	from review_moderation_actions
+	where review_id = $1::uuid
+	order by created_at desc, id desc
+	limit $2`
+
+func (s *Service) GetModerationReview(ctx context.Context, reviewID string) (ModerationDetail, error) {
+	if !CanonicalID(reviewID) {
+		return ModerationDetail{}, &ValidationError{Fields: map[string]string{"review_id": "must be a canonical uuid"}}
+	}
+	queryCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	tx, err := s.pool.BeginTx(queryCtx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
+	if err != nil {
+		return ModerationDetail{}, fmt.Errorf("review: begin: %w", err)
+	}
+	defer func() { _ = tx.Rollback(context.Background()) }()
+
+	review, err := loadOperatorReview(queryCtx, tx, reviewID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ModerationDetail{}, ErrReviewNotFound
+	}
+	if err != nil {
+		return ModerationDetail{}, fmt.Errorf("review: detail: %w", err)
+	}
+	out := ModerationDetail{Review: review, Reports: []DetailReport{}, History: []AuditEntry{}}
+
+	rows, err := tx.Query(queryCtx, reviewDetailReportsSQL, reviewID)
+	if err != nil {
+		return ModerationDetail{}, fmt.Errorf("review: reports: %w", err)
+	}
+	for rows.Next() {
+		var item DetailReport
+		var reporter nullableProfile
+		if err := rows.Scan(append([]any{&item.ID, &item.Reason, &item.Note, &item.CreatedAt}, reporter.dest()...)...); err != nil {
+			rows.Close()
+			return ModerationDetail{}, fmt.Errorf("review: reports: %w", err)
+		}
+		item.CreatedAt = item.CreatedAt.UTC()
+		item.Reporter = reporter.profile()
+		out.Reports = append(out.Reports, item)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return ModerationDetail{}, fmt.Errorf("review: reports: %w", err)
+	}
+
+	rows, err = tx.Query(queryCtx, reviewHistorySQL, reviewID, detailHistoryLimit)
+	if err != nil {
+		return ModerationDetail{}, fmt.Errorf("review: history: %w", err)
+	}
+	for rows.Next() {
+		var a AuditEntry
+		if err := rows.Scan(&a.ID, &a.Action, &a.Reason, &a.Note, &a.ReviewID, &a.ReviewerUserID, &a.VenueID, &a.OperatorUserID, &a.CreatedAt); err != nil {
+			rows.Close()
+			return ModerationDetail{}, fmt.Errorf("review: history: %w", err)
+		}
+		a.CreatedAt = a.CreatedAt.UTC()
+		out.History = append(out.History, a)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return ModerationDetail{}, fmt.Errorf("review: history: %w", err)
+	}
+
+	restriction, err := loadOperatorRestriction(queryCtx, tx, review.UserID, review.VenueID)
+	if err != nil {
+		return ModerationDetail{}, err
+	}
+	out.Restriction = restriction
+	return out, nil
+}
+
+func loadOperatorRestriction(ctx context.Context, q queryRower, userID, venueID string) (*OperatorCommentaryRestriction, error) {
+	var createdAt time.Time
+	var source AuditEntry
+	err := q.QueryRow(ctx, `
+		select rest.created_at,
+			a.id::text, a.action, a.reason, a.note, a.review_id::text, a.reviewer_user_id::text,
+			a.venue_id::text, a.operator_user_id::text, a.created_at
+		from review_commentary_restrictions rest
+		join review_moderation_actions a on a.id = rest.source_action_id
+		where rest.user_id = $1::uuid and rest.venue_id = $2::uuid`, userID, venueID).Scan(
+		&createdAt,
+		&source.ID, &source.Action, &source.Reason, &source.Note, &source.ReviewID, &source.ReviewerUserID,
+		&source.VenueID, &source.OperatorUserID, &source.CreatedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("review: restriction: %w", err)
+	}
+	source.CreatedAt = source.CreatedAt.UTC()
+	return &OperatorCommentaryRestriction{CreatedAt: createdAt.UTC(), Source: source}, nil
+}

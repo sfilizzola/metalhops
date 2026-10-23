@@ -128,6 +128,58 @@ type ModerationResult struct {
 	Review   *OperatorReview // nil after delete_review
 }
 
+type ReportItem struct {
+	ID                string
+	Reason            string
+	Note              *string
+	Status            string
+	ReviewID          string
+	VenueID           string
+	Rating            int
+	Commentary        *string
+	CommentaryRemoved bool
+	CreatedAt         time.Time
+	Reporter          *profile.Profile
+	Author            *profile.Profile
+}
+
+type ReportPage struct {
+	Items      []ReportItem
+	NextCursor *string
+}
+
+type DetailReport struct {
+	ID        string
+	Reason    string
+	Note      *string
+	CreatedAt time.Time
+	Reporter  *profile.Profile
+}
+
+type AuditEntry struct {
+	ID             string
+	Action         string
+	Reason         string
+	Note           *string
+	ReviewID       string
+	ReviewerUserID *string
+	VenueID        string
+	OperatorUserID *string
+	CreatedAt      time.Time
+}
+
+type OperatorCommentaryRestriction struct {
+	CreatedAt time.Time
+	Source    AuditEntry
+}
+
+type ModerationDetail struct {
+	Review      OperatorReview
+	Reports     []DetailReport
+	History     []AuditEntry
+	Restriction *OperatorCommentaryRestriction
+}
+
 type Draft struct {
 	Rating     int
 	Commentary *string
