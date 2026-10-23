@@ -79,6 +79,25 @@ type SaveResult struct {
 	Created bool
 }
 
+type ReportCommand struct {
+	ReporterID string
+	VenueID    string
+	ReviewID   string
+	Reason     string
+	Note       *string
+	Key        string
+}
+
+type Report struct {
+	ID        string
+	ReviewID  string
+	VenueID   string
+	Reason    string
+	Note      *string
+	Status    string
+	CreatedAt time.Time
+}
+
 type Draft struct {
 	Rating     int
 	Commentary *string
