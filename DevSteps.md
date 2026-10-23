@@ -490,7 +490,9 @@ remains.
 - Integer rating constrained to 1 through 5.
 - Optional trimmed commentary limited to 2,000 characters.
 - Nullable `commentary_removed_at`; when set, commentary is null and the
-  Review is permanently rating-only in this MVP.
+  Review stays rating-only while its Commentary restriction stands. After a
+  Platform Moderator lifts that restriction, the first new commentary clears
+  this timestamp in the same transaction.
 - Created and updated timestamps.
 - A unique constraint on `(venue_id, user_id)`.
 
@@ -500,8 +502,9 @@ metadata. A `rename_required` or suspended author is shown as `MetalHops User`
 with no Username on that public response, including to that author. Public
 review responses omit the User id. Responses include creation and update timestamps and indicate
 whether commentary was removed. After removal, the reviewer may still update
-the rating but cannot add replacement commentary; an attempt returns
-`409 commentary_locked`.
+the rating but cannot add replacement commentary while the Commentary
+restriction stands; an attempt returns `409 commentary_locked` with the
+User-visible Restriction explanation.
 
 `review_moderation_actions` is an append-only audit log containing the target
 Review ID, reviewer User ID, Venue ID, action (`commentary_removed` or
@@ -511,37 +514,43 @@ Reasons are `spam`, `harassment`, `hate_or_discrimination`,
 requires a note. Removed commentary is never copied into the audit log.
 
 `review_commentary_restrictions` has one row per restricted User–Venue pair.
-Both moderation actions upsert this row, so deleting and recreating a Review
-cannot bypass the commentary lock. A restricted User may create or update a
-rating-only Review for that Venue. User or Venue deletion cascades the
-restriction. Clearing restrictions belongs to a future appeal workflow.
+Both moderation actions insert this row if absent, so deleting and recreating
+a Review cannot bypass the Commentary restriction. The row points to the first
+append-only moderation action in the current uninterrupted restriction period;
+later actions preserve that source and start time. A restricted User may create
+or update a rating-only Review for that Venue and sees the source reason, note,
+and restriction start on their own Review and in a blocked-write response.
+User or Venue deletion cascades the restriction. Session 14 adds the Platform
+Moderator operation that lifts it before the admin handoff.
 
-`review_reports` stores the reporter User, target Review and Venue, reason,
-optional note, status (`pending`, `actioned`, or `dismissed`), creation time,
-and resolution metadata. Report reasons use the same safety taxonomy as
-moderation actions, and `other` requires a note. A partial unique constraint
-permits one pending report per User and Review. A resolved report does not
-block a later report by the same User, even when the commentary is unchanged.
-A User cannot report their own Review. A Review Report requires commentary
-that is currently public. A rating-only Review, including one whose commentary
-a Platform Moderator already removed, cannot be reported. When the author
-deletes the Review, its pending Review Reports close with it. Clearing the
-commentary dismisses them. Replacing the commentary leaves a pending Review
-Report open. The Platform Moderator assesses the commentary that is public
-when they open it. A Review created
-later is a different Review and can be reported on its own. Delisting a Venue
-marks every pending Review Report for that Venue actioned. Those reports stay
-resolved if the Venue returns to verified.
+`review_reports` stores the reporter User, target Review, reason, optional
+note, status (`pending`, `actioned`, `dismissed`, or `author_resolved`),
+creation time, and resolution metadata. Its Venue is derived through the
+Review. Report reasons use the same safety taxonomy as moderation actions, and
+`other` requires a note. A partial unique constraint permits one pending
+report per User and Review. A resolved report does not block a later report by
+the same User, even when the commentary is unchanged. A User cannot report
+their own Review. A Review Report requires commentary that is currently
+public. A rating-only Review, including one whose commentary a Platform
+Moderator already removed, cannot be reported. When the author deletes the
+Review, its Review Reports end with it. Clearing or replacing reported
+commentary marks pending reports `author_resolved`; replacement commentary is
+new content and may be reported separately. A Review created later is a
+different Review and can be reported on its own. Delisting a Venue marks every
+pending Review Report for that Venue actioned. Those reports stay resolved if
+the Venue returns to verified.
 Reports never copy Review
 commentary, do not change public visibility, and are private to the reporter
 and Platform Moderators.
 The MVP exposes no report-history or resolution-status endpoint.
 
-Privileged moderation endpoints support two atomic actions: clear and lock
-commentary while preserving the rating, or record the action and delete the
-entire Review. Both actions require a reason and operator User ID and create
-the User–Venue commentary restriction. The endpoints also list pending Review
-Reports and atomically mark each handled report as `actioned` or `dismissed`.
+Privileged moderation endpoints support two atomic actions: remove commentary
+and impose a Commentary restriction while preserving the rating, or record the
+action, impose the restriction, and delete the entire Review. Both actions
+require a reason and operator User ID. That reason and optional note become the
+affected User's Restriction explanation; reporter notes remain moderator-only.
+The endpoints also list pending Review Reports and atomically mark each handled
+report as `actioned` or `dismissed`.
 The moderator sees the full Profile of each involved User who still has one,
 including the reporter and the Review author, on the report list and on a
 Review moderation action. Public redaction does not apply. A moderation action
@@ -801,7 +810,9 @@ verified-Venue, Venue-genre, and direct-submission policies without editing
   updating, or deleting that Review stays blocked until the Profile can
   contribute again. That read shows the caller's current Username and display
   name, including when public attribution uses `MetalHops User`. It includes
-  the caller's User id.
+  the caller's User id. When a Commentary restriction stands for that
+  User–Venue pair, it also shows the source reason, note, and restriction
+  start time.
 - Returns `404` when the caller has no Review or the Venue is not verified,
   including while it is Delisted. The Review reappears when the Venue is
   verified again. There is no personal Review list.
@@ -812,13 +823,16 @@ verified-Venue, Venue-genre, and direct-submission policies without editing
 - Does not require `Idempotency-Key`; the route sets the caller's single
   Review for that Venue and repeating it cannot create another Review.
 - Requires `rating`; omitted or null `commentary` clears existing commentary.
-  Clearing the commentary dismisses pending Review Reports for that Review. If
-  the author adds commentary again later, a User may file a new report.
-  Replacing the commentary leaves a pending Review Report open.
+  Clearing or replacing non-null commentary marks pending Review Reports for
+  that Review `author_resolved`. Replacement commentary is new content and
+  may be reported separately.
 - Reviews are allowed only for verified venues. A Delisted Venue returns
   `404`, and an existing Review stays unchanged.
 - Allows rating updates after commentary moderation but rejects replacement
-  commentary with `409 commentary_locked`.
+  commentary while the Commentary restriction stands with `409
+  commentary_locked`, including the same User-visible Restriction explanation
+  as the own-Review read. After Session 14 lifts the restriction, the first new
+  commentary clears `commentary_removed_at`.
 - Applies the same restriction if the moderated Review was deleted and later
   recreated.
 
@@ -826,8 +840,8 @@ verified-Venue, Venue-genre, and direct-submission policies without editing
 
 - Deletes the caller's review. It does not require an `Idempotency-Key`;
   repeating the delete does not create a second Review. A Delisted Venue
-  returns `404`, and the Review stays unchanged. Pending Review Reports
-  for that Review end with it. A Review created later is a different Review
+  returns `404`, and the Review stays unchanged. Review Reports for that
+  Review end with it. A Review created later is a different Review
   and can be reported on its own.
 
 `POST /v1/venues/{venueID}/reviews/{reviewID}/reports`
@@ -1309,8 +1323,8 @@ Neither `PUT` nor `DELETE /v1/venues/{venueID}/reviews/me` requires an
 Review. Migration `0009` adds `reviews` and raises readiness to `0009`. The
 Venue catalogue query computes `average_rating` and `review_count`, so list
 and detail stay one round trip. A pending Venue lists no Reviews, and a write
-on it is `409 venue_not_verified`. `commentary_removed` and the commentary
-lock move to Session 12.
+on it is `409 venue_not_verified`. `commentary_removed` and the Commentary
+restriction move to Session 12.
 
 **Exit condition:** Android can display, create, edit, and delete ratings and
 reviews.
@@ -1351,6 +1365,11 @@ close OpenAPI example gaps, confirm error and pagination edge cases, validate
 the migration-before-deploy release workflow and Render configuration. A
 release is successful only after the committed migrations are applied and
 `/readyz` returns 200. Render's `/healthz` success is not that proof.
+Add the privileged operation that lets a Platform Moderator lift an indefinite
+Commentary restriction before the moderation API is handed to the admin app.
+After a lift, the User may add commentary to the existing Review; that first
+commentary save clears its `commentary_removed` marker while the moderation
+audit remains.
 Document the user-facing and moderation request flows, and document the
 account-deletion flow needed for later Google Play disclosure and support
 pages.

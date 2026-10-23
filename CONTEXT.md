@@ -18,11 +18,11 @@ User. A public Review does not carry it.
 _Avoid_: Username, display name
 
 **User deletion**:
-The permanent removal of a User. Their Profile, Reviews, Check-ins, and
-Profile Reports end with them, whether they filed the report or were its
-target. Their report quota ends with them. A restriction record remains,
-without that User's identity. A Venue Submission they created remains, but it
-no longer has a Submitter.
+The permanent removal of a User. Their Profile, Reviews, Check-ins, and all
+moderation reports they filed end with them; reports targeting their Profile
+or Reviews end too, and their Report quota ends. A Restriction record
+remains without that User's identity, while a Commentary restriction ends. A
+Venue Submission they created remains without a Submitter.
 _Avoid_: Account deletion, Profile deletion
 
 **Profile**:
@@ -98,9 +98,10 @@ _Avoid_: Community Suspension, ban
 
 **Restriction explanation**:
 The reason and note a Platform Moderator attaches to a rename requirement or
-a Community Suspension. The note is required only when the reason is other,
-and it may be added to any reason. The User sees it on their own Profile. A
-Community Suspension also shows its expiry there when one is set.
+a Community Suspension, or to the decision that begins a Commentary
+restriction. The note is required only when the reason is other and may be
+added to any reason; the affected User sees the explanation on their own
+surface, while reporter notes remain private.
 _Avoid_: Report note, private note
 
 **Restriction record**:
@@ -245,6 +246,15 @@ Owner while a Platform Moderator decides whether to restore or remove it. The
 Review's rating remains public and unchanged.
 _Avoid_: Deleted Review
 
+**Commentary restriction**:
+An indefinite restriction placed by a Platform Moderator on one User writing
+Review commentary for one Venue after removing commentary or deleting a Review.
+Ratings remain allowed; it lasts until a Platform Moderator lifts it and does
+not end when the Review ends. Once lifted, the User may add commentary to an
+existing or later Review for that Venue, and while it stands they see its
+Restriction explanation on their own Review.
+_Avoid_: Commentary lock, permanent ban
+
 **Platform Moderator**:
 A trusted MetalHops operator who decides Venue eligibility, Profile
 restrictions, and final Review moderation. A Platform Moderator is not a User
@@ -256,8 +266,15 @@ _Avoid_: Venue owner, management
 A User's request for a Platform Moderator to assess another User's public
 Review commentary for a specific safety reason. It does not hide or alter the
 Review, and a resolved report does not stop the same User from filing a later
-one.
+one; ending the Review ends its reports but does not return their Report quota
+slots.
 _Avoid_: Review moderation
+
+**Resolved Review Report**:
+A Review Report no longer waiting for assessment because a Platform Moderator
+acted or dismissed it, its Venue was Delisted, or its author changed or cleared
+the reported commentary. An author-resolved report is not a moderator dismissal.
+_Avoid_: Deleted report
 
 **Check-in**:
 A User's memory of visiting a Verified Venue or a pending Venue in the public
@@ -315,6 +332,19 @@ review, but the Submitter is not necessarily the Venue's owner.
 
 **Domain expert:** No. They may temporarily hide its commentary for review,
 but the rating stays public and a Platform Moderator makes the final decision.
+
+**Developer:** A Platform Moderator deleted abusive commentary, and the User
+later created a new Review for that Venue. Can they add commentary?
+
+**Domain expert:** Not while the commentary restriction stands. They may still
+rate the Venue. After a Platform Moderator lifts it, they may add commentary
+to that Review or a later one.
+
+**Developer:** A Review Report is pending, and the author replaces the reported
+commentary before a Platform Moderator assesses it. Is the report still pending?
+
+**Domain expert:** No. It was resolved by the author changing the commentary.
+The replacement is new content and may be reported separately.
 
 **Developer:** Should the app show people the User id?
 

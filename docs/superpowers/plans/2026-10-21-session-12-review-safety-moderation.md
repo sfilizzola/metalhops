@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Users can report public Review commentary, and operators can clear-and-lock that commentary or delete the Review, without retaining the removed text.
+**Goal:** Users can report public Review commentary, and operators can remove that commentary and impose a Commentary restriction or delete the Review, without retaining the removed text.
 
-**Architecture:** Migration `0010` adds the lock column, `review_reports`, `review_moderation_actions`, and `review_commentary_restrictions`. `internal/review` owns reports, the lock, the audit, and the Session 11 write changes. `internal/api` gains a `ReviewModeration` interface (the PostgreSQL service plus an HTTP fake) and five routes. Venue delist runs one `update` on `review_reports` inside its existing transaction and does not import `internal/review`.
+**Architecture:** Migration `0010` adds the commentary-removal marker, `review_reports`, `review_moderation_actions`, and `review_commentary_restrictions`. `internal/review` owns reports, the Commentary restriction, the audit, and the Session 11 write changes. `internal/api` gains a `ReviewModeration` interface (the PostgreSQL service plus an HTTP fake) and five routes. Venue delist runs one `update` on `review_reports` inside its existing transaction and does not import `internal/review`.
 
 **Tech Stack:** Go 1.24, `net/http`, `pgx/v5`, PostgreSQL/PostGIS via `testcontainers-go` (`internal/pgtest`), OpenAPI 3.1.
 
@@ -20,11 +20,12 @@
 - Quota reuses `profile.CheckReportQuota` and `profile.RecordReportEvent`. Return `*profile.QuotaError` unwrapped.
 - Every DB statement uses a 2-second `context.WithTimeout`.
 - `internal/review` does not import `internal/venue`. `internal/venue` does not import `internal/review`.
-- Out of scope: Hidden Commentary, a route that deletes a restriction, report history, check-ins, the admin app.
+- Out of scope: Hidden Commentary, the Session 14 moderator operation that lifts a Commentary restriction, report history, check-ins, the admin app. A restriction is indefinite until a Platform Moderator lifts it; Session 12 removes one only through User or Venue deletion cascades.
 - Exact copy: `You cannot report your own review.`, `This review has no public commentary.`, `You already reported this review.`, `Commentary on this review is locked.`, `Report not found.`, `That report is already resolved.`, `The report limit has been reached.`, `Venue not found.`, `Review not found.`, `Reviews open after this venue is verified.`, `Create a profile first.`, `Rename this profile before continuing.`, `This profile is suspended.`
 - Field copy: `reason: must be a known reason`, `note: required`, `note: must be 1 to 1000 characters`, `action: must be remove_commentary or delete_review`, `must be a canonical uuid` on `venue_id`, `review_id`, or `report_id`, `limit: must be from 1 to 100`, `cursor: invalid`.
-- Error codes: `self_report` (400), `commentary_not_public` (400), `review_already_reported` (409), `commentary_locked` (409), `review_report_not_found` (404), `report_already_resolved` (409), `quota_exceeded` (429), `rate_limited` (429), plus the existing venue and profile codes named above.
+- Error codes: `self_report` (400), `commentary_not_public` (400 while filing a report; 409 when a moderator tries to remove absent commentary), `review_already_reported` (409), `commentary_locked` (409), `review_report_not_found` (404), `report_already_resolved` (409), `quota_exceeded` (429), `rate_limited` (429), plus the existing venue and profile codes named above.
 - A moderation write that appends an audit row is `201`. Replay returns that stored `201`. A `remove_commentary` no-op is `200` and is not stored.
+- A moderation action's reason and note become the affected User's Restriction explanation. Reporter notes stay moderator-only.
 - Integration tests skip locally without Docker through `pgtest`; CI treats them as blocking.
 - Definition of done: `gofmt -l .` prints nothing; `go vet ./...` and `go test ./...` pass.
 
@@ -32,9 +33,10 @@
 
 - A suspended User reporting a hidden Venue gets `403 profile_suspended`, not `404`. Report filing checks the Profile before the Venue. Pinned in Task 4 (`TestReportProfileBeforeVenue`).
 - Reusing the successful report key after the commentary is removed returns `400 commentary_not_public` and does not replay the `201`. Pinned in Task 4 (`TestReportReplayStopsWhenCommentaryGone`).
+- Reusing the successful report key after the author replaces commentary replays the historical `201`; reporting the replacement requires a new key. Pinned in Task 4 (`TestReportReplayAfterAuthorReplacement`).
 - Replaying `delete_review` after the row is gone returns the stored `201`. A different key returns `404 review_not_found`. Lookup runs before the row lock. Pinned in Task 5 (`TestDeleteReviewReplay`).
 - A restricted User who sends the same non-null commentary again gets `409 commentary_locked` before the unchanged-save short-circuit. Pinned in Task 3 (`TestLockedSameCommentaryIsConflict`).
-- An author clear updates only `status = 'pending'`. A report already `actioned` by delist stays `actioned`. Pinned in Task 3 (`TestAuthorClearDoesNotReopenActioned`).
+- An author commentary change updates only `status = 'pending'`. A report already `actioned` by delist stays `actioned`. Pinned in Task 3 (`TestAuthorChangeDoesNotReopenActioned`).
 
 ---
 
@@ -49,7 +51,7 @@
 | `backend/internal/database/review_safety_test.go` | checks, append-only, no commentary columns |
 | `backend/internal/review/review.go` | errors, report and moderation types |
 | `backend/internal/review/validation.go` | reason, note, and action normalization |
-| `backend/internal/review/postgres.go` | `commentary_removed` on reads; lock and author-clear inside `Save` |
+| `backend/internal/review/postgres.go` | `commentary_removed` and User-visible restriction explanation on reads; restriction enforcement and author-change handling inside `Save` |
 | `backend/internal/review/report.go` | `ReportReview`, list, dismiss |
 | `backend/internal/review/moderate.go` | `ModerateReview`, `GetModerationReview` |
 | `backend/internal/review/report_test.go`, `moderate_test.go`, `index_test.go` | capability tests |
@@ -74,7 +76,7 @@
 - Modify: `backend/internal/database/access_test.go` (`TestDataAPIClosed`)
 
 **Interfaces:**
-- Produces: `reviews.commentary_removed_at`; tables `review_reports`, `review_moderation_actions`, `review_commentary_restrictions`; indexes `review_reports_pending_pair_key`, `review_reports_pending_list_key`, `review_reports_pending_review_key`, `review_reports_pending_venue_key`, `review_moderation_actions_review_key`, `review_commentary_restrictions_pair_key`. Later tasks use these names.
+- Produces: `reviews.commentary_removed_at`; tables `review_reports`, `review_moderation_actions`, `review_commentary_restrictions`; indexes `review_reports_pending_pair_key`, `review_reports_pending_list_key`, `review_reports_pending_review_key`, `review_moderation_actions_review_key`, `review_commentary_restrictions_pair_key`. `review_reports` stores no duplicate `venue_id`; reads and Venue delist derive it through `reviews`. Later tasks use these names.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -84,11 +86,13 @@
 - commentary non-null and `commentary_removed_at` set → `"23514"`; both null, and commentary null with the timestamp set, succeed.
 - report reason `'nope'` → `"23514"`; `other` with null note → `"23514"`; `spam` with null note succeeds; note of 1001 characters → `"23514"`.
 - a second pending report for the same reporter and review → `"23505"`; after the first is `dismissed` (with `resolved_at`), a new pending row succeeds.
+- `author_resolved` with `resolved_at` and `resolved_by_user_id` succeeds; without `resolved_at` it fails with `"23514"`.
 - pending row with `resolved_at` set → `"23514"`.
 - `information_schema.columns` has zero rows whose `table_name` is `review_reports` or `review_moderation_actions` and whose `column_name` contains `commentary`.
 - deleting the review leaves `select count(*) from review_reports` = 0 and leaves the `report_quota_events` row.
 - deleting the reporter's auth user leaves that user's `report_quota_events` at 0.
 - deleting the restricted user's auth user leaves `select count(*) from review_commentary_restrictions` = 0.
+- inserting a restriction with an unknown `source_action_id` fails with `"23503"`; deleting the source Review leaves the audit, restriction, and source reference intact.
 
 `TestReviewAuditAppendOnly`:
 - insert with null `operator_user_id` → `"23514"`.
@@ -110,7 +114,7 @@ Expected: FAIL. The migration file does not exist, or `0010` is not required.
 
 Follow the spec's Data section. Copy the Venue append-only and actor-required triggers from `infra/supabase/migrations/0008_venue_safety.sql`. Name them `reject_review_moderation_action_mutation` and `reject_review_moderation_action_without_actor`. The update allow-list permits only nulling `reviewer_user_id` or `operator_user_id`. Insert rejects a null `operator_user_id`. Revoke execute on both functions from `public`, `anon`, `authenticated`, and `service_role`.
 
-`review_moderation_actions.review_id` has no foreign key. `venue_id` references `venues (id)` with no `ON DELETE` clause. `review_reports.review_id` and both restriction foreign keys cascade. Report and audit `created_at` default `now()`.
+`review_moderation_actions.review_id` has no foreign key. `venue_id` references `venues (id)` with no `ON DELETE` clause. `review_reports.review_id` and the restriction's User and Venue foreign keys cascade. `review_commentary_restrictions.source_action_id` references the append-only audit table with no `ON DELETE` clause. Report and audit `created_at` default `now()`.
 
 `requiredMigrationVersion` becomes `"0010"`.
 
@@ -192,7 +196,7 @@ git commit -m "feat: validate review report reasons and moderation actions"
 
 ---
 
-### Task 3: Commentary flag, lock, and author report resolution
+### Task 3: Commentary flag, restriction, and author report resolution
 
 **Files:**
 - Modify: `backend/internal/review/review.go` (`Review`, `Own`)
@@ -203,41 +207,41 @@ git commit -m "feat: validate review report reasons and moderation actions"
 
 **Interfaces:**
 - Consumes: `ErrCommentaryLocked` from Task 2. Tables from Task 1.
-- Produces: `Review.CommentaryRemoved bool` and `Own.CommentaryRemoved bool`. `Save` returns `ErrCommentaryLocked` before the unchanged-save short-circuit when normalized commentary is non-null and `review_commentary_restrictions` has `(user_id, venue_id)`. A save that changes stored commentary from non-null to null sets that Review's pending reports to `dismissed` with `resolved_by_user_id` = the author and `resolved_at` = the service clock, predicate `status = 'pending'`. It does not insert a restriction and does not set `commentary_removed_at`. `Delete` is unchanged; the foreign key cascades reports.
+- Produces: `Review.CommentaryRemoved bool`, `Own.CommentaryRemoved bool`, and `Own.CommentaryRestriction *CommentaryRestriction`, where `CommentaryRestriction` contains `Reason string`, `Note *string`, and `CreatedAt time.Time`. `CommentaryRestrictedError` carries that same value and satisfies `errors.Is(err, ErrCommentaryLocked)`. `Save` returns it before the unchanged-save short-circuit when normalized commentary is non-null and `review_commentary_restrictions` has `(user_id, venue_id)`. A save that changes stored non-null commentary, whether replacing or clearing it, sets that Review's pending reports to `author_resolved` with `resolved_by_user_id` = the author and `resolved_at` = the service clock, predicate `status = 'pending'`. It does not insert a restriction and does not set `commentary_removed_at`. `Delete` is unchanged; the foreign key cascades reports.
 
 - [ ] **Step 1: Write the failing tests**
 
-`TestCommentaryRemovedFlag` in `postgres_test.go`: a review with `commentary_removed_at` set and commentary null lists `CommentaryRemoved == true` and `Commentary == nil`. A rating-only review without the timestamp lists `CommentaryRemoved == false`. `GetOwn` matches.
+`TestCommentaryRemovedFlag` in `postgres_test.go`: a review with `commentary_removed_at` set and commentary null lists `CommentaryRemoved == true` and `Commentary == nil`. A rating-only review without the timestamp lists `CommentaryRemoved == false`. `GetOwn` matches. Public list items have no restriction field. `GetOwn` on a restricted pair returns the source action's reason and note plus the restriction's `created_at`; an unrestricted pair returns nil.
 
-`TestLockedSameCommentaryIsConflict` in `write_test.go`: seed a review with commentary `"loud"` and a restriction row. `Save` of rating `4` and `"loud"` returns `ErrCommentaryLocked`. The row's commentary is still `"loud"`. Tokens stay 60.
+`TestLockedSameCommentaryIsConflict` in `write_test.go`: seed a review with commentary `"loud"` and a restriction row. `Save` of rating `4` and `"loud"` returns a `*CommentaryRestrictedError` that matches `ErrCommentaryLocked` and carries the source reason, note, and restriction start. The row's commentary is still `"loud"`. Tokens stay 60.
 
 `TestLockedClearAndRecreate` : `Save` with commentary null changes the rating, returns nil error, leaves `commentary_removed_at` null, and does not delete the restriction. `Delete` then `Save` of rating `2` and commentary null succeeds with `CommentaryRemoved == false`. `Save` of commentary `"again"` returns `ErrCommentaryLocked`.
 
-`TestAuthorClearDismissesReports`: commentary is `"old"` and one report is `pending`. `Save` with commentary null sets that report `dismissed`, `resolved_by_user_id` = the author, and inserts no restriction. Restore commentary to `"old"`, insert another `pending` report, then `Save` commentary `"new"`. That report stays `pending`.
+`TestAuthorChangeResolvesReports`: commentary is `"old"` and one report is `pending`. `Save` with commentary null sets that report `author_resolved`, `resolved_by_user_id` = the author, and inserts no restriction. Restore commentary to `"old"`, insert another `pending` report, then `Save` commentary `"new"`. That report also becomes `author_resolved`; the replacement can receive a new pending report.
 
-`TestAuthorClearDoesNotReopenActioned`: one `actioned` report (with `resolved_at`) and one `pending` report. Clearing commentary dismisses only the pending row.
+`TestAuthorChangeDoesNotReopenActioned`: one `actioned` report (with `resolved_at`) and one `pending` report. Changing commentary marks only the pending row `author_resolved`.
 
 `TestRatingAggregates`: after the four-review assertion, `update reviews set commentary = null, commentary_removed_at = now()`. `assertAggregate` still wants `1.3` and count `4`.
 
 - [ ] **Step 2: Run the tests**
 
-Run: `go test ./internal/review/ ./internal/venue/ -count=1 -run 'TestCommentaryRemovedFlag|TestLocked|TestAuthorClear|TestRatingAggregates'`
-Expected: FAIL. `CommentaryRemoved` is missing, or the lock is not enforced.
+Run: `go test ./internal/review/ ./internal/venue/ -count=1 -run 'TestCommentaryRemovedFlag|TestLocked|TestAuthorChange|TestRatingAggregates'`
+Expected: FAIL. `CommentaryRemoved` is missing, or the restriction is not enforced.
 
-- [ ] **Step 3: Implement the flag, the lock check, and the dismiss update**
+- [ ] **Step 3: Implement the flag, the restriction check, and the resolution update**
 
-Add `commentary_removed_at is not null` to the list select and the own select. In `Save`, after `RequireContributor` and the current-row read, query the restriction when `draft.Commentary != nil`. On a hit, return `ErrCommentaryLocked` with no token. On the update that turns non-null commentary into null, run the pending-only dismiss in that same transaction before commit. Do not add a commentary filter to the venue aggregate subquery.
+Add `commentary_removed_at is not null` to the list and own selects. The own select left-joins the restriction and its source action for the User-visible explanation. In `Save`, after `RequireContributor` and the current-row read, query that explanation when `draft.Commentary != nil`. On a hit, return `*CommentaryRestrictedError` with no token. On any update that changes stored non-null commentary, run the pending-only `author_resolved` update in that same transaction before commit. Do not add a commentary filter to the venue aggregate subquery.
 
 - [ ] **Step 4: Run the tests**
 
-Run: `go test ./internal/review/ ./internal/venue/ -count=1 -run 'TestCommentaryRemovedFlag|TestLocked|TestAuthorClear|TestRatingAggregates|TestSave|TestList|TestDelete'`
+Run: `go test ./internal/review/ ./internal/venue/ -count=1 -run 'TestCommentaryRemovedFlag|TestLocked|TestAuthorChange|TestRatingAggregates|TestSave|TestList|TestDelete'`
 Expected: PASS
 
 - [ ] **Step 5: Commit**
 
 ```bash
 git add backend/internal/review backend/internal/venue/postgres_test.go
-git commit -m "feat: lock review commentary and dismiss reports the author clears"
+git commit -m "feat: restrict review commentary and resolve author-changed reports"
 ```
 
 ---
@@ -297,6 +301,12 @@ Idempotency command JSON is `review_id`, `venue_id`, `reason`, `note`. Operation
 `TestReportReplayStopsWhenCommentaryGone`: first call `201` path returns a report. Set commentary null. The same key returns `ErrCommentaryNotPublic`. Quota row count stays 1.
 
 `TestReportReplayWhilePublic`: the same key and command returns the same `Report.ID` and does not insert a second quota row.
+
+`TestReportReplayAfterAuthorReplacement`: file a report, replace the
+commentary through `Save`, then reuse the original report key. It returns the
+same stored `Report.ID` and historical `pending` response without another
+quota event or token. A new key files a new pending report against the
+replacement.
 
 - [ ] **Step 2: Run the tests**
 
@@ -369,28 +379,30 @@ Idempotency JSON is `review_id`, `action`, `reason`, `note`. Operation `review_m
 
 - [ ] **Step 1: Write the failing tests**
 
-`TestRemoveCommentary`: commentary `"loud"`, one pending report. Result `Created == true`, commentary null, `CommentaryRemoved == true`, rating unchanged, `created_at` unchanged, `updated_at` equal to the harness clock, restriction row present, report `actioned` with `resolved_by_user_id` = the operator. The audit `action` is `commentary_removed` and `reviewer_user_id` is the author. The idempotency `response_body` does not contain `commentary`. Review id `abc` → `*ValidationError` field `review_id` = `must be a canonical uuid`.
+`TestRemoveCommentary`: commentary `"loud"`, one pending report. Result `Created == true`, commentary null, `CommentaryRemoved == true`, rating unchanged, `created_at` unchanged, `updated_at` equal to the harness clock, restriction row present, report `actioned` with `resolved_by_user_id` = the operator. The audit `action` is `commentary_removed` and `reviewer_user_id` is the author; its id is the restriction's `source_action_id`. The idempotency `response_body` does not contain `commentary`. Review id `abc` → `*ValidationError` field `review_id` = `must be a canonical uuid`.
 
 `TestRemoveCommentaryNoop`: call it again. `Created == false`, `ActionID == nil`, audit count stays 1, tokens unchanged.
 
-`TestLockRatingOnly`: commentary null, no restriction. Result `Created == true`, `CommentaryRemoved == false`, restriction exists.
+`TestRejectRatingOnlyRemoval`: commentary null, no restriction.
+`remove_commentary` returns `ErrCommentaryNotPublic`; no restriction, audit
+row, report update, or write token is created.
 
-`TestDeleteReviewReplay`: `delete_review` returns `Created == true`, `Review == nil`, audit `review_deleted`, reports count 0, quota events still 1, restriction exists. The same key returns `Created == true` and the same `ActionID`. A new key returns `ErrReviewNotFound`.
+`TestDeleteReviewReplay`: `delete_review` returns `Created == true`, `Review == nil`, audit `review_deleted`, reports count 0, quota events still 1, restriction exists and points to that audit. If the restriction already existed, its `created_at` and `source_action_id` are unchanged. The same key returns `Created == true` and the same `ActionID`. A new key returns `ErrReviewNotFound`.
 
 `TestModerateOnDelistedVenue`: the review's venue is `delisted`. `remove_commentary` still returns `Created == true`.
 
 - [ ] **Step 2: Run the tests**
 
-Run: `go test ./internal/review/ -count=1 -run 'TestRemove|TestLockRatingOnly|TestDeleteReview|TestModerateOn'`
+Run: `go test ./internal/review/ -count=1 -run 'TestRemove|TestRejectRatingOnlyRemoval|TestDeleteReview|TestModerateOn'`
 Expected: FAIL with `ModerateReview` undefined.
 
 - [ ] **Step 3: Implement `ModerateReview`**
 
-`remove_commentary` with text sets commentary null, sets `commentary_removed_at` and `updated_at`, upserts the restriction, inserts the audit, and actions pending reports. `delete_review` inserts the audit, upserts the restriction, then deletes the review. Read the author id before the delete.
+`remove_commentary` with text sets commentary null, sets `commentary_removed_at` and `updated_at`, inserts the audit, inserts the restriction with that action id and `on conflict do nothing`, and actions pending reports. With no commentary and no existing restriction, it returns `ErrCommentaryNotPublic` before reserving a write token. `delete_review` inserts the audit, inserts the restriction with that action id and `on conflict do nothing`, then deletes the review. Read the author id before the delete. Repeated actions preserve the restriction's original `created_at` and `source_action_id`.
 
 - [ ] **Step 4: Run the tests**
 
-Run: `go test ./internal/review/ -count=1 -run 'TestRemove|TestLockRatingOnly|TestDeleteReview|TestModerateOn'`
+Run: `go test ./internal/review/ -count=1 -run 'TestRemove|TestRejectRatingOnlyRemoval|TestDeleteReview|TestModerateOn'`
 Expected: PASS
 
 - [ ] **Step 5: Commit**
@@ -455,10 +467,16 @@ type AuditEntry struct {
     CreatedAt      time.Time
 }
 
+type OperatorCommentaryRestriction struct {
+    CreatedAt time.Time
+    Source    AuditEntry
+}
+
 type ModerationDetail struct {
-    Review  OperatorReview
-    Reports []DetailReport
-    History []AuditEntry
+    Review      OperatorReview
+    Reports     []DetailReport
+    History     []AuditEntry
+    Restriction *OperatorCommentaryRestriction
 }
 
 func (s *Service) ListReviewReports(ctx context.Context, limit int, cursor string) (ReportPage, error)
@@ -472,9 +490,9 @@ Cursor payload is `review-report-v1|{created_at RFC3339Nano}|{reportID}`, `base6
 
 `TestListReviewReports`: three pending reports and one dismissed. The author's profile status is `suspended` and the item's `Author.Username` is the stored username. Page of limit 2 returns the two oldest and a cursor. The next page returns the third. A cursor with the wrong discriminator is `*ValidationError` field `cursor` = `invalid`. An `actioned` report is absent.
 
-`TestGetModerationReview`: a delisted venue's review is returned with its pending report and one audit row. Resolved reports are absent. History is capped at 20. Unknown id is `ErrReviewNotFound`.
+`TestGetModerationReview`: a delisted venue's review is returned with its pending report and one audit row. Resolved reports are absent. History is capped at 20. An unrestricted pair returns `Restriction == nil`. For a later Review whose restriction source belongs to a deleted earlier Review, `Restriction` contains the original `created_at` and source audit row even though that source is outside the later Review's `History`. Unknown id is `ErrReviewNotFound`.
 
-`TestDismissReviewReport`: pending becomes `dismissed` and spends a token. A second dismiss returns the same id, `Status == "dismissed"`, and does not spend a token. An `actioned` report is `ErrReportResolved`. Unknown id is `ErrReportNotFound`. Report id `abc` → field `report_id` = `must be a canonical uuid`. The review commentary is unchanged.
+`TestDismissReviewReport`: pending becomes `dismissed` and spends a token. A second dismiss returns the same id, `Status == "dismissed"`, and does not spend a token. An `actioned` or `author_resolved` report is `ErrReportResolved`. Unknown id is `ErrReportNotFound`. Report id `abc` → field `report_id` = `must be a canonical uuid`. The review commentary is unchanged.
 
 `TestReviewReportListPlan` in `index_test.go`: seed enough pending rows that `explain` of the list query uses `review_reports_pending_list_key`. Follow `venue/index_test.go`.
 
@@ -485,7 +503,7 @@ Expected: FAIL. The methods are undefined.
 
 - [ ] **Step 3: Implement list, detail, and dismiss**
 
-Dismiss matches `DismissVenueReport`: lock the report, return the stored row when already `dismissed`, return `ErrReportResolved` when `actioned`.
+Dismiss matches `DismissVenueReport`: lock the report, return the stored row when already `dismissed`, and return `ErrReportResolved` when `actioned` or `author_resolved`.
 
 - [ ] **Step 4: Run the tests**
 
@@ -514,7 +532,10 @@ git commit -m "feat: list and dismiss review reports"
 ```sql
 update review_reports
 set status = 'actioned', resolved_at = $3, resolved_by_user_id = $2::uuid
-where venue_id = $1::uuid and status = 'pending'
+from reviews
+where review_reports.review_id = reviews.id
+  and reviews.venue_id = $1::uuid
+  and review_reports.status = 'pending'
 ```
 
 - [ ] **Step 1: Write the failing test**
@@ -581,17 +602,17 @@ type ReviewModeration interface {
 - `POST /v1/moderation/reviews/{reviewID}/actions` on `requireOperator`
 - `PATCH /v1/moderation/review-reports/{reportID}` on `requireOperator`
 
-`reviewView` and `ownReviewView` gain `commentary_removed`. `writeReviewError` maps `ErrCommentaryLocked` to `409 commentary_locked` / `Commentary on this review is locked.` Report and moderation errors map to the Global Constraints codes. `*profile.QuotaError` maps like `writeVenueModerationError`. `ModerateReview` with `Created == true` writes `201`; otherwise `200`. The delete body is `action_id`, `review_id`, `review: null`. The remove body includes `review`. The idempotency record is the service's concern; the HTTP JSON for a live remove may include `commentary` on the operator review, and the service test in Task 5 already forbids that key in the stored body.
+`reviewView` and `ownReviewView` gain `commentary_removed`; only `ownReviewView` gains nullable `commentary_restriction` with `reason`, `note`, and `created_at`. `writeReviewError` maps `*review.CommentaryRestrictedError` (and its `ErrCommentaryLocked` classification) to `409 commentary_locked` / `Commentary on this review is locked.`, with the same `commentary_restriction` object in error details. Reporter notes and operator identity are absent. Report and moderation errors map to the Global Constraints codes. `*profile.QuotaError` maps like `writeVenueModerationError`. `ModerateReview` with `Created == true` writes `201`; otherwise `200`. The delete body is `action_id`, `review_id`, `review: null`. The remove body includes `review`. The idempotency record is the service's concern; the HTTP JSON for a live remove may include `commentary` on the operator review, and the service test in Task 5 already forbids that key in the stored body.
 
 - [ ] **Step 1: Write the failing tests**
 
-`TestReviewRoutes` gains a `PUT` case: fake `Save` returns `ErrCommentaryLocked` → `409`, body contains `commentary_locked` and `Commentary on this review is locked.` A listed review and the own-review response with `CommentaryRemoved: true` encode `"commentary_removed":true`.
+`TestReviewRoutes` gains a `PUT` case: fake `Save` returns `*CommentaryRestrictedError` → `409`; the body contains `commentary_locked`, `Commentary on this review is locked.`, and the source reason, note, and restriction start under `commentary_restriction`, with no operator or reporter identity. A listed review and the own-review response with `CommentaryRemoved: true` encode `"commentary_removed":true`; only the own response encodes `commentary_restriction`.
 
 `TestReviewModerationRoutes` mirrors `venue_moderation_test.go`:
 - no token on each new route → `401`.
 - app user on a privileged route → `403 forbidden`.
 - operator on the report `POST` → `403 forbidden`.
-- table: `ErrSelfReport` → `400 self_report`; `ErrCommentaryNotPublic` → `400 commentary_not_public`; `ErrReportPending` → `409 review_already_reported`; `ErrReportNotFound` → `404 review_report_not_found`; `ErrReportResolved` → `409 report_already_resolved`; `*profile.QuotaError{RetryAfter: 30}` → `429 quota_exceeded` and `Retry-After: 30`.
+- table: report filing maps `ErrSelfReport` → `400 self_report`, `ErrCommentaryNotPublic` → `400 commentary_not_public`, and `ErrReportPending` → `409 review_already_reported`; moderation actions map `ErrCommentaryNotPublic` → `409 commentary_not_public`; dismissal maps `ErrReportNotFound` → `404 review_report_not_found` and `ErrReportResolved` → `409 report_already_resolved`; `*profile.QuotaError{RetryAfter: 30}` → `429 quota_exceeded` and `Retry-After: 30`.
 - missing `Idempotency-Key` on the two `POST`s → `400` field `idempotency_key` = `required`. `PATCH` without a key still calls dismiss.
 - `ModerateReview` `Created: true` → `201`. `Created: false` → `200` and `"action_id":null`. `Review: nil` encodes `"review":null`.
 - `GET /v1/moderation/review-reports?limit=0` → `400` field `limit` = `must be from 1 to 100`. `?extra=1` → `400`. The handler uses the existing limit parser and `rejectedQuery`.
@@ -643,6 +664,8 @@ In `contract_test.go`, delete the loop that fails when the document contains `co
 - `/v1/moderation/review-reports/{reportID}`
 - `review_already_reported`, `commentary_not_public`, `commentary_locked`, `review_report_not_found`
 - `commentary_removed` inside the `Review` and `OwnReview` schemas
+- nullable User-visible `commentary_restriction` inside `OwnReview` and the
+  `commentary_locked` error details, but not public `Review`
 
 Add `reportReview`, `listReviewReports`, `getModerationReview`, `applyReviewAction`, and `dismissReviewReport` to the bearer-security loop. Leave `listVenueReviews` in the public loop.
 
@@ -653,11 +676,11 @@ Expected: FAIL with a missing path or code.
 
 - [ ] **Step 3: Document the routes and close the session**
 
-`openapi.yaml`: the five paths, `ReviewReport`, `ReviewReportRequest`, `ReviewModerationAction`, `OperatorReview` (includes `commentary_removed_at`), and `ReviewAuditEntry`. `ReviewAuditEntry` has no `commentary` property. `Review` and `OwnReview` require `commentary_removed`.
+`openapi.yaml`: the five paths, `ReviewReport`, `ReviewReportRequest`, `ReviewModerationAction`, `OperatorReview` (includes `commentary_removed_at`), `ReviewAuditEntry`, `UserCommentaryRestriction` (reason, note, start time), and `OperatorCommentaryRestriction` (start time plus source audit action). `ReviewAuditEntry` has no `commentary` property. Operator Review detail requires nullable `commentary_restriction`. `OwnReview` requires nullable `commentary_restriction`; the `commentary_locked` response carries the same User-visible object. `Review` and `OwnReview` require `commentary_removed`, and public `Review` has no restriction field.
 
 `backend/AGENTS.md`: readiness text says `0010`. App routes gain the report `POST`. Privileged routes gain the four moderation paths. The write-token sentence gains review reports, review moderation actions, and review-report dismissals.
 
-`docs/architecture/backend.md`: extend the Review paragraph so the module also owns reports, the commentary lock, and the audit, and so Venue delist updates pending `review_reports` in its own transaction and still does not import `internal/review`.
+`docs/architecture/backend.md`: extend the Review paragraph so the module also owns reports, the Commentary restriction, and the audit, and so Venue delist updates pending `review_reports` in its own transaction and still does not import `internal/review`.
 
 `DevSteps.md`: status line becomes Sessions 1–12 done, Session 13 next, 13–14 not started. Sequence table: `| 12. Review safety and moderation API | Done |` and `| 13–14 | Not started |`. Session 12 `**Status:** Done.` plus one paragraph naming the five routes, migration `0010`, readiness `0010`, operator recognition through `requireOperator`, and that delist now actions pending Review Reports.
 

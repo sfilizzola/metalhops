@@ -6,15 +6,16 @@
 ## Goal
 
 Users can report unsafe Review commentary. Operators can resolve those
-reports, clear and lock commentary while keeping the rating, or delete the
-Review. Removed commentary is never stored in a report or an audit row.
+reports, remove commentary and impose a Commentary restriction while keeping
+the rating, or delete the Review. Removed commentary is never stored in a
+report or an audit row.
 
 The session adds:
 
 - migration `0010`: `commentary_removed_at`, `review_reports`,
   `review_moderation_actions`, and `review_commentary_restrictions`;
 - five routes (below);
-- the commentary lock and report dismissal on the Session 11 Review writes;
+- the Commentary restriction and report dismissal on the Session 11 Review writes;
 - the delist side effect that actions pending Review Reports for that Venue.
 
 **Exit condition:** Users can report unsafe commentary, and trusted operators
@@ -38,12 +39,12 @@ can resolve reports through those endpoints without retaining removed text.
   `profile.CheckReportQuota` / `profile.RecordReportEvent`. The combined limit
   stays 20 Profile, Venue, and Review Reports per rolling 24 hours.
 - Reads and writes use a 2-second timeout, matching Review and Venue.
-- Hidden Commentary, appeals that clear a lock, a report-history endpoint,
+- Hidden Commentary, lifting a Commentary restriction, a report-history endpoint,
   check-ins, Venue merging, and the admin app are out of scope.
 
 ## Modules
 
-`internal/review` owns report validation, the commentary lock, the audit, and
+`internal/review` owns report validation, the Commentary restriction, the audit, and
 the Review write transaction, in `report.go` and `moderate.go`, mirroring
 `internal/venue`. It already imports `internal/profile`. It does not import
 `internal/venue`.
@@ -65,14 +66,16 @@ root does not share the transaction.
 
 Add nullable `commentary_removed_at timestamptz`. Check
 `reviews_commentary_removed_check`: the timestamp is null, or `commentary` is
-null. A save never clears the timestamp.
+null. Session 12 saves never clear the timestamp because the Commentary
+restriction still stands. After Session 14 lifts that restriction, the first
+save with new commentary clears the timestamp in the same transaction.
 
 Public and own-Review documents gain `commentary_removed` (boolean), true only
 when the timestamp is set. An author who never wrote commentary, or who
-cleared it themselves, stays `commentary_removed: false`. There is no second
-lock field. A later rating-only Review under an existing restriction looks
-like any rating-only Review until a commentary write returns
-`409 commentary_locked`.
+cleared it themselves, stays `commentary_removed: false`. The own-Review
+document also has nullable `commentary_restriction`; the public Review does
+not. A later rating-only Review under an existing restriction exposes that
+restriction only to its author and a Platform Moderator.
 
 Removing commentary leaves the rating in `average_rating` and `review_count`.
 Deleting the Review drops it from those aggregates because the row is gone.
@@ -86,34 +89,34 @@ Mirrors `venue_reports`:
 - `reporter_user_id uuid` not null, references `auth.users (id)` on delete
   cascade;
 - `review_id uuid` not null, references `reviews (id)` on delete cascade;
-- `venue_id uuid` not null, references `venues (id)` on delete cascade;
 - `reason text` not null, one of `spam`, `harassment`,
   `hate_or_discrimination`, `personal_information`, `illegal_content`,
   `off_topic`, `other`;
 - `note text` null, or 1–1,000 characters; `other` requires a note;
 - `status text` not null, default `pending`, one of `pending`, `actioned`,
-  `dismissed`;
+  `dismissed`, `author_resolved`;
 - `created_at timestamptz` not null default `now()`; the insert passes the
   service clock, matching `venue_reports`;
 - `resolved_at timestamptz` null;
 - `resolved_by_user_id uuid` null, references `auth.users (id)` on delete set
   null.
 
-Resolution check, matching Venue Reports: pending has null `resolved_at` and
-null `resolved_by_user_id`; `actioned` and `dismissed` have a non-null
-`resolved_at`. `resolved_by_user_id` may become null when that User is
-deleted.
+Resolution check: pending has null `resolved_at` and null
+`resolved_by_user_id`; `actioned`, `dismissed`, and `author_resolved` have a
+non-null `resolved_at`. `resolved_by_user_id` may become null when that User
+is deleted.
 
 Indexes:
 
 - unique `review_reports_pending_pair_key` on `(reporter_user_id, review_id)`
   where `status = 'pending'`;
 - `review_reports_pending_list_key` on `(created_at, id)` where pending;
-- `review_reports_pending_review_key` on `(review_id)` where pending;
-- `review_reports_pending_venue_key` on `(venue_id)` where pending.
+- `review_reports_pending_review_key` on `(review_id)` where pending.
 
 The table has no commentary column. Deleting the Review cascades its reports.
-That is how an author delete and an operator delete end pending reports.
+It also has no duplicate `venue_id`; report reads derive the Venue through the
+Review, and Venue delist joins through `reviews`.
+That is how an author delete and an operator delete end Review Reports.
 Those two deletes leave `report_quota_events` in place. User deletion of the
 author cascades the Review and its reports; User deletion of the reporter
 cascades that reporter's reports and, through the existing quota table, that
@@ -153,14 +156,24 @@ One row per User and Venue:
 
 - `user_id uuid` not null, references `auth.users (id)` on delete cascade;
 - `venue_id uuid` not null, references `venues (id)` on delete cascade;
-- `created_at timestamptz` not null default `now()`; the upsert passes the
+- `source_action_id uuid` not null, references
+  `review_moderation_actions (id)`; the append-only source action survives
+  Review deletion;
+- `created_at timestamptz` not null default `now()`; insertion passes the
   service clock;
 - unique `review_commentary_restrictions_pair_key` on `(user_id, venue_id)`.
 
-Both moderation actions upsert this row. User deletion removes it with the
-User. This lock is not the Profile restriction record in
+Both moderation actions append their audit row before inserting the restriction
+with `insert ... on conflict do nothing`. A repeated action preserves both the
+first source action and when the current uninterrupted restriction began.
+Session 14 deletes the row when lifting the restriction; a later restriction
+gets a new source and timestamp. User deletion removes it with the User. This
+restriction is not the Profile restriction record in
 [ADR 0003](../../adr/0003-keep-restriction-records-after-user-deletion.md).
-Nothing in this session deletes a restriction except those cascades.
+Both moderation actions impose this restriction. It is indefinite until a
+Platform Moderator lifts it. Session 14 owns that moderator operation before
+the admin handoff; the cascade on User or Venue deletion is the only removal
+in Session 12.
 
 Every new table enables row-level security and revokes `public`, `anon`,
 `authenticated`, and `service_role`. Trigger functions get the same execute
@@ -226,7 +239,9 @@ Steps 1–5 run before idempotency lookup, matching Venue reports. A retry
 after the Venue is Delisted, or after the commentary is gone, returns that
 current error and does not replay the stored `201`. A replay while the
 Review is still reportable returns the stored `201` and does not take another
-quota slot or write token.
+quota slot or write token. This includes an old key retried after the author
+replaces commentary: it replays the historical response for the now
+`author_resolved` report. Reporting the replacement requires a new key.
 
 Success is `201`:
 
@@ -293,13 +308,26 @@ null when the timestamp is null. An audit row is `id`, `action`, `reason`,
 `note`, `review_id`, `reviewer_user_id`, `venue_id`, `operator_user_id`, and
 `created_at`. It has no commentary property.
 
+The detail response also has `commentary_restriction`. It is null when the
+Review's User–Venue pair is unrestricted. Otherwise it contains `created_at`
+and `source`, where `source` is the audit row referenced by
+`source_action_id`. The source may belong to a deleted earlier Review by that
+User for the same Venue.
+
+The affected User sees a smaller `commentary_restriction` on their own Review:
+`reason`, `note`, and `created_at`, all from the source action and restriction
+row. It is null when unrestricted. Reporter notes and operator identity are
+never included.
+
 ### Operator actions
 
 `POST` accepts `action`, `reason`, and optional `note`. `action` is
 `remove_commentary` or `delete_review`
 (`action: must be remove_commentary or delete_review`). Reason and note use
-the report rules, and both actions require a reason. The idempotency key
-rules match report filing.
+the report rules, and both actions require a reason. The action's reason and
+note become the affected User's Restriction explanation and are User-visible;
+the reporter's note remains moderator-only. The idempotency key rules match
+report filing.
 
 The transaction locks the Review `for update` only after idempotency lookup,
 so a replay of a delete still returns the stored response after the row is
@@ -314,26 +342,25 @@ matching Venue moderation, and stores that status. Replay returns the stored
 
 - Commentary is non-null: set commentary null, set `commentary_removed_at` and
   `updated_at` to the request clock, leave `created_at` and the rating,
-  upsert the restriction, append `commentary_removed` with the author as
-  `reviewer_user_id`, and mark that Review's pending reports `actioned` with
-  the operator as `resolved_by_user_id`. `201`.
+  append `commentary_removed` with the author as `reviewer_user_id`, insert the
+  restriction with that action as its source, and mark that Review's pending
+  reports `actioned` with the operator as `resolved_by_user_id`. `201`.
 - Commentary is null and a restriction row exists: no-op. `200`, `action_id`
   null, no audit row, no write token, reports unchanged. The no-op is not
   stored, so the same key no-ops again.
-- Commentary is null and no restriction exists: upsert the restriction, append
-  the audit row, and mark any pending reports for that Review `actioned`.
-  Leave `commentary_removed_at` null. `201`. The report update matches zero
-  rows when the author already cleared the text.
+- Commentary is null and no restriction exists: `409 commentary_not_public`
+  (`This review has no public commentary.`). No restriction, audit row, write
+  token, or report update is created.
 
 The `201` and `200` bodies are `action_id`, `review_id`, and `review` (the
 operator Review document). The no-op sends `action_id: null`.
 
 `delete_review` appends `review_deleted` with the author as
-`reviewer_user_id`, upserts the restriction, then deletes the Review. The
-delete cascades reports in the same transaction. There is no status update of
-those reports before they disappear. `201` with `action_id`, `review_id`, and
-`review: null`. A second key, after the row is gone, is `404
-review_not_found`.
+`reviewer_user_id`, inserts the restriction with that action as its source,
+then deletes the Review. The delete cascades reports in the same transaction.
+There is no status update of those reports before they disappear. `201` with
+`action_id`, `review_id`, and `review: null`. A second key, after the row is
+gone, is `404 review_not_found`.
 
 `other` without a note is `400` before a token is reserved. A no-op spends no
 write token. A validation failure, a `404`, and a `409` spend none. A write
@@ -346,10 +373,10 @@ that reserves a token and finds the bucket empty is `429 rate_limited` with
 dismissal. A pending report becomes `dismissed` with `resolved_at` set and
 `resolved_by_user_id` the operator, and spends a write token. An already
 dismissed report returns unchanged and spends no token. An actioned report is
-`409 report_already_resolved` (`That report is already resolved.`). A missing
-report is `404 review_report_not_found` (`Report not found.`). The Review is
-unchanged. Success is `200` and returns the list-item fields with
-`status: dismissed`.
+`409 report_already_resolved` (`That report is already resolved.`), as is an
+`author_resolved` report. A missing report is `404
+review_report_not_found` (`Report not found.`). The Review is unchanged.
+Success is `200` and returns the list-item fields with `status: dismissed`.
 
 ## Session 11 writes
 
@@ -359,19 +386,20 @@ current-row read:
 
 - Normalized commentary is non-null and `review_commentary_restrictions` has
   this User and Venue: `409 commentary_locked` (`Commentary on this review is
-  locked.`). This runs before the unchanged-save short-circuit and before a
-  write token. The row stays unchanged. The same check applies when the
-  Review row is new.
+  locked.`). The error details contain the same User-visible
+  `commentary_restriction` object as the own-Review document. This runs before
+  the unchanged-save short-circuit and before a write token. The row stays
+  unchanged. The same check applies when the Review row is new.
 - Omitted, null, or whitespace-only commentary is a clear. It does not create
-  a restriction and does not set `commentary_removed_at`. When this save
-  changes stored commentary from non-null to null, it sets pending reports
-  for that Review to `dismissed`, `resolved_at` to the save clock, and
-  `resolved_by_user_id` to the author. The update's predicate is
-  `status = 'pending'`, so an already actioned report stays actioned.
-- Replacing non-null commentary with different non-null commentary leaves
-  pending reports pending.
+  a restriction and does not set `commentary_removed_at`.
+- Any save that changes stored non-null commentary, whether replacing or
+  clearing it, sets pending reports for that Review to `author_resolved`,
+  `resolved_at` to the save clock, and `resolved_by_user_id` to the author.
+  The update's predicate is `status = 'pending'`, so an already actioned report
+  stays actioned. Replacement commentary is new content and may be reported
+  separately.
 - An unchanged rating and commentary stays the Session 11 no-op: `200`, no
-  token, reports unchanged. The lock check has already run, so this no-op
+  token, reports unchanged. The restriction check has already run, so this no-op
   applies when the normalized commentary is null or when no restriction
   exists.
 - A rating change while commentary is omitted or null still returns `200`
@@ -397,29 +425,31 @@ Public list and own-Review documents gain the boolean. A removed Review is:
 }
 ```
 
-The own-Review document adds `user_id` and `commentary_removed` to the
-Session 11 shape and still shows the stored Username and display name.
+The own-Review document adds `user_id`, `commentary_removed`, and nullable
+`commentary_restriction` to the Session 11 shape and still shows the stored
+Username and display name.
 
 ## Delist
 
 Inside the existing Venue moderation callback, when `action` is `delist`, one
-statement marks pending `review_reports` for that `venue_id` `actioned`, with
-`resolved_at` set and `resolved_by_user_id` the operator. It runs for the
-first delist and for a feedback-only delist, next to the existing Venue-report
-resolution. An identical re-delist returns before that callback and does not
-touch Review Reports. `verify`, `reject`, `reopen`, and operator correction do
-not touch them.
+`update ... from reviews` statement joins each pending `review_reports` row to
+its Review and marks reports for that Venue `actioned`, with `resolved_at` set
+and `resolved_by_user_id` the operator. It runs for the first delist and for a
+feedback-only delist, next to the existing Venue-report resolution. An
+identical re-delist returns before that callback and does not touch Review
+Reports. `verify`, `reject`, `reopen`, and operator correction do not touch
+them.
 
 Delist does not clear commentary, does not set `commentary_removed_at`, does
-not write `review_moderation_actions`, and does not upsert a restriction.
+not write `review_moderation_actions`, and does not impose a restriction.
 Reopen leaves actioned Review Reports actioned. Public reads stay hidden
 while the Venue is Delisted, and the commentary is public again when it
 returns to verified, unless an operator removed it. A User may file a new
 report once that commentary is public.
 
-The author-clear update and this delist update both change report rows. The
-author clear only updates `status = 'pending'`. A delist that commits first
-leaves nothing for the clear to dismiss.
+The author-change update and this delist update both change report rows. The
+author change only updates `status = 'pending'`. A delist that commits first
+leaves nothing for the change to resolve.
 
 ## Testing
 
@@ -432,16 +462,21 @@ Docker is unavailable:
   `429`, replay without a second quota row;
 - a retry after delist or after commentary removal does not replay the
   `201`;
-- `remove_commentary` clears text, sets the timestamp, locks, actions
+- `remove_commentary` clears text, sets the timestamp, imposes the restriction, actions
   reports, and leaves the rating;
-- the already-locked no-op, and the lock written onto a rating-only Review
-  without setting `commentary_removed_at`;
-- `delete_review` cascades reports, keeps the quota event, upserts the
+- the already-restricted no-op, and `409 commentary_not_public` for a
+  rating-only Review without an existing restriction;
+- `delete_review` cascades reports, keeps the quota event, inserts the
   restriction, and replays `201` after the row is gone;
+- restriction provenance keeps the first source action, and operator detail
+  exposes it for a later Review after the source Review was deleted;
+- own-Review reads and `409 commentary_locked` expose the source reason, note,
+  and restriction start time to the affected User, but not reporter notes or
+  operator identity;
 - a later Review under that restriction accepts a rating and rejects
   commentary;
-- author clear dismisses pending reports and does not lock;
-- author replace leaves pending reports open;
+- author clearing or replacing commentary marks pending reports
+  `author_resolved` and does not restrict commentary;
 - an unchanged save leaves reports pending and spends no token;
 - audit rows and report rows contain no commentary text.
 
@@ -469,16 +504,20 @@ own-Review schemas.
 ## Docs that land with the code
 
 - `backend/openapi.yaml` documents the five routes, the new fields, and the
-  error codes above. The audit schema has no commentary property.
+  error codes above. Own-Review and `commentary_locked` expose the
+  User-visible restriction explanation; operator detail exposes the source
+  audit action; public Review exposes neither. The audit schema has no
+  commentary property.
 - `backend/AGENTS.md` raises readiness to `0010` and lists the five routes
   and the lock on `PUT`.
 - `docs/architecture/backend.md` extends the Review paragraph: the Review
-  module also owns reports, the commentary lock, and the audit; Venue delist
+  module also owns reports, the Commentary restriction, and the audit; Venue delist
   updates pending `review_reports` in its own transaction and still does not
   import `internal/review`.
 - `DevSteps.md` marks Session 12 done only when this work lands: the five
-  routes, migration `0010`, readiness `0010`, and delist now actions pending
-  Review Reports. The header moves to Session 13 next.
+  routes, migration `0010`, readiness `0010`, the Commentary restriction on
+  `PUT`, and delist now actions pending Review Reports. The header moves to
+  Session 13 next.
 
 ## Confirmed decisions
 
@@ -488,21 +527,33 @@ own-Review schemas.
   instead. DevSteps says a moderation action marks pending reports actioned,
   and also says an author delete closes reports with the Review. The cascade
   is the close. The actioned status is the path that keeps the Review.
-- Author clear is `dismissed` with the author as resolver, and it does not
-  lock the User. Moderator removal is what locks.
+  Moderator deletion retains the append-only audit but not reporter metadata;
+  author deletion has no moderation audit. Report quota events remain.
+- Author clearing or replacing commentary is `author_resolved` with the author
+  as resolver, and it does not restrict commentary. Moderator removal is what
+  imposes the restriction.
+- Both `remove_commentary` and `delete_review` impose an indefinite Commentary
+  restriction. Session 14 owns the moderator operation that lifts it; Session
+  12 does not.
+- After that lift, the first new commentary on an existing Review clears
+  `commentary_removed_at` in the same transaction. The audit remains the
+  historical record of the earlier removal.
 - A moderation write that appends an audit row is `201`, and replay returns
   that stored `201`, matching
   `POST /v1/moderation/venues/{venueID}/actions`. The no-op stays `200`.
 - Filing checks the Profile before the Venue, matching Venue reports. Review
   saves still check the Venue before the Profile.
+- Retrying a report key after the author replaces commentary replays the
+  historical `201`; it does not retarget the replacement. A report against
+  the replacement uses a new key.
 - The operator list and detail show the commentary stored on the Review at
-  read time. Replacing commentary leaves a pending report open, and the
-  moderator assesses that current text.
+  read time. Replacing commentary resolves reports against the old text; the
+  replacement may be reported separately.
 
 ## Out of scope
 
 - Hidden Commentary and any Verified Venue Owner route.
-- A route that clears `review_commentary_restrictions`.
+- The Session 14 moderator operation that lifts a Commentary restriction.
 - A report-history or resolution-status endpoint.
 - Check-ins (Session 13), operator provisioning, Venue merging, and the admin
   app.
