@@ -68,9 +68,15 @@ type Draft struct {
 }
 
 var (
-	ErrVenueNotFound    = errors.New("review: venue not found")
-	ErrReviewNotFound   = errors.New("review: not found")
-	ErrVenueNotVerified = errors.New("review: venue not verified")
+	ErrVenueNotFound       = errors.New("review: venue not found")
+	ErrReviewNotFound      = errors.New("review: not found")
+	ErrVenueNotVerified    = errors.New("review: venue not verified")
+	ErrSelfReport          = errors.New("review: self report")
+	ErrCommentaryNotPublic = errors.New("review: commentary not public")
+	ErrReportPending       = errors.New("review: report pending")
+	ErrCommentaryLocked    = errors.New("review: commentary locked")
+	ErrReportNotFound      = errors.New("review: report not found")
+	ErrReportResolved      = errors.New("review: report resolved")
 )
 
 type ValidationError struct {
