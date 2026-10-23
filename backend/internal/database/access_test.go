@@ -75,10 +75,24 @@ func TestDataAPIClosed(t *testing.T) {
 		`insert into reviews (venue_id, user_id, rating, created_at, updated_at) values ('00000000-0000-4000-8000-000000000002', '00000000-0000-4000-8000-000000000001', 3, now(), now())`,
 		`update reviews set rating = 3 where false`,
 		`delete from reviews where false`,
+		`select * from review_reports`,
+		`insert into review_reports (reporter_user_id, review_id, reason) values ('00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000002', 'spam')`,
+		`update review_reports set status = 'pending' where false`,
+		`delete from review_reports where false`,
+		`select * from review_moderation_actions`,
+		`insert into review_moderation_actions (review_id, venue_id, action, reason, operator_user_id) values ('00000000-0000-4000-8000-000000000002', '00000000-0000-4000-8000-000000000003', 'commentary_removed', 'spam', '00000000-0000-4000-8000-000000000001')`,
+		`update review_moderation_actions set reason = 'spam' where false`,
+		`delete from review_moderation_actions where false`,
+		`select * from review_commentary_restrictions`,
+		`insert into review_commentary_restrictions (user_id, venue_id, source_action_id) values ('00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000003', '00000000-0000-4000-8000-000000000002')`,
+		`update review_commentary_restrictions set created_at = now() where false`,
+		`delete from review_commentary_restrictions where false`,
 	}
-	var rls bool
-	if err := pool.QueryRow(ctx, `select relrowsecurity from pg_class where relname = 'reviews'`).Scan(&rls); err != nil || !rls {
-		t.Fatalf("reviews rls %v %v", rls, err)
+	for _, table := range []string{"reviews", "review_reports", "review_moderation_actions", "review_commentary_restrictions"} {
+		var rls bool
+		if err := pool.QueryRow(ctx, `select relrowsecurity from pg_class where relname = $1`, table).Scan(&rls); err != nil || !rls {
+			t.Fatalf("%s rls %v %v", table, rls, err)
+		}
 	}
 	for _, role := range []string{"anon", "authenticated", "service_role"} {
 		for _, sql := range statements {
