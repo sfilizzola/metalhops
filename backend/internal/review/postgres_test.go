@@ -178,6 +178,64 @@ func TestGetOwn(t *testing.T) {
 	}
 }
 
+func TestCommentaryRemovedFlag(t *testing.T) {
+	ctx := context.Background()
+	pool := testPool(t)
+	insertVenue(t, pool, verifiedVenue, "verified")
+	insertUser(t, pool, userA, "active", nil)
+	insertUser(t, pool, userB, "active", nil)
+	insertUser(t, pool, userC, "", nil)
+	removedID := insertReview(t, pool, verifiedVenue, userA, 4, nil, reviewNow)
+	if _, err := pool.Exec(ctx, `update reviews set commentary_removed_at = $2 where id = $1`, removedID, reviewNow); err != nil {
+		t.Fatal(err)
+	}
+	ratingOnly := insertReview(t, pool, verifiedVenue, userB, 3, nil, reviewNow.Add(time.Minute))
+	_ = ratingOnly
+
+	service := New(pool, nil, nil, time.Now)
+	page, err := service.List(ctx, ListQuery{VenueID: verifiedVenue, Limit: 20})
+	if err != nil || len(page.Reviews) != 2 {
+		t.Fatalf("list %+v %v", page, err)
+	}
+	byID := map[string]Review{}
+	for _, r := range page.Reviews {
+		byID[r.ID] = r
+	}
+	if got := byID[removedID]; !got.CommentaryRemoved || got.Commentary != nil {
+		t.Fatalf("removed list %+v", got)
+	}
+	if got := byID[ratingOnly]; got.CommentaryRemoved || got.Commentary != nil {
+		t.Fatalf("rating-only list %+v", got)
+	}
+
+	own, err := service.GetOwn(ctx, userA, verifiedVenue)
+	if err != nil || !own.CommentaryRemoved || own.Commentary != nil || own.CommentaryRestriction != nil {
+		t.Fatalf("own removed %+v %v", own, err)
+	}
+	ownB, err := service.GetOwn(ctx, userB, verifiedVenue)
+	if err != nil || ownB.CommentaryRemoved || ownB.CommentaryRestriction != nil {
+		t.Fatalf("own rating-only %+v %v", ownB, err)
+	}
+
+	note := "keep it down"
+	actionID := insertModerationAction(t, pool, removedID, userA, verifiedVenue, userC, "commentary_removed", "spam", &note, reviewNow)
+	if _, err := pool.Exec(ctx, `
+		insert into review_commentary_restrictions (user_id, venue_id, source_action_id, created_at)
+		values ($1, $2, $3, $4)`, userA, verifiedVenue, actionID, reviewNow.Add(time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	own, err = service.GetOwn(ctx, userA, verifiedVenue)
+	if err != nil || own.CommentaryRestriction == nil || own.CommentaryRestriction.Reason != "spam" ||
+		own.CommentaryRestriction.Note == nil || *own.CommentaryRestriction.Note != note ||
+		!own.CommentaryRestriction.CreatedAt.Equal(reviewNow.Add(time.Hour)) {
+		t.Fatalf("restricted own %+v %v", own, err)
+	}
+	ownB, err = service.GetOwn(ctx, userB, verifiedVenue)
+	if err != nil || ownB.CommentaryRestriction != nil {
+		t.Fatalf("unrestricted own %+v %v", ownB, err)
+	}
+}
+
 func TestReviewListIndex(t *testing.T) {
 	ctx := context.Background()
 	pool := testPool(t)
@@ -305,6 +363,19 @@ func insertReview(t *testing.T, pool *pgxpool.Pool, venueID, userID string, rati
 		insert into reviews (venue_id, user_id, rating, commentary, created_at, updated_at)
 		values ($1, $2, $3, $4, $5, $5)
 		returning id::text`, venueID, userID, rating, commentary, created).Scan(&id); err != nil {
+		t.Fatal(err)
+	}
+	return id
+}
+
+func insertModerationAction(t *testing.T, pool *pgxpool.Pool, reviewID, reviewerID, venueID, operatorID, action, reason string, note *string, created time.Time) string {
+	t.Helper()
+	var id string
+	if err := pool.QueryRow(context.Background(), `
+		insert into review_moderation_actions (
+			review_id, reviewer_user_id, venue_id, action, reason, note, operator_user_id, created_at
+		) values ($1, $2, $3, $4, $5, $6, $7, $8)
+		returning id::text`, reviewID, reviewerID, venueID, action, reason, note, operatorID, created).Scan(&id); err != nil {
 		t.Fatal(err)
 	}
 	return id

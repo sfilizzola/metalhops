@@ -32,8 +32,8 @@ func invalidVenueID() error {
 
 // listSQL walks reviews_venue_list_idx; $2 and $3 are the cursor position or both null.
 const listSQL = `
-	select r.id::text, r.rating, r.commentary, r.created_at, r.updated_at,
-		p.status, p.username, p.display_name
+	select r.id::text, r.rating, r.commentary, r.commentary_removed_at is not null,
+		r.created_at, r.updated_at, p.status, p.username, p.display_name
 	from reviews r
 	join profiles p on p.id = r.user_id
 	where r.venue_id = $1::uuid
@@ -75,7 +75,7 @@ func (s *Service) List(ctx context.Context, q ListQuery) (Page, error) {
 	for rows.Next() {
 		var r Review
 		var status, username, displayName string
-		if err := rows.Scan(&r.ID, &r.Rating, &r.Commentary, &r.CreatedAt, &r.UpdatedAt, &status, &username, &displayName); err != nil {
+		if err := rows.Scan(&r.ID, &r.Rating, &r.Commentary, &r.CommentaryRemoved, &r.CreatedAt, &r.UpdatedAt, &status, &username, &displayName); err != nil {
 			return Page{}, fmt.Errorf("review: list: %w", err)
 		}
 		r.CreatedAt, r.UpdatedAt = r.CreatedAt.UTC(), r.UpdatedAt.UTC()
@@ -124,38 +124,61 @@ func (s *Service) GetOwn(ctx context.Context, userID, venueID string) (Own, erro
 	}
 	queryCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
-	var own Own
-	err := s.pool.QueryRow(queryCtx, `
-		select r.id::text, r.user_id::text, r.rating, r.commentary, p.username, p.display_name, r.created_at, r.updated_at
-		from reviews r
-		join profiles p on p.id = r.user_id
-		join venues v on v.id = r.venue_id
-		where r.venue_id = $1::uuid and r.user_id = $2::uuid
-		  and v.verification_status = 'verified'
-		  and exists (select 1 from venue_genres g where g.venue_id = v.id)`, venueID, userID).Scan(
-		&own.ID, &own.UserID, &own.Rating, &own.Commentary, &own.Username, &own.DisplayName, &own.CreatedAt, &own.UpdatedAt)
+	own, err := scanOwn(s.pool.QueryRow(queryCtx, ownPublicSQL, venueID, userID))
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Own{}, ErrReviewNotFound
 	}
 	if err != nil {
 		return Own{}, fmt.Errorf("review: own: %w", err)
 	}
-	own.CreatedAt, own.UpdatedAt = own.CreatedAt.UTC(), own.UpdatedAt.UTC()
 	return own, nil
 }
 
 const ownSQL = `
-	select r.id::text, r.user_id::text, r.rating, r.commentary, p.username, p.display_name, r.created_at, r.updated_at
+	select r.id::text, r.user_id::text, r.rating, r.commentary, r.commentary_removed_at is not null,
+		p.username, p.display_name, r.created_at, r.updated_at,
+		a.reason, a.note, rest.created_at
 	from reviews r
 	join profiles p on p.id = r.user_id
+	left join review_commentary_restrictions rest
+		on rest.user_id = r.user_id and rest.venue_id = r.venue_id
+	left join review_moderation_actions a on a.id = rest.source_action_id
 	where r.venue_id = $1::uuid and r.user_id = $2::uuid`
+
+const ownPublicSQL = `
+	select r.id::text, r.user_id::text, r.rating, r.commentary, r.commentary_removed_at is not null,
+		p.username, p.display_name, r.created_at, r.updated_at,
+		a.reason, a.note, rest.created_at
+	from reviews r
+	join profiles p on p.id = r.user_id
+	join venues v on v.id = r.venue_id
+	left join review_commentary_restrictions rest
+		on rest.user_id = r.user_id and rest.venue_id = r.venue_id
+	left join review_moderation_actions a on a.id = rest.source_action_id
+	where r.venue_id = $1::uuid and r.user_id = $2::uuid
+	  and v.verification_status = 'verified'
+	  and exists (select 1 from venue_genres g where g.venue_id = v.id)`
 
 func scanOwn(row pgx.Row) (Own, error) {
 	var own Own
-	if err := row.Scan(&own.ID, &own.UserID, &own.Rating, &own.Commentary, &own.Username, &own.DisplayName, &own.CreatedAt, &own.UpdatedAt); err != nil {
+	var reason *string
+	var note *string
+	var restrictedAt *time.Time
+	if err := row.Scan(
+		&own.ID, &own.UserID, &own.Rating, &own.Commentary, &own.CommentaryRemoved,
+		&own.Username, &own.DisplayName, &own.CreatedAt, &own.UpdatedAt,
+		&reason, &note, &restrictedAt,
+	); err != nil {
 		return Own{}, err
 	}
 	own.CreatedAt, own.UpdatedAt = own.CreatedAt.UTC(), own.UpdatedAt.UTC()
+	if reason != nil && restrictedAt != nil {
+		own.CommentaryRestriction = &CommentaryRestriction{
+			Reason:    *reason,
+			Note:      note,
+			CreatedAt: restrictedAt.UTC(),
+		}
+	}
 	return own, nil
 }
 
@@ -212,6 +235,13 @@ func (s *Service) Save(ctx context.Context, cmd SaveCommand) (SaveResult, error)
 	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 		return SaveResult{}, fmt.Errorf("review: read: %w", err)
 	}
+	if draft.Commentary != nil {
+		if restriction, err := loadCommentaryRestriction(txCtx, tx, cmd.UserID, cmd.VenueID); err != nil {
+			return SaveResult{}, err
+		} else if restriction != nil {
+			return SaveResult{}, &CommentaryRestrictedError{Restriction: *restriction}
+		}
+	}
 	if found && current.Rating == draft.Rating && sameText(current.Commentary, draft.Commentary) {
 		if err := tx.Commit(txCtx); err != nil {
 			return SaveResult{}, fmt.Errorf("review: commit: %w", err)
@@ -243,6 +273,14 @@ func (s *Service) Save(ctx context.Context, cmd SaveCommand) (SaveResult, error)
 	if err != nil {
 		return SaveResult{}, fmt.Errorf("review: write: %w", err)
 	}
+	if found && current.Commentary != nil && !sameText(current.Commentary, draft.Commentary) {
+		if _, err := tx.Exec(txCtx, `
+			update review_reports
+			set status = 'author_resolved', resolved_at = $2, resolved_by_user_id = $3::uuid
+			where review_id = $1::uuid and status = 'pending'`, current.ID, now, cmd.UserID); err != nil {
+			return SaveResult{}, fmt.Errorf("review: resolve reports: %w", err)
+		}
+	}
 	stored, err := scanOwn(tx.QueryRow(txCtx, ownSQL, cmd.VenueID, cmd.UserID))
 	if err != nil {
 		return SaveResult{}, fmt.Errorf("review: read: %w", err)
@@ -253,6 +291,24 @@ func (s *Service) Save(ctx context.Context, cmd SaveCommand) (SaveResult, error)
 	reservation.Commit()
 	committed = true
 	return SaveResult{Review: stored, Created: !found}, nil
+}
+
+func loadCommentaryRestriction(ctx context.Context, tx pgx.Tx, userID, venueID string) (*CommentaryRestriction, error) {
+	var reason string
+	var note *string
+	var createdAt time.Time
+	err := tx.QueryRow(ctx, `
+		select a.reason, a.note, rest.created_at
+		from review_commentary_restrictions rest
+		join review_moderation_actions a on a.id = rest.source_action_id
+		where rest.user_id = $1::uuid and rest.venue_id = $2::uuid`, userID, venueID).Scan(&reason, &note, &createdAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("review: restriction: %w", err)
+	}
+	return &CommentaryRestriction{Reason: reason, Note: note, CreatedAt: createdAt.UTC()}, nil
 }
 
 func sameText(a, b *string) bool {

@@ -160,6 +160,11 @@ func TestRatingAggregates(t *testing.T) {
 	oneThree := 1.3
 	assertAggregate("four reviews", verified, &oneThree, 4)
 
+	if _, err := pool.Exec(ctx, `update reviews set commentary = null, commentary_removed_at = now() where venue_id = $1`, verified); err != nil {
+		t.Fatal(err)
+	}
+	assertAggregate("after commentary removed", verified, &oneThree, 4)
+
 	insertReview(t, pool, pending, users[0], 5)
 	assertAggregate("pending with seeded review", pending, nil, 0)
 

@@ -19,24 +19,41 @@ type Author struct {
 	DisplayName string
 }
 
+type CommentaryRestriction struct {
+	Reason    string
+	Note      *string
+	CreatedAt time.Time
+}
+
+type CommentaryRestrictedError struct {
+	Restriction CommentaryRestriction
+}
+
+func (e *CommentaryRestrictedError) Error() string { return "review: commentary locked" }
+
+func (e *CommentaryRestrictedError) Is(target error) bool { return target == ErrCommentaryLocked }
+
 type Review struct {
-	ID         string
-	Rating     int
-	Commentary *string
-	Author     Author
-	CreatedAt  time.Time
-	UpdatedAt  time.Time
+	ID                string
+	Rating            int
+	Commentary        *string
+	CommentaryRemoved bool
+	Author            Author
+	CreatedAt         time.Time
+	UpdatedAt         time.Time
 }
 
 type Own struct {
-	ID          string
-	UserID      string
-	Rating      int
-	Commentary  *string
-	Username    string
-	DisplayName string
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
+	ID                    string
+	UserID                string
+	Rating                int
+	Commentary            *string
+	CommentaryRemoved     bool
+	CommentaryRestriction *CommentaryRestriction
+	Username              string
+	DisplayName           string
+	CreatedAt             time.Time
+	UpdatedAt             time.Time
 }
 
 type Page struct {

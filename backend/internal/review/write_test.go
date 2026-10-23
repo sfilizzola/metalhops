@@ -342,3 +342,159 @@ func TestUserDeletionRemovesReview(t *testing.T) {
 		t.Fatalf("rows %d", n)
 	}
 }
+
+func seedRestriction(t *testing.T, h *writeHarness, reviewID, userID, venueID, reason string, note *string) time.Time {
+	t.Helper()
+	insertUser(t, h.pool, userC, "", nil)
+	started := t0.Add(time.Hour)
+	actionID := insertModerationAction(t, h.pool, reviewID, userID, venueID, userC, "commentary_removed", reason, note, t0)
+	if _, err := h.pool.Exec(context.Background(), `
+		insert into review_commentary_restrictions (user_id, venue_id, source_action_id, created_at)
+		values ($1, $2, $3, $4)`, userID, venueID, actionID, started); err != nil {
+		t.Fatal(err)
+	}
+	return started
+}
+
+func TestLockedSameCommentaryIsConflict(t *testing.T) {
+	h := newWriteHarness(t)
+	insertVenue(t, h.pool, verifiedVenue, "verified")
+	insertUser(t, h.pool, userA, "active", nil)
+	reviewID := insertReview(t, h.pool, verifiedVenue, userA, 4, ptr("loud"), t0)
+	note := "keep it down"
+	started := seedRestriction(t, h, reviewID, userA, verifiedVenue, "spam", &note)
+
+	_, err := h.save(userA, verifiedVenue, "4", json.RawMessage(`"loud"`))
+	var locked *CommentaryRestrictedError
+	if !errors.As(err, &locked) || !errors.Is(err, ErrCommentaryLocked) ||
+		locked.Restriction.Reason != "spam" || locked.Restriction.Note == nil || *locked.Restriction.Note != note ||
+		!locked.Restriction.CreatedAt.Equal(started) {
+		t.Fatalf("locked %+v", err)
+	}
+	var commentary string
+	if err := h.pool.QueryRow(context.Background(), `
+		select commentary from reviews where id = $1`, reviewID).Scan(&commentary); err != nil || commentary != "loud" {
+		t.Fatalf("stored %q %v", commentary, err)
+	}
+	if left := tokensLeft(h.limiter, userA); left != 60 {
+		t.Fatalf("tokens %d", left)
+	}
+}
+
+func TestLockedClearAndRecreate(t *testing.T) {
+	h := newWriteHarness(t)
+	insertVenue(t, h.pool, verifiedVenue, "verified")
+	insertUser(t, h.pool, userA, "active", nil)
+	reviewID := insertReview(t, h.pool, verifiedVenue, userA, 4, ptr("loud"), t0)
+	seedRestriction(t, h, reviewID, userA, verifiedVenue, "spam", nil)
+
+	got, err := h.save(userA, verifiedVenue, "3", nil)
+	if err != nil || got.Review.Rating != 3 || got.Review.Commentary != nil {
+		t.Fatalf("clear %+v %v", got, err)
+	}
+	var removedAt *time.Time
+	var restrictions int
+	if err := h.pool.QueryRow(context.Background(), `
+		select commentary_removed_at from reviews where id = $1`, reviewID).Scan(&removedAt); err != nil || removedAt != nil {
+		t.Fatalf("removed_at %v %v", removedAt, err)
+	}
+	if err := h.pool.QueryRow(context.Background(), `
+		select count(*) from review_commentary_restrictions where user_id = $1`, userA).Scan(&restrictions); err != nil || restrictions != 1 {
+		t.Fatalf("restrictions %d %v", restrictions, err)
+	}
+
+	ctx := context.Background()
+	if err := h.service.Delete(ctx, userA, verifiedVenue); err != nil {
+		t.Fatal(err)
+	}
+	got, err = h.save(userA, verifiedVenue, "2", nil)
+	if err != nil || got.Review.CommentaryRemoved || got.Review.Rating != 2 {
+		t.Fatalf("recreate %+v %v", got, err)
+	}
+	if _, err := h.save(userA, verifiedVenue, "2", json.RawMessage(`"again"`)); !errors.Is(err, ErrCommentaryLocked) {
+		t.Fatalf("again err %v", err)
+	}
+}
+
+func TestAuthorChangeResolvesReports(t *testing.T) {
+	h := newWriteHarness(t)
+	insertVenue(t, h.pool, verifiedVenue, "verified")
+	insertUser(t, h.pool, userA, "active", nil)
+	insertUser(t, h.pool, userB, "active", nil)
+	reviewID := insertReview(t, h.pool, verifiedVenue, userA, 4, ptr("old"), t0)
+	insertPendingReport(t, h.pool, userB, reviewID, "spam", nil)
+
+	if _, err := h.save(userA, verifiedVenue, "4", nil); err != nil {
+		t.Fatal(err)
+	}
+	assertReportStatus(t, h.pool, reviewID, "author_resolved", userA)
+	var restrictions int
+	if err := h.pool.QueryRow(context.Background(), `
+		select count(*) from review_commentary_restrictions`).Scan(&restrictions); err != nil || restrictions != 0 {
+		t.Fatalf("restrictions %d %v", restrictions, err)
+	}
+
+	if _, err := h.save(userA, verifiedVenue, "4", json.RawMessage(`"old"`)); err != nil {
+		t.Fatal(err)
+	}
+	insertPendingReport(t, h.pool, userB, reviewID, "harassment", nil)
+	if _, err := h.save(userA, verifiedVenue, "4", json.RawMessage(`"new"`)); err != nil {
+		t.Fatal(err)
+	}
+	assertReportStatus(t, h.pool, reviewID, "author_resolved", userA)
+	insertPendingReport(t, h.pool, userB, reviewID, "spam", nil)
+	var pending int
+	if err := h.pool.QueryRow(context.Background(), `
+		select count(*) from review_reports where review_id = $1 and status = 'pending'`, reviewID).Scan(&pending); err != nil || pending != 1 {
+		t.Fatalf("pending %d %v", pending, err)
+	}
+}
+
+func TestAuthorChangeDoesNotReopenActioned(t *testing.T) {
+	h := newWriteHarness(t)
+	insertVenue(t, h.pool, verifiedVenue, "verified")
+	insertUser(t, h.pool, userA, "active", nil)
+	insertUser(t, h.pool, userB, "active", nil)
+	insertUser(t, h.pool, userC, "", nil)
+	reviewID := insertReview(t, h.pool, verifiedVenue, userA, 4, ptr("old"), t0)
+	if _, err := h.pool.Exec(context.Background(), `
+		insert into review_reports (reporter_user_id, review_id, reason, status, resolved_at, resolved_by_user_id)
+		values ($1, $2, 'spam', 'actioned', $3, $4)`, userB, reviewID, t0, userC); err != nil {
+		t.Fatal(err)
+	}
+	insertPendingReport(t, h.pool, userB, reviewID, "harassment", nil)
+
+	if _, err := h.save(userA, verifiedVenue, "4", json.RawMessage(`"new"`)); err != nil {
+		t.Fatal(err)
+	}
+	var actioned, authorResolved int
+	if err := h.pool.QueryRow(context.Background(), `
+		select
+			count(*) filter (where status = 'actioned'),
+			count(*) filter (where status = 'author_resolved')
+		from review_reports where review_id = $1`, reviewID).Scan(&actioned, &authorResolved); err != nil ||
+		actioned != 1 || authorResolved != 1 {
+		t.Fatalf("statuses actioned=%d author_resolved=%d %v", actioned, authorResolved, err)
+	}
+}
+
+func insertPendingReport(t *testing.T, pool *pgxpool.Pool, reporterID, reviewID, reason string, note *string) {
+	t.Helper()
+	if _, err := pool.Exec(context.Background(), `
+		insert into review_reports (reporter_user_id, review_id, reason, note)
+		values ($1, $2, $3, $4)`, reporterID, reviewID, reason, note); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func assertReportStatus(t *testing.T, pool *pgxpool.Pool, reviewID, status, resolvedBy string) {
+	t.Helper()
+	var gotStatus, gotBy string
+	if err := pool.QueryRow(context.Background(), `
+		select status, resolved_by_user_id::text from review_reports
+		where review_id = $1
+		order by created_at desc limit 1`, reviewID).Scan(&gotStatus, &gotBy); err != nil ||
+		gotStatus != status || gotBy != resolvedBy {
+		t.Fatalf("report %s by %s (want %s by %s): %v", gotStatus, gotBy, status, resolvedBy, err)
+	}
+}
