@@ -325,3 +325,113 @@ func TestGetModerationVenue(t *testing.T) {
 		t.Fatal("bad id accepted")
 	}
 }
+
+func TestDelistActionsReviewReports(t *testing.T) {
+	h := newHarness(t)
+	insertOperator(t, h)
+	insertUser(t, h.pool, userA, "active", nil)
+	insertUser(t, h.pool, userB, "active", nil)
+	seedVenue(t, h.pool, seed{id: vid(90), name: "Delist Reviews", status: "verified", lat: 90, lon: 10})
+	var reviewID string
+	if err := h.pool.QueryRow(context.Background(), `
+		insert into reviews (venue_id, user_id, rating, commentary, created_at, updated_at)
+		values ($1, $2, 4, 'loud', now(), now()) returning id::text`, vid(90), userA).Scan(&reviewID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := h.pool.Exec(context.Background(), `
+		insert into review_reports (reporter_user_id, review_id, reason) values ($1, $2, 'spam')`, userB, reviewID); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := act(h, vid(90), "delist", "delist-rr-01", "permanently_closed", nil); err != nil {
+		t.Fatal(err)
+	}
+	var status, by string
+	var commentary *string
+	var removedAt *time.Time
+	if err := h.pool.QueryRow(context.Background(), `
+		select rr.status, rr.resolved_by_user_id::text, r.commentary, r.commentary_removed_at
+		from review_reports rr join reviews r on r.id = rr.review_id
+		where rr.review_id = $1`, reviewID).Scan(&status, &by, &commentary, &removedAt); err != nil ||
+		status != "actioned" || by != operatorID || commentary == nil || *commentary != "loud" || removedAt != nil {
+		t.Fatalf("after delist status=%s by=%s commentary=%v removed=%v err=%v", status, by, commentary, removedAt, err)
+	}
+	if n := countRows(t, h, `select count(*) from review_moderation_actions`); n != 0 {
+		t.Fatalf("review audits %d", n)
+	}
+	if n := countRows(t, h, `select count(*) from review_commentary_restrictions`); n != 0 {
+		t.Fatalf("restrictions %d", n)
+	}
+
+	if _, err := h.pool.Exec(context.Background(), `
+		insert into review_reports (reporter_user_id, review_id, reason) values ($1, $2, 'harassment')`, userB, reviewID); err != nil {
+		t.Fatal(err)
+	}
+	if noop, err := act(h, vid(90), "delist", "delist-rr-02", "permanently_closed", nil); err != nil || noop.Created {
+		t.Fatalf("identical re-delist %+v %v", noop, err)
+	}
+	if n := countRows(t, h, `select count(*) from review_reports where review_id = $1 and status = 'pending'`, reviewID); n != 1 {
+		t.Fatalf("pending after identical re-delist %d", n)
+	}
+
+	if _, err := act(h, vid(90), "reopen", "reopen-rr-01", "", nil); err != nil {
+		t.Fatal(err)
+	}
+	if n := countRows(t, h, `select count(*) from review_reports where review_id = $1 and status = 'actioned'`, reviewID); n != 1 {
+		t.Fatalf("actioned after reopen %d", n)
+	}
+	if n := countRows(t, h, `select count(*) from review_reports where review_id = $1 and status = 'pending'`, reviewID); n != 1 {
+		t.Fatalf("pending after reopen %d", n)
+	}
+
+	seedVenue(t, h.pool, seed{id: vid(91), name: "Pending RR", status: "pending", lat: 91, lon: 10})
+	var pendingReview string
+	if err := h.pool.QueryRow(context.Background(), `
+		insert into reviews (venue_id, user_id, rating, commentary, created_at, updated_at)
+		values ($1, $2, 3, 'x', now(), now()) returning id::text`, vid(91), userA).Scan(&pendingReview); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := h.pool.Exec(context.Background(), `
+		insert into review_reports (reporter_user_id, review_id, reason) values ($1, $2, 'spam')`, userB, pendingReview); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := act(h, vid(91), "verify", "verify-rr-01", "", nil); err != nil {
+		t.Fatal(err)
+	}
+	if n := countRows(t, h, `select count(*) from review_reports where review_id = $1 and status = 'pending'`, pendingReview); n != 1 {
+		t.Fatalf("pending after verify %d", n)
+	}
+
+	seedVenue(t, h.pool, seed{id: vid(92), name: "Reject RR", status: "pending", lat: 92, lon: 10})
+	var rejectReview string
+	if err := h.pool.QueryRow(context.Background(), `
+		insert into reviews (venue_id, user_id, rating, commentary, created_at, updated_at)
+		values ($1, $2, 3, 'y', now(), now()) returning id::text`, vid(92), userA).Scan(&rejectReview); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := h.pool.Exec(context.Background(), `
+		insert into review_reports (reporter_user_id, review_id, reason) values ($1, $2, 'spam')`, userB, rejectReview); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := act(h, vid(92), "reject", "reject-rr-01", "duplicate", nil); err != nil {
+		t.Fatal(err)
+	}
+	if n := countRows(t, h, `select count(*) from review_reports where review_id = $1 and status = 'pending'`, rejectReview); n != 1 {
+		t.Fatalf("pending after reject %d", n)
+	}
+
+	// Feedback-only delist actions a fresh pending review report.
+	if _, err := act(h, vid(90), "delist", "delist-rr-03", "permanently_closed", nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := h.pool.Exec(context.Background(), `
+		insert into review_reports (reporter_user_id, review_id, reason) values ($1, $2, 'off_topic')`, userB, reviewID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := act(h, vid(90), "delist", "delist-rr-04", "other", ptr("feedback note")); err != nil {
+		t.Fatal(err)
+	}
+	if n := countRows(t, h, `select count(*) from review_reports where review_id = $1 and status = 'pending'`, reviewID); n != 0 {
+		t.Fatalf("pending after feedback delist %d", n)
+	}
+}

@@ -88,6 +88,19 @@ func resolveReports(ctx context.Context, tx pgx.Tx, venueID, actorID string, now
 	return nil
 }
 
+func resolveReviewReports(ctx context.Context, tx pgx.Tx, venueID, actorID string, now time.Time) error {
+	if _, err := tx.Exec(ctx, `
+		update review_reports
+		set status = 'actioned', resolved_at = $3, resolved_by_user_id = $2::uuid
+		from reviews
+		where review_reports.review_id = reviews.id
+		  and reviews.venue_id = $1::uuid
+		  and review_reports.status = 'pending'`, venueID, actorID, now); err != nil {
+		return fmt.Errorf("venue: review reports: %w", err)
+	}
+	return nil
+}
+
 func textEqual(got, want *string) bool {
 	if got == nil || want == nil {
 		return got == nil && want == nil
@@ -209,6 +222,11 @@ func (s *Service) ModerateVenue(ctx context.Context, cmd ModerationCommand) (Mod
 		}
 		if err := resolveReports(ctx, tx, cmd.VenueID, cmd.ActorID, now); err != nil {
 			return idempotency.Result{}, err
+		}
+		if cmd.Action == "delist" {
+			if err := resolveReviewReports(ctx, tx, cmd.VenueID, cmd.ActorID, now); err != nil {
+				return idempotency.Result{}, err
+			}
 		}
 		view, err := moderated(ctx, tx, cmd.VenueID)
 		if err != nil {
