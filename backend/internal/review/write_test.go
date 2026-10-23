@@ -345,7 +345,13 @@ func TestUserDeletionRemovesReview(t *testing.T) {
 
 func seedRestriction(t *testing.T, h *writeHarness, reviewID, userID, venueID, reason string, note *string) time.Time {
 	t.Helper()
-	insertUser(t, h.pool, userC, "", nil)
+	var exists bool
+	if err := h.pool.QueryRow(context.Background(), `select exists(select 1 from auth.users where id = $1)`, userC).Scan(&exists); err != nil {
+		t.Fatal(err)
+	}
+	if !exists {
+		insertUser(t, h.pool, userC, "", nil)
+	}
 	started := t0.Add(time.Hour)
 	actionID := insertModerationAction(t, h.pool, reviewID, userID, venueID, userC, "commentary_removed", reason, note, t0)
 	if _, err := h.pool.Exec(context.Background(), `

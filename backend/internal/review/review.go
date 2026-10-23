@@ -11,6 +11,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"github.com/metalhops/metalhops/backend/internal/profile"
 	"golang.org/x/text/unicode/norm"
 )
 
@@ -96,6 +97,35 @@ type Report struct {
 	Note      *string
 	Status    string
 	CreatedAt time.Time
+}
+
+type ModerationCommand struct {
+	ActorID  string
+	ReviewID string
+	Action   string
+	Reason   string
+	Note     *string
+	Key      string
+}
+
+type OperatorReview struct {
+	ID                  string
+	VenueID             string
+	UserID              string
+	Rating              int
+	Commentary          *string
+	CommentaryRemoved   bool
+	CommentaryRemovedAt *time.Time
+	Author              *profile.Profile
+	CreatedAt           time.Time
+	UpdatedAt           time.Time
+}
+
+type ModerationResult struct {
+	Created  bool
+	ActionID *string
+	ReviewID string
+	Review   *OperatorReview // nil after delete_review
 }
 
 type Draft struct {
