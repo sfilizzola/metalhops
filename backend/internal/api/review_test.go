@@ -98,13 +98,13 @@ func TestReviewRoutes(t *testing.T) {
 		if list.Code != http.StatusOK || reviews.query.Limit != 20 || reviews.query.VenueID != reviewVenueID || !bytes.Contains(list.Body.Bytes(), []byte(`"next_cursor":"next"`)) {
 			t.Fatalf("list %q %d %s %+v", authz, list.Code, list.Body.String(), reviews.query)
 		}
-		for _, want := range []string{`"author":{"username":null,"display_name":"MetalHops User"}`, `"commentary":null`, `"created_at":"2020-01-15T12:00:00Z"`} {
+		for _, want := range []string{`"author":{"username":null,"display_name":"MetalHops User"}`, `"commentary":null`, `"commentary_removed":false`, `"created_at":"2020-01-15T12:00:00Z"`} {
 			if !bytes.Contains(list.Body.Bytes(), []byte(want)) {
 				t.Fatalf("missing %s in %s", want, list.Body.String())
 			}
 		}
-		if bytes.Contains(list.Body.Bytes(), []byte(`user_id`)) {
-			t.Fatalf("leaked user_id %s", list.Body.String())
+		if bytes.Contains(list.Body.Bytes(), []byte(`user_id`)) || bytes.Contains(list.Body.Bytes(), []byte(`commentary_restriction`)) {
+			t.Fatalf("leaked field %s", list.Body.String())
 		}
 	}
 	if authenticator.calls != 0 {
@@ -129,11 +129,41 @@ func TestReviewRoutes(t *testing.T) {
 	if own.Code != http.StatusOK || reviews.userID != caller.UserID || reviews.venueID != reviewVenueID {
 		t.Fatalf("own %d %s", own.Code, own.Body.String())
 	}
-	for _, want := range []string{`"user_id":"cccccccc-cccc-4ccc-8ccc-cccccccccccc"`, `"author":{"username":"metal_fan","display_name":"Metal Fan"}`, `"commentary":"loud"`} {
+	for _, want := range []string{`"user_id":"cccccccc-cccc-4ccc-8ccc-cccccccccccc"`, `"author":{"username":"metal_fan","display_name":"Metal Fan"}`, `"commentary":"loud"`, `"commentary_removed":false`, `"commentary_restriction":null`} {
 		if !bytes.Contains(own.Body.Bytes(), []byte(want)) {
 			t.Fatalf("missing %s in %s", want, own.Body.String())
 		}
 	}
+	note := "keep it down"
+	started := time.Date(2020, 1, 16, 12, 0, 0, 0, time.UTC)
+	reviews.page.Reviews[0].CommentaryRemoved = true
+	reviews.own.CommentaryRemoved = true
+	reviews.own.Commentary = nil
+	reviews.own.CommentaryRestriction = &review.CommentaryRestriction{Reason: "spam", Note: &note, CreatedAt: started}
+	listRemoved := requestWith(handler, http.MethodGet, reviewsPath, "", nil, nil)
+	if !bytes.Contains(listRemoved.Body.Bytes(), []byte(`"commentary_removed":true`)) || bytes.Contains(listRemoved.Body.Bytes(), []byte(`commentary_restriction`)) {
+		t.Fatalf("list removed %s", listRemoved.Body.String())
+	}
+	ownRemoved := requestWith(handler, http.MethodGet, ownReviewPath, "Bearer t", nil, nil)
+	for _, want := range []string{`"commentary_removed":true`, `"commentary_restriction":{"reason":"spam","note":"keep it down","created_at":"2020-01-16T12:00:00Z"}`} {
+		if !bytes.Contains(ownRemoved.Body.Bytes(), []byte(want)) {
+			t.Fatalf("own removed missing %s in %s", want, ownRemoved.Body.String())
+		}
+	}
+	reviews.err = &review.CommentaryRestrictedError{Restriction: review.CommentaryRestriction{Reason: "spam", Note: &note, CreatedAt: started}}
+	locked := requestWith(handler, http.MethodPut, ownReviewPath, "Bearer t", []byte(reviewBodyJSON), plain)
+	assertCode(t, locked, http.StatusConflict, "commentary_locked")
+	for _, want := range []string{`Commentary on this review is locked.`, `"commentary_restriction":{"reason":"spam","note":"keep it down","created_at":"2020-01-16T12:00:00Z"}`} {
+		if !bytes.Contains(locked.Body.Bytes(), []byte(want)) {
+			t.Fatalf("locked missing %s in %s", want, locked.Body.String())
+		}
+	}
+	if bytes.Contains(locked.Body.Bytes(), []byte(`operator`)) || bytes.Contains(locked.Body.Bytes(), []byte(`reporter`)) {
+		t.Fatalf("locked leaked identity %s", locked.Body.String())
+	}
+	reviews.err = nil
+	reviews.own = sampleOwnReview()
+	reviews.page.Reviews[0].CommentaryRemoved = false
 
 	created := requestWith(handler, http.MethodPut, ownReviewPath, "Bearer t", []byte(reviewBodyJSON), plain)
 	if created.Code != http.StatusCreated || reviews.save.UserID != caller.UserID || reviews.save.VenueID != reviewVenueID || string(reviews.save.Rating) != "4" || string(reviews.save.Commentary) != `"loud"` {

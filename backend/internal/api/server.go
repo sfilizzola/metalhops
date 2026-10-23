@@ -24,17 +24,18 @@ func (f ReadinessFunc) Check(ctx context.Context) (bool, string) {
 }
 
 type Options struct {
-	DocsEnabled     bool
-	OpenAPI         []byte
-	Readiness       Readiness
-	PublicLimit     func(http.Handler) http.Handler
-	Auth            Authenticator
-	Profiles        Profiles
-	Logger          *slog.Logger
-	Catalogue       Catalogue
-	Submissions     Submissions
-	VenueModeration VenueModeration
-	Reviews         Reviews
+	DocsEnabled      bool
+	OpenAPI          []byte
+	Readiness        Readiness
+	PublicLimit      func(http.Handler) http.Handler
+	Auth             Authenticator
+	Profiles         Profiles
+	Logger           *slog.Logger
+	Catalogue        Catalogue
+	Submissions      Submissions
+	VenueModeration  VenueModeration
+	Reviews          Reviews
+	ReviewModeration ReviewModeration
 }
 
 func New(options Options) http.Handler {
@@ -123,6 +124,21 @@ func New(options Options) http.Handler {
 	})))
 	mux.Handle("PATCH /v1/moderation/venue-reports/{reportID}", requireOperator(options.Auth, options.Logger, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		dismissVenueReport(w, r, options.VenueModeration, options.Logger)
+	})))
+	mux.Handle("POST /v1/venues/{venueID}/reviews/{reviewID}/reports", requireApp(options.Auth, options.Logger, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		reportReview(w, r, options.ReviewModeration, options.Logger)
+	})))
+	mux.Handle("GET /v1/moderation/review-reports", requireOperator(options.Auth, options.Logger, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		listReviewReports(w, r, options.ReviewModeration, options.Logger)
+	})))
+	mux.Handle("GET /v1/moderation/reviews/{reviewID}", requireOperator(options.Auth, options.Logger, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		getModerationReview(w, r, options.ReviewModeration, options.Logger)
+	})))
+	mux.Handle("POST /v1/moderation/reviews/{reviewID}/actions", requireOperator(options.Auth, options.Logger, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		applyReviewAction(w, r, options.ReviewModeration, options.Logger)
+	})))
+	mux.Handle("PATCH /v1/moderation/review-reports/{reportID}", requireOperator(options.Auth, options.Logger, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		dismissReviewReport(w, r, options.ReviewModeration, options.Logger)
 	})))
 	return wrap(options.Logger, options.PublicLimit, mux)
 }
