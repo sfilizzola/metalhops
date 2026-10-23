@@ -127,9 +127,11 @@ duplicate detection, the advisory lock, the transaction, and safe duplicate
 details. Splitting those rules among public packages would reduce locality.
 
 The Review module owns Review validation, authorship, the write transaction,
-the public list, and the caller's own Review. The Venue catalogue query reads
-`reviews` for `average_rating` and `review_count`, so list and detail stay one
-round trip. `internal/venue` does not import `internal/review`.
+the public list, the caller's own Review, Review Reports, the Commentary
+restriction, and the append-only review moderation audit. The Venue catalogue
+query reads `reviews` for `average_rating` and `review_count`, so list and
+detail stay one round trip. Venue delist updates pending `review_reports` in
+its own transaction. `internal/venue` does not import `internal/review`.
 
 File names may describe implementation roles:
 

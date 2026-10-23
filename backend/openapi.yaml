@@ -671,6 +671,420 @@ paths:
           $ref: "#/components/responses/Internal"
         "502":
           $ref: "#/components/responses/AuthProvider"
+  /v1/venues/{venueID}/reviews/{reviewID}/reports:
+    post:
+      operationId: reportReview
+      summary: Report a review's public commentary
+      description: Requires Idempotency-Key. Steps before idempotency lookup are not replayed. The Review is unchanged. Success is 201 with no commentary field.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: venueID
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+            pattern: "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        - name: reviewID
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+            pattern: "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        - name: Idempotency-Key
+          in: header
+          required: true
+          description: 8 to 128 printable ASCII characters. The idempotency operation is review_report.
+          schema:
+            type: string
+            minLength: 8
+            maxLength: 128
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReviewReportRequest"
+            example:
+              reason: harassment
+              note: null
+      responses:
+        "201":
+          description: The pending report.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReviewReportResponse"
+        "400":
+          description: Validation failed, the caller reported their own Review, or the commentary is not public.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                self:
+                  value:
+                    error:
+                      code: self_report
+                      message: You cannot report your own review.
+                      request_id: abc
+                not_public:
+                  value:
+                    error:
+                      code: commentary_not_public
+                      message: This review has no public commentary.
+                      request_id: abc
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/ContributionForbidden"
+        "404":
+          description: The Venue or Review was not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: A pending report already exists, the Venue is pending, or the idempotency key was reused.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                pending:
+                  value:
+                    error:
+                      code: review_already_reported
+                      message: You already reported this review.
+                      request_id: abc
+                not_verified:
+                  value:
+                    error:
+                      code: venue_not_verified
+                      message: Reviews open after this venue is verified.
+                      request_id: abc
+        "413":
+          $ref: "#/components/responses/BodyTooLarge"
+        "415":
+          $ref: "#/components/responses/UnsupportedMedia"
+        "429":
+          description: The shared report quota or a write limit refused the request.
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                quota:
+                  value:
+                    error:
+                      code: quota_exceeded
+                      message: The report limit has been reached.
+                      request_id: abc
+        "500":
+          $ref: "#/components/responses/Internal"
+        "502":
+          $ref: "#/components/responses/AuthProvider"
+  /v1/moderation/review-reports:
+    get:
+      operationId: listReviewReports
+      summary: List pending review reports
+      description: Oldest first by creation time and report id. Pending reports only.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: cursor
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: The pending report page.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReviewReportItemListResponse"
+        "400":
+          description: The limit or cursor is invalid, or a query parameter is unknown.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: The caller has no platform operator row.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                error:
+                  code: forbidden
+                  message: This action requires a moderator account.
+                  request_id: abc
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/Internal"
+        "502":
+          $ref: "#/components/responses/AuthProvider"
+  /v1/moderation/reviews/{reviewID}:
+    get:
+      operationId: getModerationReview
+      summary: Read one review for moderation
+      description: Returns the operator Review, pending reports, the newest 20 audit rows, and the commentary restriction when one exists. Works for pending, rejected, and Delisted Venues.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: reviewID
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+            pattern: "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+      responses:
+        "200":
+          description: The moderation detail.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ModerationReviewResponse"
+        "400":
+          description: The id is not a canonical UUID.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: The caller has no platform operator row.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                error:
+                  code: forbidden
+                  message: This action requires a moderator account.
+                  request_id: abc
+        "404":
+          description: No Review has that id.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                error:
+                  code: review_not_found
+                  message: Review not found.
+                  request_id: abc
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/Internal"
+        "502":
+          $ref: "#/components/responses/AuthProvider"
+  /v1/moderation/reviews/{reviewID}/actions:
+    post:
+      operationId: applyReviewAction
+      summary: Remove commentary or delete a review
+      description: Requires Idempotency-Key. A write that appends an audit row is 201. A remove_commentary no-op is 200 with action_id null and is not stored. The stored idempotency body never contains a commentary key.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: reviewID
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+            pattern: "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        - name: Idempotency-Key
+          in: header
+          required: true
+          description: 8 to 128 printable ASCII characters. The idempotency operation is review_moderation_action.
+          schema:
+            type: string
+            minLength: 8
+            maxLength: 128
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReviewModerationAction"
+            examples:
+              remove:
+                value:
+                  action: remove_commentary
+                  reason: spam
+              delete:
+                value:
+                  action: delete_review
+                  reason: other
+                  note: Illegal content.
+      responses:
+        "200":
+          description: remove_commentary was a no-op. action_id is null.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReviewActionResponse"
+        "201":
+          description: The moderation action was stored.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReviewActionResponse"
+        "400":
+          description: The body, Review id, or idempotency key is invalid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: The caller has no platform operator row.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                error:
+                  code: forbidden
+                  message: This action requires a moderator account.
+                  request_id: abc
+        "404":
+          description: No Review has that id.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                error:
+                  code: review_not_found
+                  message: Review not found.
+                  request_id: abc
+        "409":
+          description: remove_commentary was refused because there is no public commentary and no restriction.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                error:
+                  code: commentary_not_public
+                  message: This review has no public commentary.
+                  request_id: abc
+        "413":
+          $ref: "#/components/responses/BodyTooLarge"
+        "415":
+          $ref: "#/components/responses/UnsupportedMedia"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/Internal"
+        "502":
+          $ref: "#/components/responses/AuthProvider"
+  /v1/moderation/review-reports/{reportID}:
+    patch:
+      operationId: dismissReviewReport
+      summary: Dismiss one review report
+      description: 'The body is exactly {"status":"dismissed"}. This route does not require Idempotency-Key. A repeated dismissal returns the same item and spends no write token.'
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: reportID
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+            pattern: "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DismissProfileReport"
+            example:
+              status: dismissed
+      responses:
+        "200":
+          description: The dismissed report. The Review does not change.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReviewReportItemResponse"
+        "400":
+          description: The body or report id is invalid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: The caller has no platform operator row.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                error:
+                  code: forbidden
+                  message: This action requires a moderator account.
+                  request_id: abc
+        "404":
+          description: No report has that id.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                error:
+                  code: review_report_not_found
+                  message: Report not found.
+                  request_id: abc
+        "409":
+          description: The report is already actioned or author_resolved.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                error:
+                  code: report_already_resolved
+                  message: That report is already resolved.
+                  request_id: abc
+        "413":
+          $ref: "#/components/responses/BodyTooLarge"
+        "415":
+          $ref: "#/components/responses/UnsupportedMedia"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/Internal"
+        "502":
+          $ref: "#/components/responses/AuthProvider"
   /v1/me:
     get:
       operationId: getMe
@@ -2337,7 +2751,7 @@ components:
     Review:
       type: object
       additionalProperties: false
-      required: [id, rating, commentary, author, created_at, updated_at]
+      required: [id, rating, commentary, commentary_removed, author, created_at, updated_at]
       properties:
         id:
           type: string
@@ -2348,6 +2762,9 @@ components:
           maximum: 5
         commentary:
           type: [string, "null"]
+        commentary_removed:
+          type: boolean
+          description: True only when a moderator cleared the commentary and set commentary_removed_at.
         author:
           type: object
           additionalProperties: false
@@ -2384,8 +2801,8 @@ components:
     OwnReview:
       type: object
       additionalProperties: false
-      description: The Review fields plus user_id and the stored Username. Review sets additionalProperties false, so the properties are listed here rather than composed with allOf.
-      required: [id, user_id, rating, commentary, author, created_at, updated_at]
+      description: The Review fields plus user_id, the stored Username, and the User-visible commentary restriction.
+      required: [id, user_id, rating, commentary, commentary_removed, commentary_restriction, author, created_at, updated_at]
       properties:
         id:
           type: string
@@ -2399,6 +2816,12 @@ components:
           maximum: 5
         commentary:
           type: [string, "null"]
+        commentary_removed:
+          type: boolean
+        commentary_restriction:
+          oneOf:
+            - $ref: "#/components/schemas/UserCommentaryRestriction"
+            - type: "null"
         author:
           type: object
           additionalProperties: false
@@ -2414,6 +2837,20 @@ components:
         updated_at:
           type: string
           format: date-time
+    UserCommentaryRestriction:
+      type: object
+      additionalProperties: false
+      required: [reason, note, created_at]
+      properties:
+        reason:
+          type: string
+          enum: [spam, harassment, hate_or_discrimination, personal_information, illegal_content, off_topic, other]
+        note:
+          type: [string, "null"]
+        created_at:
+          type: string
+          format: date-time
+          description: When the current uninterrupted restriction began.
     OwnReviewResponse:
       type: object
       additionalProperties: false
@@ -2421,6 +2858,259 @@ components:
       properties:
         data:
           $ref: "#/components/schemas/OwnReview"
+    ReviewReportRequest:
+      type: object
+      additionalProperties: false
+      required: [reason]
+      properties:
+        reason:
+          type: string
+          enum: [spam, harassment, hate_or_discrimination, personal_information, illegal_content, off_topic, other]
+        note:
+          type: [string, "null"]
+          maxLength: 1000
+    ReviewReport:
+      type: object
+      additionalProperties: false
+      required: [id, review_id, venue_id, reason, note, status, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        review_id:
+          type: string
+          format: uuid
+        venue_id:
+          type: string
+          format: uuid
+        reason:
+          type: string
+        note:
+          type: [string, "null"]
+        status:
+          type: string
+          enum: [pending]
+        created_at:
+          type: string
+          format: date-time
+    ReviewReportResponse:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          $ref: "#/components/schemas/ReviewReport"
+    ReviewReportItem:
+      type: object
+      additionalProperties: false
+      required: [id, reason, note, status, review_id, venue_id, rating, commentary, commentary_removed, created_at, reporter, author]
+      properties:
+        id:
+          type: string
+          format: uuid
+        reason:
+          type: string
+        note:
+          type: [string, "null"]
+        status:
+          type: string
+        review_id:
+          type: string
+          format: uuid
+        venue_id:
+          type: string
+          format: uuid
+        rating:
+          type: integer
+        commentary:
+          type: [string, "null"]
+        commentary_removed:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+        reporter:
+          oneOf:
+            - $ref: "#/components/schemas/Profile"
+            - type: "null"
+        author:
+          oneOf:
+            - $ref: "#/components/schemas/Profile"
+            - type: "null"
+    ReviewReportItemResponse:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          $ref: "#/components/schemas/ReviewReportItem"
+    ReviewReportItemListResponse:
+      type: object
+      additionalProperties: false
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/ReviewReportItem"
+        meta:
+          type: object
+          additionalProperties: false
+          required: [next_cursor]
+          properties:
+            next_cursor:
+              type: [string, "null"]
+    ReviewModerationAction:
+      type: object
+      additionalProperties: false
+      required: [action, reason]
+      properties:
+        action:
+          type: string
+          enum: [remove_commentary, delete_review]
+        reason:
+          type: string
+          enum: [spam, harassment, hate_or_discrimination, personal_information, illegal_content, off_topic, other]
+        note:
+          type: [string, "null"]
+          maxLength: 1000
+    OperatorReview:
+      type: object
+      additionalProperties: false
+      required: [id, venue_id, user_id, rating, commentary, commentary_removed, commentary_removed_at, author, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        venue_id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+          format: uuid
+        rating:
+          type: integer
+        commentary:
+          type: [string, "null"]
+        commentary_removed:
+          type: boolean
+        commentary_removed_at:
+          type: [string, "null"]
+          format: date-time
+        author:
+          oneOf:
+            - $ref: "#/components/schemas/Profile"
+            - type: "null"
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    ReviewAuditEntry:
+      type: object
+      additionalProperties: false
+      description: Append-only audit row. It has no commentary property.
+      required: [id, action, reason, note, review_id, reviewer_user_id, venue_id, operator_user_id, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        action:
+          type: string
+          enum: [commentary_removed, review_deleted]
+        reason:
+          type: string
+        note:
+          type: [string, "null"]
+        review_id:
+          type: string
+          format: uuid
+        reviewer_user_id:
+          type: [string, "null"]
+          format: uuid
+        venue_id:
+          type: string
+          format: uuid
+        operator_user_id:
+          type: [string, "null"]
+          format: uuid
+        created_at:
+          type: string
+          format: date-time
+    OperatorCommentaryRestriction:
+      type: object
+      additionalProperties: false
+      required: [created_at, source]
+      properties:
+        created_at:
+          type: string
+          format: date-time
+        source:
+          $ref: "#/components/schemas/ReviewAuditEntry"
+    ModerationReview:
+      type: object
+      additionalProperties: false
+      required: [review, reports, history, commentary_restriction]
+      properties:
+        review:
+          $ref: "#/components/schemas/OperatorReview"
+        reports:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [id, reason, note, created_at, reporter]
+            properties:
+              id:
+                type: string
+                format: uuid
+              reason:
+                type: string
+              note:
+                type: [string, "null"]
+              created_at:
+                type: string
+                format: date-time
+              reporter:
+                oneOf:
+                  - $ref: "#/components/schemas/Profile"
+                  - type: "null"
+        history:
+          type: array
+          items:
+            $ref: "#/components/schemas/ReviewAuditEntry"
+        commentary_restriction:
+          oneOf:
+            - $ref: "#/components/schemas/OperatorCommentaryRestriction"
+            - type: "null"
+    ModerationReviewResponse:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          $ref: "#/components/schemas/ModerationReview"
+    ReviewActionResponse:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          type: object
+          additionalProperties: false
+          required: [action_id, review_id, review]
+          properties:
+            action_id:
+              type: [string, "null"]
+              format: uuid
+            review_id:
+              type: string
+              format: uuid
+            review:
+              oneOf:
+                - $ref: "#/components/schemas/OperatorReview"
+                - type: "null"
     SubmissionRequest:
       type: object
       additionalProperties: false
@@ -3173,7 +3863,7 @@ components:
           schema:
             $ref: "#/components/schemas/Error"
     ReviewConflict:
-      description: The Venue is pending, or the caller has no profile.
+      description: The Venue is pending, the caller has no profile, or commentary is locked for this User and Venue.
       content:
         application/json:
           schema:
@@ -3191,6 +3881,17 @@ components:
                   code: profile_required
                   message: Create a profile first.
                   request_id: abc
+            commentary_locked:
+              value:
+                error:
+                  code: commentary_locked
+                  message: Commentary on this review is locked.
+                  request_id: abc
+                  details:
+                    commentary_restriction:
+                      reason: spam
+                      note: keep it down
+                      created_at: "2026-10-21T10:00:00Z"
     ContributionForbidden:
       description: The caller is a platform moderator, or, on a write, the caller's profile cannot contribute.
       content:

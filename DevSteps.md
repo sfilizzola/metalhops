@@ -3,7 +3,7 @@
 MetalHops MVP API roadmap. Refer to this document as **DevSteps** across every implementation session.
 
 **Date:** 2026-10-14
-**Status:** Sessions 1–11 are done. Session 12 is next. Sessions 12–14 are not started.
+**Status:** Sessions 1–12 are done. Session 13 is next. Sessions 13–14 are not started.
 
 ## Goal
 
@@ -1112,7 +1112,8 @@ The Check-in cooldown remains a separate domain rule and returns `409`.
 | 9. Venue submissions | Done |
 | 10. Venue safety and moderation API | Done |
 | 11. Reviews and ratings | Done |
-| 12–14 | Not started |
+| 12. Review safety and moderation API | Done |
+| 13–14 | Not started |
 
 ### Session 1: Repository boundaries
 
@@ -1331,7 +1332,7 @@ reviews.
 
 ### Session 12: Review safety and moderation API
 
-**Status:** Not started.
+**Status:** Done.
 
 Add Review Reports, commentary restrictions, the append-only moderation audit
 schema, and privileged endpoints for listing and resolving Review Reports,
@@ -1340,6 +1341,19 @@ names the routes and how the existing `403` rule recognizes an operator. Any
 `POST` moderation action that appends an audit entry requires
 `Idempotency-Key`; state-setting `PUT`/`PATCH` and `DELETE` routes do not. Do
 not add an operator-provisioning model.
+
+`POST /v1/venues/{venueID}/reviews/{reviewID}/reports` files a Review Report
+and requires `Idempotency-Key`. `GET /v1/moderation/review-reports` lists
+pending reports. `GET /v1/moderation/reviews/{reviewID}` reads one Review with
+pending reports, newest 20 audit rows, and the commentary restriction when
+present. `POST /v1/moderation/reviews/{reviewID}/actions` applies
+`remove_commentary` or `delete_review` and requires `Idempotency-Key`.
+`PATCH /v1/moderation/review-reports/{reportID}` dismisses one report and does
+not require `Idempotency-Key`. The existing `403` rule recognizes an operator
+by a `platform_operators` row through `requireOperator`. Migration `0010` adds
+Review Reports, commentary restrictions, the review moderation audit, and
+`reviews.commentary_removed_at`, and raises readiness to `0010`. Delist now
+actions pending Review Reports for that Venue.
 
 **Exit condition:** Users can report unsafe commentary, and trusted operators
 can resolve reports through those endpoints without retaining removed text.

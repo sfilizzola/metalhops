@@ -83,15 +83,60 @@ func TestOpenAPIDocument(t *testing.T) {
 		"Review:",
 		"OwnReview:",
 		"ReviewRequest:",
+		"/v1/venues/{venueID}/reviews/{reviewID}/reports",
+		"/v1/moderation/review-reports",
+		"/v1/moderation/reviews/{reviewID}",
+		"/v1/moderation/reviews/{reviewID}/actions",
+		"/v1/moderation/review-reports/{reportID}",
+		"review_already_reported",
+		"commentary_not_public",
+		"commentary_locked",
+		"review_report_not_found",
+		"commentary_removed",
+		"UserCommentaryRestriction",
+		"OperatorCommentaryRestriction",
 	} {
 		if !bytes.Contains(OpenAPI, []byte(want)) {
 			t.Fatalf("missing %q", want)
 		}
 	}
-	for _, unwanted := range []string{"commentary_locked", "commentary_removed"} {
-		if bytes.Contains(OpenAPI, []byte(unwanted)) {
-			t.Fatalf("documents %q", unwanted)
+	schemaBlock := func(name string) []byte {
+		needle := []byte("\n    " + name + ":\n")
+		start := bytes.Index(OpenAPI, needle)
+		if start < 0 {
+			return nil
 		}
+		rest := OpenAPI[start+1:]
+		for i := 0; i < len(rest); {
+			j := bytes.Index(rest[i:], []byte("\n    "))
+			if j < 0 {
+				return OpenAPI[start:]
+			}
+			abs := i + j
+			k := abs + len("\n    ")
+			if k < len(rest) && rest[k] >= 'A' && rest[k] <= 'Z' {
+				return OpenAPI[start : start+1+abs]
+			}
+			i = abs + 1
+		}
+		return OpenAPI[start:]
+	}
+	ownBlock := schemaBlock("OwnReview")
+	reviewBlock := schemaBlock("Review")
+	if ownBlock == nil || reviewBlock == nil {
+		t.Fatal("missing Review or OwnReview schema")
+	}
+	if !bytes.Contains(ownBlock, []byte("commentary_restriction")) || !bytes.Contains(ownBlock, []byte("commentary_removed")) {
+		t.Fatal("OwnReview missing commentary fields")
+	}
+	if !bytes.Contains(reviewBlock, []byte("commentary_removed")) {
+		t.Fatal("Review missing commentary_removed")
+	}
+	if bytes.Contains(reviewBlock, []byte("commentary_restriction")) {
+		t.Fatal("public Review documents commentary_restriction")
+	}
+	if !bytes.Contains(OpenAPI, []byte("commentary_locked")) || !bytes.Contains(OpenAPI, []byte("UserCommentaryRestriction")) {
+		t.Fatal("commentary_locked details missing UserCommentaryRestriction")
 	}
 	genres := bytes.Index(OpenAPI, []byte("/v1/genres"))
 	if genres < 0 || bytes.Contains(OpenAPI[:genres], []byte("security:")) {
@@ -101,6 +146,7 @@ func TestOpenAPIDocument(t *testing.T) {
 		"createVenueSubmission", "listMyVenues", "getMyVenue", "correctMyVenue",
 		"reportVenue", "listVenueReports", "getModerationVenue", "applyVenueAction", "correctVenueAsOperator", "dismissVenueReport",
 		"getMyReview", "putMyReview", "deleteMyReview",
+		"reportReview", "listReviewReports", "getModerationReview", "applyReviewAction", "dismissReviewReport",
 	} {
 		start := bytes.Index(OpenAPI, []byte("operationId: "+op))
 		if start < 0 {

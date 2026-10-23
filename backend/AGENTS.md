@@ -42,7 +42,7 @@ when that file exists. Variables already in the environment win.
 
 `GET /healthz` reports process health and does not check the database.
 `GET /readyz` returns 200 when the database ping succeeds and migration
-`0009` or newer is recorded. Otherwise it returns 503.
+`0010` or newer is recorded. Otherwise it returns 503.
 `GET /openapi.yaml` serves the embedded `openapi.yaml` in every environment.
 `GET /docs` serves the Scalar page when `DOCS_UI_ENABLED` is unset or `true`.
 The exact value `false` leaves `/docs` unregistered. Any other value stops
@@ -124,7 +124,8 @@ Never drift from it silently.
 - App routes are `GET`, `PATCH`, and `DELETE /v1/me`, `POST /v1/venues`,
   `GET /v1/me/venues`, `GET` and `PUT /v1/me/venues/{venueID}`,
   `POST /v1/profiles/{username}/reports`,
-  `POST /v1/venues/{venueID}/reports`, and `GET`, `PUT`, and
+  `POST /v1/venues/{venueID}/reports`,
+  `POST /v1/venues/{venueID}/reviews/{reviewID}/reports`, and `GET`, `PUT`, and
   `DELETE /v1/venues/{venueID}/reviews/me`. Privileged routes are
   `GET /v1/moderation/profile-reports`,
   `GET /v1/moderation/profiles/{userID}`,
@@ -132,8 +133,12 @@ Never drift from it silently.
   `PATCH /v1/moderation/profile-reports/{reportID}`,
   `GET /v1/moderation/venue-reports`,
   `GET` and `PUT /v1/moderation/venues/{venueID}`,
-  `POST /v1/moderation/venues/{venueID}/actions`, and
-  `PATCH /v1/moderation/venue-reports/{reportID}`. A `platform_operators` row
+  `POST /v1/moderation/venues/{venueID}/actions`,
+  `PATCH /v1/moderation/venue-reports/{reportID}`,
+  `GET /v1/moderation/review-reports`,
+  `GET /v1/moderation/reviews/{reviewID}`,
+  `POST /v1/moderation/reviews/{reviewID}/actions`, and
+  `PATCH /v1/moderation/review-reports/{reportID}`. A `platform_operators` row
   marks an operator. An operator on an app route, or an app User on a
   privileged route, receives `403 forbidden`.
   JSON bodies are at most 64 KiB, valid UTF-8, one object, and reject unknown
@@ -141,10 +146,12 @@ Never drift from it silently.
 - `GET /v1/genres`, `GET /v1/venues`, `GET /v1/venues/{venueID}`, and
   `GET /v1/venues/{venueID}/reviews` are public: they do not read `Authorization`, and only the per-IP limit
   applies.
-- Profile writes, profile and Venue reports, Venue submissions, changed Venue
-  corrections (by a Submitter or an operator), changed Review saves and Review
-  deletes, moderation actions, report dismissals, and account deletion reserve a per-User bucket of burst 60 and
-  one token per second. The reservation is committed only after the state
-  change succeeds and cancelled when it does not. `GET` does not reserve.
+- Profile writes, profile and Venue reports, review reports, Venue submissions,
+  changed Venue corrections (by a Submitter or an operator), changed Review
+  saves and Review deletes, moderation actions including review moderation
+  actions, report dismissals including review-report dismissals, and account
+  deletion reserve a per-User bucket of burst 60 and one token per second. The
+  reservation is committed only after the state change succeeds and cancelled
+  when it does not. `GET` does not reserve.
 - Deleting a User removes the Profile and idempotency rows. Venue submissions
   remain with `submitted_by` null.
