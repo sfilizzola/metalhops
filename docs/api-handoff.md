@@ -160,7 +160,12 @@ null and leaves no record.
 
 After the Review that began the restriction has ended, that `reviewID` is
 `404 review_not_found`. The lift waits until that User has a Review there
-again, and goes through that Review.
+again, and goes through that Review. No moderation route yet finds that newer
+Review. While the restriction stands it is rating-only, and a rating-only Review
+cannot be reported, so it never reaches `listReviewReports`. `listVenueReviews`
+is a public list, not a lookup: it is empty unless the Venue is verified, and
+it does not name an author under a rename requirement or a Community
+Suspension. The admin design must not assume that lookup exists.
 
 After the lift, the Review stays rating-only and the removal stays visible
 until the User writes commentary. The User's next `putMyReview` with
