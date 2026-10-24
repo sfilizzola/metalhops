@@ -138,8 +138,15 @@ func TestMigrationVersions(t *testing.T) {
 	execSQL(t, pool, readMigration(t, "0010_review_safety.sql"))
 	execSQL(t, pool, `insert into supabase_migrations.schema_migrations (version) values ('0010')`)
 	ready, reason = pool.Check(ctx)
-	if !ready || reason != "ok" {
+	if ready || reason != "migrations_behind" {
 		t.Fatalf("0010 ready %v reason %s", ready, reason)
+	}
+
+	execSQL(t, pool, readMigration(t, "0011_check_ins.sql"))
+	execSQL(t, pool, `insert into supabase_migrations.schema_migrations (version) values ('0011')`)
+	ready, reason = pool.Check(ctx)
+	if !ready || reason != "ok" {
+		t.Fatalf("0011 ready %v reason %s", ready, reason)
 	}
 	var searchName, searchCity string
 	var updated time.Time

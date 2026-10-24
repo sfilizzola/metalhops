@@ -87,8 +87,12 @@ func TestDataAPIClosed(t *testing.T) {
 		`insert into review_commentary_restrictions (user_id, venue_id, source_action_id) values ('00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000003', '00000000-0000-4000-8000-000000000002')`,
 		`update review_commentary_restrictions set created_at = now() where false`,
 		`delete from review_commentary_restrictions where false`,
+		`select * from check_ins`,
+		`insert into check_ins (venue_id, user_id, visited_at, recorded_at) values ('00000000-0000-4000-8000-000000000002', '00000000-0000-4000-8000-000000000001', now(), now())`,
+		`update check_ins set visited_at = now() where false`,
+		`delete from check_ins where false`,
 	}
-	for _, table := range []string{"reviews", "review_reports", "review_moderation_actions", "review_commentary_restrictions"} {
+	for _, table := range []string{"reviews", "review_reports", "review_moderation_actions", "review_commentary_restrictions", "check_ins"} {
 		var rls bool
 		if err := pool.QueryRow(ctx, `select relrowsecurity from pg_class where relname = $1`, table).Scan(&rls); err != nil || !rls {
 			t.Fatalf("%s rls %v %v", table, rls, err)
@@ -142,6 +146,11 @@ func TestDataAPIClosed(t *testing.T) {
 		values ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'accessuser', 'Access User')`); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := pool.Exec(ctx, `
+		insert into check_ins (venue_id, user_id, visited_at, recorded_at)
+		select id, 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', now(), now() from venues where name = 'Access'`); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := pool.Exec(ctx, `delete from auth.users where id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'`); err != nil {
 		t.Fatal(err)
 	}
@@ -151,6 +160,9 @@ func TestDataAPIClosed(t *testing.T) {
 	}
 	if err := pool.QueryRow(ctx, `select count(*) from idempotency_records`).Scan(&n); err != nil || n != 0 {
 		t.Fatalf("idempotency %d %v", n, err)
+	}
+	if err := pool.QueryRow(ctx, `select count(*) from check_ins`).Scan(&n); err != nil || n != 0 {
+		t.Fatalf("check_ins %d %v", n, err)
 	}
 	var venues int
 	var submittedBy *string
