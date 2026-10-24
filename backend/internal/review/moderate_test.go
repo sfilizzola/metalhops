@@ -4,8 +4,11 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"sync"
 	"testing"
 	"time"
+
+	"github.com/metalhops/metalhops/backend/internal/idempotency"
 )
 
 func moderate(h *writeHarness, actor, reviewID, key, action, reason string, note *string) (ModerationResult, error) {
@@ -238,5 +241,250 @@ func TestGetModerationReview(t *testing.T) {
 
 	if _, err := h.service.GetModerationReview(context.Background(), unknownVenue); !errors.Is(err, ErrReviewNotFound) {
 		t.Fatalf("missing: %v", err)
+	}
+}
+
+func TestLiftCommentaryRestriction(t *testing.T) {
+	h := newWriteHarness(t)
+	insertVenue(t, h.pool, verifiedVenue, "verified")
+	insertUser(t, h.pool, userA, "active", nil)
+	insertUser(t, h.pool, userC, "", nil)
+	reviewID := insertReview(t, h.pool, verifiedVenue, userA, 4, nil, t0)
+	if _, err := h.pool.Exec(context.Background(), `
+		update reviews set commentary_removed_at = $2 where id = $1`, reviewID, t0); err != nil {
+		t.Fatal(err)
+	}
+	note := "gone"
+	seedRestriction(t, h, reviewID, userA, verifiedVenue, "harassment", &note)
+
+	got, err := moderate(h, userC, reviewID, "lift-1-key", "lift_commentary_restriction", "", nil)
+	if err != nil || !got.Created || got.ActionID == nil || got.Review == nil || !got.Review.CommentaryRemoved {
+		t.Fatalf("lift %+v %v", got, err)
+	}
+	var auditAction, reason, reviewer, operator string
+	var noteGot *string
+	var createdAt time.Time
+	if err := h.pool.QueryRow(context.Background(), `
+		select action, reason, note, reviewer_user_id::text, operator_user_id::text, created_at
+		from review_moderation_actions where id = $1`, *got.ActionID).
+		Scan(&auditAction, &reason, &noteGot, &reviewer, &operator, &createdAt); err != nil ||
+		auditAction != "commentary_restriction_lifted" || reason != "harassment" || noteGot == nil || *noteGot != "gone" ||
+		reviewer != userA || operator != userC || !createdAt.Equal(h.now) {
+		t.Fatalf("audit %s %s %v %s %s %v %v", auditAction, reason, noteGot, reviewer, operator, createdAt, err)
+	}
+	var restrictions int
+	if err := h.pool.QueryRow(context.Background(), `select count(*) from review_commentary_restrictions`).Scan(&restrictions); err != nil || restrictions != 0 {
+		t.Fatalf("restrictions %d %v", restrictions, err)
+	}
+	var removedAt, updatedAt time.Time
+	var rating int
+	if err := h.pool.QueryRow(context.Background(), `
+		select commentary_removed_at, updated_at, rating from reviews where id = $1`, reviewID).
+		Scan(&removedAt, &updatedAt, &rating); err != nil || !removedAt.Equal(t0) || !updatedAt.Equal(t0) || rating != 4 {
+		t.Fatalf("review unchanged %v %v %d %v", removedAt, updatedAt, rating, err)
+	}
+	if left := tokensLeft(h.limiter, userC); left != 59 {
+		t.Fatalf("tokens %d", left)
+	}
+	var body []byte
+	if err := h.pool.QueryRow(context.Background(), `
+		select response_body from idempotency_records
+		where user_id = $1 and operation = 'review_moderation_action' and key = 'lift-1-key'`, userC).Scan(&body); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(body), `"commentary"`) {
+		t.Fatalf("stored body has commentary key: %s", body)
+	}
+}
+
+func TestLiftNoop(t *testing.T) {
+	h := newWriteHarness(t)
+	insertVenue(t, h.pool, verifiedVenue, "verified")
+	insertUser(t, h.pool, userA, "active", nil)
+	insertUser(t, h.pool, userC, "", nil)
+	reviewID := insertReview(t, h.pool, verifiedVenue, userA, 4, nil, t0)
+
+	for i := 0; i < 2; i++ {
+		got, err := moderate(h, userC, reviewID, "lift-noop", "lift_commentary_restriction", "", nil)
+		if err != nil || got.Created || got.ActionID != nil || got.Review == nil {
+			t.Fatalf("noop %d %+v %v", i, got, err)
+		}
+	}
+	var audits int
+	if err := h.pool.QueryRow(context.Background(), `select count(*) from review_moderation_actions`).Scan(&audits); err != nil || audits != 0 {
+		t.Fatalf("audits %d %v", audits, err)
+	}
+	if left := tokensLeft(h.limiter, userC); left != 60 {
+		t.Fatalf("tokens %d", left)
+	}
+	var n int
+	if err := h.pool.QueryRow(context.Background(), `
+		select count(*) from idempotency_records where key = $1`, "lift-noop").Scan(&n); err != nil || n != 0 {
+		t.Fatalf("idempotency rows %d %v", n, err)
+	}
+}
+
+func TestLiftReplayAndReuse(t *testing.T) {
+	h := newWriteHarness(t)
+	insertVenue(t, h.pool, verifiedVenue, "verified")
+	insertUser(t, h.pool, userA, "active", nil)
+	insertUser(t, h.pool, userC, "", nil)
+	reviewID := insertReview(t, h.pool, verifiedVenue, userA, 4, nil, t0)
+	if _, err := h.pool.Exec(context.Background(), `
+		update reviews set commentary_removed_at = $2 where id = $1`, reviewID, t0); err != nil {
+		t.Fatal(err)
+	}
+	seedRestriction(t, h, reviewID, userA, verifiedVenue, "spam", nil)
+
+	got, err := moderate(h, userC, reviewID, "lift-r-key", "lift_commentary_restriction", "", nil)
+	if err != nil || !got.Created || got.ActionID == nil {
+		t.Fatalf("lift %+v %v", got, err)
+	}
+
+	if _, err := h.pool.Exec(context.Background(), `
+		update reviews set commentary = 'again', commentary_removed_at = null where id = $1`, reviewID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := moderate(h, userC, reviewID, "remove-after", "remove_commentary", "spam", nil); err != nil {
+		t.Fatal(err)
+	}
+	var restrictions int
+	if err := h.pool.QueryRow(context.Background(), `select count(*) from review_commentary_restrictions`).Scan(&restrictions); err != nil || restrictions != 1 {
+		t.Fatalf("restriction reimposed %d %v", restrictions, err)
+	}
+
+	before := tokensLeft(h.limiter, userC)
+	replay, err := moderate(h, userC, reviewID, "lift-r-key", "lift_commentary_restriction", "", nil)
+	if err != nil || !replay.Created || replay.ActionID == nil || *replay.ActionID != *got.ActionID {
+		t.Fatalf("replay %+v %v", replay, err)
+	}
+	if err := h.pool.QueryRow(context.Background(), `select count(*) from review_commentary_restrictions`).Scan(&restrictions); err != nil || restrictions != 1 {
+		t.Fatalf("restriction still present %d %v", restrictions, err)
+	}
+	if left := tokensLeft(h.limiter, userC); left != before {
+		t.Fatalf("tokens changed by replay: %d want %d", left, before)
+	}
+
+	if _, err := moderate(h, userC, reviewID, "lift-r-key", "remove_commentary", "spam", nil); !errors.Is(err, idempotency.ErrReused) {
+		t.Fatalf("reused key: %v", err)
+	}
+}
+
+func TestLiftThroughLaterReview(t *testing.T) {
+	h := newWriteHarness(t)
+	insertVenue(t, h.pool, verifiedVenue, "verified")
+	insertUser(t, h.pool, userA, "active", nil)
+	insertUser(t, h.pool, userC, "", nil)
+
+	early := insertReview(t, h.pool, verifiedVenue, userA, 2, ptr("early"), t0)
+	note := "source note"
+	sourceID := insertModerationAction(t, h.pool, early, userA, verifiedVenue, userC, "review_deleted", "harassment", &note, t0)
+	if _, err := h.pool.Exec(context.Background(), `
+		insert into review_commentary_restrictions (user_id, venue_id, source_action_id, created_at)
+		values ($1, $2, $3, $4)`, userA, verifiedVenue, sourceID, t0.Add(time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := h.pool.Exec(context.Background(), `delete from reviews where id = $1`, early); err != nil {
+		t.Fatal(err)
+	}
+	later := insertReview(t, h.pool, verifiedVenue, userA, 5, nil, t0.Add(2*time.Hour))
+
+	got, err := moderate(h, userC, later, "lift-later", "lift_commentary_restriction", "", nil)
+	if err != nil || !got.Created || got.ActionID == nil {
+		t.Fatalf("lift %+v %v", got, err)
+	}
+	var reviewID, reason, reviewer string
+	var noteGot *string
+	if err := h.pool.QueryRow(context.Background(), `
+		select review_id::text, reason, note, reviewer_user_id::text from review_moderation_actions where id = $1`, *got.ActionID).
+		Scan(&reviewID, &reason, &noteGot, &reviewer); err != nil || reviewID != later || reason != "harassment" ||
+		noteGot == nil || *noteGot != note || reviewer != userA {
+		t.Fatalf("audit %s %s %v %s %v", reviewID, reason, noteGot, reviewer, err)
+	}
+}
+
+func TestLiftOnDelistedVenue(t *testing.T) {
+	h := newWriteHarness(t)
+	insertVenue(t, h.pool, delistedVenue, "delisted")
+	insertUser(t, h.pool, userA, "active", nil)
+	insertUser(t, h.pool, userC, "", nil)
+	reviewID := insertReview(t, h.pool, delistedVenue, userA, 4, nil, t0)
+	seedRestriction(t, h, reviewID, userA, delistedVenue, "spam", nil)
+
+	got, err := moderate(h, userC, reviewID, "lift-delisted", "lift_commentary_restriction", "", nil)
+	if err != nil || !got.Created {
+		t.Fatalf("lift on delisted %+v %v", got, err)
+	}
+}
+
+func TestLiftMissingReview(t *testing.T) {
+	h := newWriteHarness(t)
+	if _, err := moderate(h, userC, unknownVenue, "lift-miss", "lift_commentary_restriction", "", nil); !errors.Is(err, ErrReviewNotFound) {
+		t.Fatalf("missing: %v", err)
+	}
+}
+
+func TestLiftRateLimited(t *testing.T) {
+	h := newWriteHarness(t)
+	insertVenue(t, h.pool, verifiedVenue, "verified")
+	insertUser(t, h.pool, userA, "active", nil)
+	insertUser(t, h.pool, userC, "", nil)
+	reviewID := insertReview(t, h.pool, verifiedVenue, userA, 4, nil, t0)
+	seedRestriction(t, h, reviewID, userA, verifiedVenue, "spam", nil)
+
+	for i := 0; i < 60; i++ {
+		if _, _, ok := h.limiter.Reserve(userC); !ok {
+			t.Fatalf("drain %d", i)
+		}
+	}
+
+	_, err := moderate(h, userC, reviewID, "lift-ratelimited", "lift_commentary_restriction", "", nil)
+	var limited *RateLimitError
+	if !errors.As(err, &limited) {
+		t.Fatalf("want rate limit, got %v", err)
+	}
+	var restrictions, audits int
+	if err := h.pool.QueryRow(context.Background(), `select count(*) from review_commentary_restrictions`).Scan(&restrictions); err != nil || restrictions != 1 {
+		t.Fatalf("restriction %d %v", restrictions, err)
+	}
+	if err := h.pool.QueryRow(context.Background(), `
+		select count(*) from review_moderation_actions where action = 'commentary_restriction_lifted'`).Scan(&audits); err != nil || audits != 0 {
+		t.Fatalf("audit %d %v", audits, err)
+	}
+}
+
+func TestLiftConcurrent(t *testing.T) {
+	h := newWriteHarness(t)
+	insertVenue(t, h.pool, verifiedVenue, "verified")
+	insertUser(t, h.pool, userA, "active", nil)
+	insertUser(t, h.pool, userC, "", nil)
+	reviewID := insertReview(t, h.pool, verifiedVenue, userA, 4, nil, t0)
+	seedRestriction(t, h, reviewID, userA, verifiedVenue, "spam", nil)
+
+	release := make(chan struct{})
+	var wg sync.WaitGroup
+	results := make([]ModerationResult, 2)
+	errs := make([]error, 2)
+	for i, key := range []string{"lift-a-key", "lift-b-key"} {
+		wg.Add(1)
+		go func(i int, key string) {
+			defer wg.Done()
+			<-release
+			results[i], errs[i] = moderate(h, userC, reviewID, key, "lift_commentary_restriction", "", nil)
+		}(i, key)
+	}
+	close(release)
+	wg.Wait()
+
+	if errs[0] != nil || errs[1] != nil {
+		t.Fatalf("errs %v %v", errs[0], errs[1])
+	}
+	if results[0].Created == results[1].Created {
+		t.Fatalf("created %v %v", results[0].Created, results[1].Created)
+	}
+	var lifts int
+	if err := h.pool.QueryRow(context.Background(), `
+		select count(*) from review_moderation_actions where action = 'commentary_restriction_lifted'`).Scan(&lifts); err != nil || lifts != 1 {
+		t.Fatalf("lifts %d %v", lifts, err)
 	}
 }

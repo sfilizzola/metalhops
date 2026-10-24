@@ -86,6 +86,97 @@ func (s *Service) ModerateReview(ctx context.Context, cmd ModerationCommand) (Mo
 	if err != nil {
 		return ModerationResult{}, err
 	}
+	if action == "lift_commentary_restriction" {
+		var locked OperatorReview
+		err := tx.QueryRow(txCtx, `
+			select r.id::text, r.venue_id::text, r.user_id::text, r.rating, r.commentary,
+				r.commentary_removed_at is not null, r.commentary_removed_at, r.created_at, r.updated_at
+			from reviews r where r.id = $1::uuid for update`, cmd.ReviewID).Scan(
+			&locked.ID, &locked.VenueID, &locked.UserID, &locked.Rating, &locked.Commentary,
+			&locked.CommentaryRemoved, &locked.CommentaryRemovedAt, &locked.CreatedAt, &locked.UpdatedAt)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return ModerationResult{}, ErrReviewNotFound
+		}
+		if err != nil {
+			return ModerationResult{}, fmt.Errorf("review: moderate: %w", err)
+		}
+
+		var sourceReason string
+		var sourceNote *string
+		err = tx.QueryRow(txCtx, `
+			select a.reason, a.note
+			from review_commentary_restrictions rest
+			join review_moderation_actions a on a.id = rest.source_action_id
+			where rest.user_id = $1::uuid and rest.venue_id = $2::uuid
+			for update of rest`, locked.UserID, locked.VenueID).Scan(&sourceReason, &sourceNote)
+		if errors.Is(err, pgx.ErrNoRows) {
+			view, err = loadOperatorReview(txCtx, tx, locked.ID)
+			if err != nil {
+				return ModerationResult{}, err
+			}
+			if err := tx.Commit(txCtx); err != nil {
+				return ModerationResult{}, fmt.Errorf("review: commit: %w", err)
+			}
+			return ModerationResult{Created: false, ReviewID: cmd.ReviewID, Review: &view}, nil
+		}
+		if err != nil {
+			return ModerationResult{}, fmt.Errorf("review: restriction: %w", err)
+		}
+
+		var reservation *ratelimit.Reservation
+		committed := false
+		defer func() {
+			if reservation != nil && !committed {
+				reservation.Cancel()
+			}
+		}()
+		executed, err := idempotency.Execute(txCtx, tx, now, req, func(ctx context.Context) (idempotency.Result, error) {
+			next, retryAfter, ok := s.writes.Reserve(cmd.ActorID)
+			if !ok {
+				return idempotency.Result{}, &RateLimitError{RetryAfter: retryAfter}
+			}
+			reservation = next
+
+			var actionID string
+			if err := tx.QueryRow(ctx, `
+				insert into review_moderation_actions (
+					review_id, reviewer_user_id, venue_id, action, reason, note, operator_user_id, created_at
+				) values ($1::uuid, $2::uuid, $3::uuid, 'commentary_restriction_lifted', $4, $5, $6::uuid, $7)
+				returning id::text`,
+				locked.ID, locked.UserID, locked.VenueID, sourceReason, sourceNote, cmd.ActorID, now).Scan(&actionID); err != nil {
+				return idempotency.Result{}, fmt.Errorf("review: audit: %w", err)
+			}
+			if _, err := tx.Exec(ctx, `
+				delete from review_commentary_restrictions
+				where user_id = $1::uuid and venue_id = $2::uuid`, locked.UserID, locked.VenueID); err != nil {
+				return idempotency.Result{}, fmt.Errorf("review: restriction: %w", err)
+			}
+			live, err := loadOperatorReview(ctx, tx, locked.ID)
+			if err != nil {
+				return idempotency.Result{}, err
+			}
+			body, err := json.Marshal(storedReviewModeration{ActionID: actionID, ReviewID: locked.ID, Review: storeOperatorReview(live)})
+			if err != nil {
+				return idempotency.Result{}, fmt.Errorf("review: moderate: %w", err)
+			}
+			return idempotency.Result{Status: 201, Body: body}, nil
+		})
+		if err != nil {
+			return ModerationResult{}, err
+		}
+		result, err := moderationFromStored(executed)
+		if err != nil {
+			return ModerationResult{}, err
+		}
+		if err := tx.Commit(txCtx); err != nil {
+			return ModerationResult{}, fmt.Errorf("review: commit: %w", err)
+		}
+		if reservation != nil {
+			reservation.Commit()
+			committed = true
+		}
+		return result, nil
+	}
 	if action == "remove_commentary" && view.Commentary == nil {
 		restricted, err := restrictionExists(txCtx, tx, view.UserID, view.VenueID)
 		if err != nil {
