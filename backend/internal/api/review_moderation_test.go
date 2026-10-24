@@ -197,3 +197,50 @@ func TestReviewModerationRoutes(t *testing.T) {
 	}
 	assertCode(t, requestWith(handler, http.MethodGet, listPath+"?extra=1", "Bearer t", nil, nil), http.StatusBadRequest, "validation_error")
 }
+
+func TestReviewLiftRoute(t *testing.T) {
+	actionID := "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee"
+	fake := &fakeReviewModeration{
+		result: review.ModerationResult{Created: true, ActionID: &actionID, ReviewID: modReviewID},
+	}
+	authenticator := &fakeAuth{caller: auth.Caller{UserID: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"}, operator: true}
+	handler := reviewModerationHandler(authenticator, fake)
+	actionPath := "/v1/moderation/reviews/" + modReviewID + "/actions"
+	keyed := map[string]string{"Content-Type": "application/json", "Idempotency-Key": "review-lift-key"}
+
+	created := requestWith(handler, http.MethodPost, actionPath, "Bearer t", []byte(`{"action":"lift_commentary_restriction"}`), keyed)
+	if created.Code != http.StatusCreated || fake.modCmd.Action != "lift_commentary_restriction" || fake.modCmd.Reason != "" || fake.modCmd.Note != nil {
+		t.Fatalf("created %d %+v %s", created.Code, fake.modCmd, created.Body.String())
+	}
+
+	fake.modCmd = review.ModerationCommand{}
+	nulled := requestWith(handler, http.MethodPost, actionPath, "Bearer t", []byte(`{"action":"lift_commentary_restriction","reason":null,"note":null}`), keyed)
+	if nulled.Code != http.StatusCreated || fake.modCmd.Reason != "" || fake.modCmd.Note != nil {
+		t.Fatalf("null %d %+v %s", nulled.Code, fake.modCmd, nulled.Body.String())
+	}
+
+	fake.result.Created = false
+	fake.result.ActionID = nil
+	noop := requestWith(handler, http.MethodPost, actionPath, "Bearer t", []byte(`{"action":"lift_commentary_restriction"}`), keyed)
+	if noop.Code != http.StatusOK || !bytes.Contains(noop.Body.Bytes(), []byte(`"action_id":null`)) {
+		t.Fatalf("noop %d %s", noop.Code, noop.Body.String())
+	}
+
+	fake.err = &review.ValidationError{Fields: map[string]string{"note": "must be omitted"}}
+	rec := requestWith(handler, http.MethodPost, actionPath, "Bearer t", []byte(`{"action":"lift_commentary_restriction"}`), keyed)
+	assertCode(t, rec, http.StatusBadRequest, "validation_error")
+	if !bytes.Contains(rec.Body.Bytes(), []byte("must be omitted")) {
+		t.Fatalf("validation body %s", rec.Body.String())
+	}
+
+	fake.err = review.ErrReviewNotFound
+	assertCode(t, requestWith(handler, http.MethodPost, actionPath, "Bearer t", []byte(`{"action":"lift_commentary_restriction"}`), keyed), http.StatusNotFound, "review_not_found")
+	fake.err = nil
+
+	authenticator.operator = false
+	before := fake.calls
+	assertCode(t, requestWith(handler, http.MethodPost, actionPath, "Bearer t", []byte(`{"action":"lift_commentary_restriction"}`), keyed), http.StatusForbidden, "forbidden")
+	if fake.calls != before {
+		t.Fatal("app user reached service")
+	}
+}
