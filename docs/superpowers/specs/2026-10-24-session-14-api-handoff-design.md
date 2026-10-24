@@ -1,7 +1,28 @@
 # Session 14: API completion and admin handoff
 
 **Date:** 2026-10-24
-**Status:** Approved in brainstorming; pending spec review
+**Status:** Reviewed
+
+## Resolved in review
+
+A Commentary restriction is lifted through a current Review on a verified or
+Delisted Venue. The Review stays rating-only, and the removal stays visible,
+until the User writes commentary. The lift's Restriction record belongs to
+that Review and carries the Restriction explanation that began the
+restriction. A later removal is a new Commentary restriction. A lift assesses
+no Review Report, and a lift when nothing stands leaves no Restriction record.
+
+A release succeeds only when public readiness returns the pushed commit. The
+release job is the only deployer. An applied migration stays applied when the
+deploy fails. A newer push waits. Re-running the failed job retries that same
+commit. A process that becomes ready after the 15-minute bound does not
+rewrite a failed release.
+
+The handoff states only the rules that change a sequence. Fields stay in
+OpenAPI. On User deletion, the Profile and Review moderation decisions remain
+as Restriction records without that User's identity. The standing Commentary
+restriction ends. A Venue's eligibility decisions remain as that Venue's
+history.
 
 ## Goal
 
@@ -81,13 +102,15 @@ that body and spends no write token, including after a later delete of the
 Review. The stored body still omits commentary.
 
 When the lookup misses, the transaction locks the Review `for update`. A
-missing Review is `404 review_not_found` (`Review not found.`). Venue status
-is not consulted. A pending, verified, rejected, or Delisted Venue can be
-lifted. It then locks the User–Venue restriction row `for update` and looks
-up the idempotency record again, so a concurrent same-key request that waited
-on the Review lock replays the stored `201` instead of taking the no-op.
+missing Review is `404 review_not_found` (`Review not found.`). A lift
+proceeds for a verified Venue or a Delisted Venue, because those are the
+Venues that can have a current Review. A pending or rejected Venue has none,
+so there is nothing to lift through. The lift has no separate Venue-status
+permission. It then locks the User–Venue restriction row `for update`. A
+same-key request waits on the idempotency lock taken before the Review lock,
+then replays the stored `201`. There is no second lookup.
 
-When that second lookup misses and the pair has no restriction row, the
+When the pair has no restriction row, the
 result is `200`, `action_id` null, and the loaded operator Review, including
 its commentary. There is no audit row and no write token. The result is not
 stored, so the same key no-ops again. A concurrent lift waits on the Review
@@ -105,7 +128,10 @@ one restriction row. The audit row is:
 - `created_at` the request clock.
 
 The Review row is unchanged, including `commentary_removed_at`, `updated_at`,
-the rating, the commentary, and pending reports. Success is `201` with
+the rating, and the commentary. The lift does not assess Review Reports.
+Removing commentary already resolved any that were waiting, and deleting the
+Review ends them. A rating-only Review cannot be reported, so a lift has no
+pending Review Report. Success is `201` with
 `action_id`, `review_id`, and the operator Review document. The stored
 idempotency body omits commentary, as the other actions do. The write spends
 one User write token, committed only after the transaction commits. An empty
@@ -156,10 +182,16 @@ proof.
 
 `.github/workflows/release.yml` runs on every push to `main`, with no path
 filter. `permissions` is `contents: read`. The concurrency group is
-`release` and `cancel-in-progress` is false, so a later push waits.
+`release` and `cancel-in-progress` is false, so a later push waits. The
+in-progress job runs to success or to its timeout before that later push
+starts. The later run deploys its own commit and does not apply migrations
+twice.
 
 The job uses the GitHub environment `production`. That environment allows
-`main` only and has no required reviewer. It holds three values, named in
+`main` only and has no required reviewer. Merging to `main` is the approval,
+so the job does not wait for a second person. This session does not create
+the environment. The operator does that when `dev` is promoted. The
+environment holds three values, named in
 `infra/README.md` and absent from the repo:
 
 - `SUPABASE_DB_URL`, the session-pooler URL on port 5432;
@@ -184,7 +216,15 @@ The migration step installs the CLI with `supabase/setup-cli@v3` and
 supabase db push --db-url "$SUPABASE_DB_URL" --workdir infra --yes
 ```
 
-A failed push stops the job. The deploy hook is not called.
+A failed push stops the job. The deploy hook is not called. A failed test
+never calls it either. Once the push has succeeded, those migrations stay
+applied. A failed hook or a failed readiness poll does not roll them back
+and does not call the hook again. The process already running keeps serving.
+Re-running the failed job is a new run of that same commit: the migration is
+already applied, and that run calls the hook. A later push to `main` is a
+different commit and waits its turn. Migrations already applied are not
+applied twice, and that later commit is what gets deployed. The workflow has
+no manual dispatch.
 
 The deploy step POSTs the hook with the query parameter `ref` set to
 `github.sha`. A hook URL that already has a query string keeps those
@@ -203,7 +243,10 @@ The job polls `$API_BASE_URL/readyz` every 15 seconds for 15 minutes,
 measured from the hook response. Connection errors, `503` responses, and a
 `200` whose `commit` is absent or different keep polling. Success is HTTP
 `200` whose JSON `status` is `ok` and whose `commit` equals `github.sha`.
-A timeout fails the job.
+A timeout fails the job. Fifteen minutes from the hook response is the
+bound. A process that becomes ready after that does not make the release
+successful. Re-running the job, or a later push, is how a release succeeds
+after the bound.
 
 `infra/render.yaml` sets `autoDeployTrigger: off`.
 
@@ -225,10 +268,12 @@ that push.
 ## Handoff document
 
 `docs/api-handoff.md` is the sequence guide for the admin design cycle and
-for a later Google Play disclosure. OpenAPI remains the field contract. Each
-step names the method, path, caller, and success status, and points at the
-OpenAPI `operationId` for fields. A body appears only where one value decides
-the branch, such as `DELETE MY ACCOUNT` or `lift_commentary_restriction`.
+for a later Google Play disclosure. OpenAPI remains the field contract. The
+handoff states a rule only when it changes the sequence. The glossary keeps
+the rest of the language. Each step names the method, path, caller, and
+success status, and points at the OpenAPI `operationId` for fields. A body
+appears only where one value decides the branch, such as `DELETE MY ACCOUNT`
+or `lift_commentary_restriction`.
 
 The document has four parts.
 
@@ -243,8 +288,11 @@ and record, list, and delete a Check-in.
 
 **Moderation sequences.** Profile, Venue, and Review queues: list, read, act,
 and dismiss. The Review sequence includes `remove_commentary`, the lock the
-User sees, `lift_commentary_restriction`, and the later commentary save that
-clears `commentary_removed_at` while both audit rows stay.
+User sees, and `lift_commentary_restriction`. The lift is an action on a
+current Review and carries no reason of its own. After the Review that began
+the restriction has ended, the lift waits until that User has a Review there
+again. After the lift, the Review stays rating-only and the removal stays
+visible until the User writes commentary.
 
 **Account deletion.** `DELETE /v1/me` is available to every authenticated
 caller except an operator, including a sign-in with no Profile and a
@@ -261,11 +309,12 @@ cascades and the author's Review cascades; Venue reports whose reporter is
 the deleted user.
 
 Retained: Venue submissions, with `submitted_by` set null; Venue reports
-filed by someone else; append-only Profile, Venue, and Review moderation
-audit, with deleted user ids set null. That audit is the Profile restriction
-history in [ADR 0003](../../adr/0003-keep-restriction-records-after-user-deletion.md).
-A commentary-restriction row is not that record, and it cascades with the
-user.
+filed by someone else; the Profile and Review moderation audits, with deleted
+user ids set null. Those audits are the Restriction records
+[ADR 0003](../../adr/0003-keep-restriction-records-after-user-deletion.md)
+keeps. The Venue moderation audit is retained as that Venue's eligibility
+history and is not a Restriction record. A commentary-restriction row is not
+a Restriction record, and it ends with the User.
 
 `DevSteps.md` replaces the sentence that says deletion cascades restrictions
 as a single group with this split. The endpoint behavior does not change.
@@ -297,8 +346,8 @@ skipped. Twenty-one responses need a success example today: the `201` of
 `internal/review` covers a real lift, the copied reason and note, the
 unchanged Review row, the `200` no-op and a repeat of that key, replay of the
 stored `201`, a reused key, a present reason or note, a missing Review, a
-lift through a later rating-only Review, a Delisted Venue, pending reports
-left unchanged, and one write token only on the `201`. A commentary save
+lift through a later rating-only Review, a Delisted Venue, and one write
+token only on the `201`. A lift does not assess Review Reports. A commentary save
 after the lift clears `commentary_removed_at` and leaves both audit rows. A
 rating-only save leaves the marker.
 

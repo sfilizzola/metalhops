@@ -10,6 +10,27 @@
 
 **Spec:** `docs/superpowers/specs/2026-10-24-session-14-api-handoff-design.md`
 
+## Resolved in review
+
+A Commentary restriction is lifted through a current Review on a verified or
+Delisted Venue. The Review stays rating-only, and the removal stays visible,
+until the User writes commentary. The lift's Restriction record belongs to
+that Review and carries the Restriction explanation that began the
+restriction. A later removal is a new Commentary restriction. A lift assesses
+no Review Report, and a lift when nothing stands leaves no Restriction record.
+
+A release succeeds only when public readiness returns the pushed commit. The
+release job is the only deployer. An applied migration stays applied when the
+deploy fails. A newer push waits. Re-running the failed job retries that same
+commit. A process that becomes ready after the 15-minute bound does not
+rewrite a failed release.
+
+The handoff states only the rules that change a sequence. Fields stay in
+OpenAPI. On User deletion, the Profile and Review moderation decisions remain
+as Restriction records without that User's identity. The standing Commentary
+restriction ends. A Venue's eligibility decisions remain as that Venue's
+history.
+
 ## Global Constraints
 
 - Branch `feature/session-14-api-handoff`, merged into `dev` by pull request. Do not push `main`.
@@ -165,7 +186,7 @@ git commit -m "feat: validate the commentary restriction lift action"
 
 All use `newWriteHarness`, `userA` as author, `userB` as reporter, and `userC` as operator.
 
-`TestLiftCommentaryRestriction`: verified Venue; Review with `commentary = nil`, `commentary_removed_at` set to `t0`; `seedRestriction(t, h, reviewID, userA, verifiedVenue, "harassment", ptr("gone"))`; one pending report. Lift with key `lift-1`. Assert: `Created`, non-nil `ActionID`, `Review.CommentaryRemoved` still true; audit row with `action = 'commentary_restriction_lifted'`, `reason = 'harassment'`, `note = 'gone'`, `reviewer_user_id = userA`, `operator_user_id = userC`, `created_at = h.now`; zero `review_commentary_restrictions` rows; the Review's `commentary_removed_at`, `updated_at`, and rating unchanged; the report still `pending`; `tokensLeft(h.limiter, userC) == 59`; the stored `response_body` for `lift-1` does not contain `"commentary"`.
+`TestLiftCommentaryRestriction`: verified Venue; Review with `commentary = nil`, `commentary_removed_at` set to `t0`; `seedRestriction(t, h, reviewID, userA, verifiedVenue, "harassment", ptr("gone"))`. Lift with key `lift-1`. Assert: `Created`, non-nil `ActionID`, `Review.CommentaryRemoved` still true; audit row with `action = 'commentary_restriction_lifted'`, `reason = 'harassment'`, `note = 'gone'`, `reviewer_user_id = userA`, `operator_user_id = userC`, `created_at = h.now`; zero `review_commentary_restrictions` rows; the Review's `commentary_removed_at`, `updated_at`, and rating unchanged; `tokensLeft(h.limiter, userC) == 59`; the stored `response_body` for `lift-1` does not contain `"commentary"`.
 
 `TestLiftNoop`: no restriction row. Lift twice with key `lift-noop`. Both return `!Created`, `ActionID == nil`. No audit row, `tokensLeft == 60`, no idempotency row for that key.
 
@@ -467,7 +488,7 @@ git commit -m "ci: release by migrating, deploying through the hook, and proving
 Four parts, as in the spec's "Handoff document" section. Each step is one line: method, path, caller, success status, and `operationId`.
 1. **Calling the API.** Bearer JWT; `Idempotency-Key` on `createVenueSubmission`, the three report routes, `createCheckIn`, and the three moderation action routes; the `{"error":{code,message,request_id}}` envelope; cursor pagination with `limit` 1–100, default 20, `meta.next_cursor`, and `400 cursor: invalid`; `403 forbidden` across the app and operator split.
 2. **User sequences.** `patchMe` → `getMe`; `listGenres` / `listVenues` / `getVenue` / `listVenueReviews`; `createVenueSubmission` → `listMyVenues` / `getMyVenue` → `correctMyVenue`; `putMyReview` / `getMyReview` / `deleteMyReview`; `createProfileReport`, `reportVenue`, `reportReview`; `createCheckIn` → `listMyCheckIns` / `listVenueCheckIns` → `deleteMyCheckIn`.
-3. **Moderation sequences.** Profile: `listProfileReports` → `getModerationProfile` → `applyProfileModeration` or `dismissProfileReport`. Venue: `listVenueReports` → `getModerationVenue` → `applyVenueAction` / `correctVenueAsOperator` or `dismissVenueReport`. Review: `listReviewReports` → `getModerationReview` → `applyReviewAction` (`remove_commentary`, `delete_review`) or `dismissReviewReport`; the User then sees `409 commentary_locked`; a later `applyReviewAction` with `{"action":"lift_commentary_restriction"}`; the User's next commentary save clears `commentary_removed_at`, and both audit rows stay.
+3. **Moderation sequences.** Profile: `listProfileReports` → `getModerationProfile` → `applyProfileModeration` or `dismissProfileReport`. Venue: `listVenueReports` → `getModerationVenue` → `applyVenueAction` / `correctVenueAsOperator` or `dismissVenueReport`. Review: `listReviewReports` → `getModerationReview` → `applyReviewAction` (`remove_commentary`, `delete_review`) or `dismissReviewReport`; the User then sees `409 commentary_locked`; a later `applyReviewAction` with `{"action":"lift_commentary_restriction"}` on a current Review, with no reason. After the Review that began the restriction has ended, the lift waits until that User has a Review there again. After the lift, the Review stays rating-only and the removal stays visible until the User writes commentary.
 4. **Account deletion.** The spec's text: callers, the 10-minute session, `DELETE MY ACCOUNT`, `204` only after Supabase confirms, `502 auth_provider_error` keeps local rows, then the removed list and the retained list, linking ADR 0003.
 
 - [ ] **Step 2: Update the living docs**

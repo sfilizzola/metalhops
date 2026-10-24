@@ -20,8 +20,10 @@ _Avoid_: Username, display name
 **User deletion**:
 The permanent removal of a User. Their Profile, Reviews, Check-ins, and all
 moderation reports they filed end with them; reports targeting their Profile
-or Reviews end too, and their Report quota ends. A Restriction record
-remains without that User's identity, while a Commentary restriction ends. A
+or Reviews end too, and their Report quota ends. The Profile and Review
+moderation decisions remain as Restriction records without that User's
+identity, while a standing Commentary restriction ends. A Venue's eligibility
+decisions remain as that Venue's history and are not Restriction records. A
 Venue Submission they created remains without a Submitter.
 _Avoid_: Account deletion, Profile deletion
 
@@ -107,9 +109,15 @@ _Avoid_: Report note, private note
 **Restriction record**:
 A kept record of one stored restriction decision: the decision, the reason,
 the note, and any expiry. It does not remember the Username or display name.
-Replacing a restriction adds only the new restriction's record, and a
-withdrawal or expiry is its own record. After User deletion it remains
-without that User's identity. It is not a Profile and has no public identity.
+Replacing a restriction adds only the new restriction's record. Ending one —
+a withdrawal of a rename requirement, the clearing of a Community Suspension,
+the lift of a Commentary restriction, or an expiry — is its own record and
+carries the Restriction explanation of the restriction that ended. The
+Platform Moderator supplies no new reason or note. An attempt to end a
+restriction that is not standing leaves no record. After User deletion it
+remains without that User's identity. A Venue's eligibility decisions are
+that Venue's history, not a Restriction record. It is not a Profile and has
+no public identity.
 _Avoid_: Profile, public identity
 
 **Username**:
@@ -234,8 +242,13 @@ One User's assessment of a Verified Venue. That User has one Review for a
 Venue, containing a required whole-number rating from 1 through 5 and optional
 written commentary. Five is the strongest assessment and one is the weakest. It
 cannot target a Venue that is not verified, and a pending Venue has none. A
-rating without commentary is still a complete Review; if a Platform Moderator
-removes commentary, that Review remains rating-only. The User may end their
+rating without commentary is still a complete Review. If a Platform
+Moderator removes commentary, that Review remains rating-only, and a reader
+can still tell the commentary was removed. Lifting the Commentary restriction
+does not bring those words back or hide the removal: the Review stays
+rating-only, and the removal stays visible, until the User writes commentary
+again. A Review the User saved with no commentary does not show a removal.
+The User may end their
 Review, and assessing that Venue again is a new Review. The average of a
 Venue's ratings belongs to that Venue and is the same for every reader.
 _Avoid_: Rating record, comment
@@ -249,10 +262,22 @@ _Avoid_: Deleted Review
 **Commentary restriction**:
 An indefinite restriction placed by a Platform Moderator on one User writing
 Review commentary for one Venue after removing commentary or deleting a Review.
-Ratings remain allowed; it lasts until a Platform Moderator lifts it and does
-not end when the Review ends. Once lifted, the User may add commentary to an
-existing or later Review for that Venue, and while it stands they see its
-Restriction explanation on their own Review.
+It lasts until a Platform Moderator lifts it through a Review that User
+currently has for that Venue; once lifted, the User may add commentary to
+that Review or a later one, and a lift after the Review has ended waits
+until the User has one there again. The lift leaves a Restriction record on
+the Review through which it was lifted, carrying the Restriction explanation
+of the decision that began it. The record of that beginning stays on the
+Review it was made on, even after that Review has ended. While it stands,
+ratings remain allowed and the User sees its Restriction explanation on
+their own Review. A further removal or deletion while one stands does not
+start another; its start and its Restriction explanation stay the ones that
+began it. Once lifted, that restriction does not resume. A later removal or
+deletion places a new Commentary restriction, with its own start and its own
+Restriction explanation. A lift when none stands leaves no Restriction
+record and does not change the Review. Repeating it still leaves no record.
+It can be lifted on a verified Venue or a Delisted Venue. A pending or
+rejected Venue has no Review, so there is nothing to lift through.
 _Avoid_: Commentary lock, permanent ban
 
 **Platform Moderator**:
@@ -266,14 +291,19 @@ _Avoid_: Venue owner, management
 A User's request for a Platform Moderator to assess another User's public
 Review commentary for a specific safety reason. It does not hide or alter the
 Review, and a resolved report does not stop the same User from filing a later
-one; ending the Review ends its reports but does not return their Report quota
-slots.
+one. A rating-only Review, including one whose commentary a Platform
+Moderator removed, cannot be reported. Lifting a Commentary restriction is
+not an assessment. Removing commentary already resolved any report that was
+waiting, and ending the Review ends its reports, so a lift has no pending
+Review Report. Ending the Review does not return their Report quota slots.
 _Avoid_: Review moderation
 
 **Resolved Review Report**:
 A Review Report no longer waiting for assessment because a Platform Moderator
 acted or dismissed it, its Venue was Delisted, or its author changed or cleared
-the reported commentary. An author-resolved report is not a moderator dismissal.
+the reported commentary. Lifting a Commentary restriction is not an
+assessment and does not resolve one. An author-resolved report is not a
+moderator dismissal.
 _Avoid_: Deleted report
 
 **Check-in**:
@@ -371,6 +401,79 @@ later created a new Review for that Venue. Can they add commentary?
 **Domain expert:** Not while the commentary restriction stands. They may still
 rate the Venue. After a Platform Moderator lifts it, they may add commentary
 to that Review or a later one.
+
+**Developer:** A Platform Moderator deleted the Review that began a Commentary
+restriction, and the User has not rated that Venue again. Can the moderator
+lift it?
+
+**Domain expert:** No. The restriction remains, and the lift needs a Review
+that User currently has for that Venue. It waits until they rate it again.
+
+**Developer:** The moderator removed "The pit is loud," then lifted the
+Commentary restriction. The User has not saved since. What does the Review
+contain?
+
+**Domain expert:** It stays rating-only. Those words do not come back, and a
+reader can still tell the commentary was removed. The User may write
+commentary again, and that save is new commentary. A save with no commentary
+leaves it rating-only and still shows the removal. A Review that never had
+commentary does not show one.
+
+**Developer:** A Platform Moderator removed commentary for harassment, with
+the note "threats in the second sentence," then lifted the Commentary
+restriction and supplied no reason. What does the lift's record remember?
+
+**Domain expert:** Harassment, and that note. The record is the fact that
+the restriction ended, carrying the Restriction explanation of the decision
+that began it. Ending a rename requirement or a Community Suspension is
+recorded the same way.
+
+**Developer:** Review A was deleted for harassment. The User then created
+rating-only Review B, and the Platform Moderator lifted the Commentary
+restriction through Review B. Which Review does the lift's record belong to?
+
+**Domain expert:** Review B. Review A's record stays the decision that began
+the restriction, even though Review A has ended. Both carry the same
+Restriction explanation. There is still one Commentary restriction for that
+User and Venue.
+
+**Developer:** The Venue was Delisted after the Review was written. Can the
+Platform Moderator lift the Commentary restriction? What about a pending
+Venue?
+
+**Domain expert:** Yes on the Delisted Venue. The Review is still there. A
+pending Venue has no Review, and a rejected Venue has none either. There is
+nothing to lift through.
+
+**Developer:** The Platform Moderator lifted the Commentary restriction. The
+User writes commentary, and the moderator removes it for spam. Does the
+earlier lift end this restriction?
+
+**Domain expert:** No. The earlier lift ended the earlier restriction, and
+that one does not resume. This is a new Commentary restriction, with its own
+start and its own Restriction explanation.
+
+**Developer:** That new restriction still stands, and the moderator removes
+commentary again. Does that start another?
+
+**Domain expert:** No. One is already standing. Its start and its Restriction
+explanation stay the ones that began it.
+
+**Developer:** A Review Report was pending. The Platform Moderator removed
+the commentary, then lifted the Commentary restriction. Did the lift assess
+the report?
+
+**Domain expert:** No. Removing the commentary already resolved it. The lift
+ends the Commentary restriction and is not an assessment. A rating-only
+Review cannot be reported, so the lift has no pending Review Report.
+
+**Developer:** The Platform Moderator lifts through a Review, and that User
+and Venue have no Commentary restriction. Does that leave a record?
+
+**Domain expert:** No. Nothing ended, so there is no Restriction record, and
+the Review stays as it is. Doing it again still leaves no record. Ending a
+rename requirement or a Community Suspension when the Profile is already
+clear works the same way.
 
 **Developer:** A Review Report is pending, and the author replaces the reported
 commentary before a Platform Moderator assesses it. Is the report still pending?
@@ -551,6 +654,14 @@ their account. Does the record of that suspension remain?
 
 **Domain expert:** Yes. It remains without that User's identity. It is not a
 Profile and not a public surface.
+
+**Developer:** That User also had a Commentary restriction, and a Platform
+Moderator had verified a Venue. The User deletes their account. What remains?
+
+**Domain expert:** The standing Commentary restriction ends. The Restriction
+records of the Profile and of the Reviews remain, without that User's
+identity. The Venue's eligibility decisions remain as that Venue's history.
+They are not Restriction records.
 
 **Developer:** A rename requirement is already recorded, and a Platform
 Moderator replaces it with a Community Suspension. How many new records are
