@@ -3,7 +3,7 @@
 MetalHops MVP API roadmap. Refer to this document as **DevSteps** across every implementation session.
 
 **Date:** 2026-10-14
-**Status:** Sessions 1–13 are done. Session 14 is next. Session 14 is not started.
+**Status:** Sessions 1–14 are done.
 
 ## Goal
 
@@ -1126,7 +1126,7 @@ The Check-in cooldown remains a separate domain rule and returns `409`.
 | 11. Reviews and ratings | Done |
 | 12. Review safety and moderation API | Done |
 | 13. Check-ins | Done |
-| 14 | Not started |
+| 14. API completion and admin handoff | Done |
 
 ### Session 1: Repository boundaries
 
@@ -1393,7 +1393,9 @@ without duplicate Check-in spam, and a User can remove an incorrect Check-in.
 
 ### Session 14: API completion and admin handoff
 
-**Status:** Not started.
+**Status:** Done.
+
+A Platform Moderator lifts a Commentary restriction through `lift_commentary_restriction`, which appends `commentary_restriction_lifted`. Migration `0012` allows that audit action, and readiness requires `0012`. `docs/api-handoff.md` is the sequence guide. `.github/workflows/release.yml` is the only deployer. The first production run waits for the promotion of `dev` to `main`.
 
 Run cross-feature integration scenarios, verify migration-from-empty and RLS,
 close OpenAPI example gaps, confirm error and pagination edge cases, validate
