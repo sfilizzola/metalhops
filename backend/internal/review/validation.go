@@ -17,8 +17,9 @@ var reportReasons = map[string]struct{}{
 }
 
 var moderationActions = map[string]struct{}{
-	"remove_commentary": {},
-	"delete_review":     {},
+	"remove_commentary":           {},
+	"delete_review":               {},
+	"lift_commentary_restriction": {},
 }
 
 func NormalizeReport(reason string, note *string) (string, *string, error) {
@@ -38,8 +39,17 @@ func NormalizeReport(reason string, note *string) (string, *string, error) {
 func NormalizeAction(action, reason string, note *string) (string, string, *string, error) {
 	if _, ok := moderationActions[action]; !ok {
 		return "", "", nil, &ValidationError{Fields: map[string]string{
-			"action": "must be remove_commentary or delete_review",
+			"action": "must be remove_commentary, delete_review, or lift_commentary_restriction",
 		}}
+	}
+	if action == "lift_commentary_restriction" {
+		if reason != "" {
+			return "", "", nil, &ValidationError{Fields: map[string]string{"reason": "must be omitted"}}
+		}
+		if note != nil {
+			return "", "", nil, &ValidationError{Fields: map[string]string{"note": "must be omitted"}}
+		}
+		return action, "", nil, nil
 	}
 	reason, note, err := NormalizeReport(reason, note)
 	if err != nil {

@@ -38,7 +38,7 @@ func TestNormalizeReport(t *testing.T) {
 func TestNormalizeAction(t *testing.T) {
 	_, _, _, err := NormalizeAction("nope", "spam", nil)
 	var invalid *ValidationError
-	if !errors.As(err, &invalid) || invalid.Fields["action"] != "must be remove_commentary or delete_review" {
+	if !errors.As(err, &invalid) || invalid.Fields["action"] != "must be remove_commentary, delete_review, or lift_commentary_restriction" {
 		t.Fatalf("unknown action: %v", err)
 	}
 
@@ -50,5 +50,24 @@ func TestNormalizeAction(t *testing.T) {
 	_, _, _, err = NormalizeAction("delete_review", "other", nil)
 	if !errors.As(err, &invalid) || invalid.Fields["note"] != "required" {
 		t.Fatalf("delete other: %v", err)
+	}
+}
+
+func TestNormalizeLift(t *testing.T) {
+	action, reason, note, err := NormalizeAction("lift_commentary_restriction", "", nil)
+	if err != nil || action != "lift_commentary_restriction" || reason != "" || note != nil {
+		t.Fatalf("lift: %q %q %v %v", action, reason, note, err)
+	}
+
+	var invalid *ValidationError
+	_, _, _, err = NormalizeAction("lift_commentary_restriction", "spam", nil)
+	if !errors.As(err, &invalid) || invalid.Fields["reason"] != "must be omitted" {
+		t.Fatalf("lift with reason: %v", err)
+	}
+
+	blank := "   "
+	_, _, _, err = NormalizeAction("lift_commentary_restriction", "", &blank)
+	if !errors.As(err, &invalid) || invalid.Fields["note"] != "must be omitted" {
+		t.Fatalf("lift with blank note: %v", err)
 	}
 }
