@@ -283,9 +283,14 @@ action envelope.
 
 A contract test fails when any `200` or `201` response with an
 `application/json` body has neither an `example` nor an `examples` entry.
-`204` responses have no example. The responses that need a success example
-today are `listMyVenues` and `listMyCheckIns`. The test names any other
-response that fails the same rule, and the session adds that example.
+`204` responses have no example. A response that is only a `$ref` is
+skipped. Twenty-one responses need a success example today: the `201` of
+`createVenueSubmission`, `reportReview`, and `createCheckIn`; the `200` of
+`getMyReview`, `putMyReview`, `listVenueCheckIns`, `listReviewReports`,
+`getModerationReview`, `dismissReviewReport`, `patchMe`, `listMyVenues`,
+`getMyVenue`, `correctMyVenue`, `listMyCheckIns`, `dismissVenueReport`,
+`getModerationVenue`, and `correctVenueAsOperator`; and both the `200` and
+`201` of `applyReviewAction` and `applyVenueAction`.
 
 ## Testing
 
