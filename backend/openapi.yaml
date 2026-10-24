@@ -1125,6 +1125,8 @@ paths:
                       moderation_reason: null
                       moderation_note: null
                       suspended_until: null
+                      created_at: "2026-10-01T12:00:00Z"
+                      updated_at: "2026-10-01T12:00:00Z"
                     author:
                       id: eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee
                       username: metal_fan
@@ -1133,6 +1135,8 @@ paths:
                       moderation_reason: null
                       moderation_note: null
                       suspended_until: null
+                      created_at: "2026-10-01T12:00:00Z"
+                      updated_at: "2026-10-01T12:00:00Z"
                 meta:
                   next_cursor: null
         "400":
@@ -1200,6 +1204,8 @@ paths:
                       moderation_reason: null
                       moderation_note: null
                       suspended_until: null
+                      created_at: "2026-10-01T12:00:00Z"
+                      updated_at: "2026-10-01T12:00:00Z"
                     created_at: "2026-10-21T09:00:00Z"
                     updated_at: "2026-10-21T10:00:00Z"
                   reports: []
@@ -1332,6 +1338,8 @@ paths:
                           moderation_reason: null
                           moderation_note: null
                           suspended_until: null
+                          created_at: "2026-10-01T12:00:00Z"
+                          updated_at: "2026-10-01T12:00:00Z"
                         created_at: "2026-10-21T09:00:00Z"
                         updated_at: "2026-10-21T10:00:00Z"
                 lift:
@@ -1355,6 +1363,8 @@ paths:
                           moderation_reason: null
                           moderation_note: null
                           suspended_until: null
+                          created_at: "2026-10-01T12:00:00Z"
+                          updated_at: "2026-10-01T12:00:00Z"
                         created_at: "2026-10-21T09:00:00Z"
                         updated_at: "2026-10-21T09:00:00Z"
         "201":
@@ -1385,6 +1395,8 @@ paths:
                           moderation_reason: null
                           moderation_note: null
                           suspended_until: null
+                          created_at: "2026-10-01T12:00:00Z"
+                          updated_at: "2026-10-01T12:00:00Z"
                         created_at: "2026-10-21T09:00:00Z"
                         updated_at: "2026-10-21T10:00:00Z"
                 delete:
@@ -1414,6 +1426,8 @@ paths:
                           moderation_reason: null
                           moderation_note: null
                           suspended_until: null
+                          created_at: "2026-10-01T12:00:00Z"
+                          updated_at: "2026-10-01T12:00:00Z"
                         created_at: "2026-10-21T09:00:00Z"
                         updated_at: "2026-10-21T10:00:00Z"
         "400":
@@ -1517,6 +1531,8 @@ paths:
                     moderation_reason: null
                     moderation_note: null
                     suspended_until: null
+                    created_at: "2026-10-01T12:00:00Z"
+                    updated_at: "2026-10-01T12:00:00Z"
                   author:
                     id: eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee
                     username: metal_fan
@@ -1525,6 +1541,8 @@ paths:
                     moderation_reason: null
                     moderation_note: null
                     suspended_until: null
+                    created_at: "2026-10-01T12:00:00Z"
+                    updated_at: "2026-10-01T12:00:00Z"
         "400":
           description: The body or report id is invalid.
           content:
@@ -3749,11 +3767,11 @@ components:
           format: date-time
         reporter:
           oneOf:
-            - $ref: "#/components/schemas/Profile"
+            - $ref: "#/components/schemas/ModeratorProfile"
             - type: "null"
         author:
           oneOf:
-            - $ref: "#/components/schemas/Profile"
+            - $ref: "#/components/schemas/ModeratorProfile"
             - type: "null"
     ReviewReportItemResponse:
       type: object
@@ -3818,7 +3836,7 @@ components:
           format: date-time
         author:
           oneOf:
-            - $ref: "#/components/schemas/Profile"
+            - $ref: "#/components/schemas/ModeratorProfile"
             - type: "null"
         created_at:
           type: string
@@ -3893,7 +3911,7 @@ components:
                 format: date-time
               reporter:
                 oneOf:
-                  - $ref: "#/components/schemas/Profile"
+                  - $ref: "#/components/schemas/ModeratorProfile"
                   - type: "null"
         history:
           type: array
