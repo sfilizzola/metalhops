@@ -128,7 +128,10 @@ details. Splitting those rules among public packages would reduce locality.
 
 The Review module owns Review validation, authorship, the write transaction,
 the public list, the caller's own Review, Review Reports, the Commentary
-restriction, and the append-only review moderation audit. The Venue catalogue
+restriction, and the append-only review moderation audit. It also owns the
+lift of a Commentary restriction, which runs in its moderation transaction,
+and the commentary save after a lift, which clears `commentary_removed_at` in
+the same update that writes the commentary. The Venue catalogue
 query reads `reviews` for `average_rating` and `review_count`, so list and
 detail stay one round trip. Venue delist updates pending `review_reports` in
 its own transaction. `internal/venue` does not import `internal/review`.
@@ -240,6 +243,13 @@ uses `gen_random_uuid()` adds no sequence revoke. It does not try to clear
 Supabase default privileges owned by another role. A table with no Data API
 grant needs no policy. Expand-and-contract releases handle incompatible
 schema changes.
+
+A push to `main` runs `.github/workflows/release.yml`, the only deployer. It
+runs the tests, applies the committed migrations, deploys through the Render
+deploy hook, and succeeds only when `/readyz` returns the matching commit.
+See [ADR 0006](../adr/0006-release-succeeds-on-readyz-commit.md),
+[ADR 0007](../adr/0007-release-job-is-the-only-deployer.md), and
+[ADR 0008](../adr/0008-applied-migration-stays-when-deploy-fails.md).
 
 ## HTTP adaptation
 

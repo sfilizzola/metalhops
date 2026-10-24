@@ -25,7 +25,9 @@ PostGIS). Run commands from `backend/`.
   moderation (verify, reject, correct, delist, reopen, and the append-only
   audit).
 - `internal/review`: Review validation, public list, the caller's own Review,
-  save and delete.
+  save and delete, Review Reports, operator moderation, the Commentary
+  restriction, and its lift through `lift_commentary_restriction` on the
+  existing Review action route.
 - `internal/checkin`: Check-in validation, the spacing rule, creation, personal
   history, the public per-Venue feed, and deletion.
 - `internal/pgtest`: PostGIS test harness. Production code does not import it.
@@ -44,7 +46,8 @@ when that file exists. Variables already in the environment win.
 
 `GET /healthz` reports process health and does not check the database.
 `GET /readyz` returns 200 when the database ping succeeds and migration
-`0011` or newer is recorded. Otherwise it returns 503.
+`0012` or newer is recorded. Otherwise it returns 503. The 200 body adds
+`commit` when `RENDER_GIT_COMMIT` is a full 40-character lowercase hex SHA.
 `GET /openapi.yaml` serves the embedded `openapi.yaml` in every environment.
 `GET /docs` serves the Scalar page when `DOCS_UI_ENABLED` is unset or `true`.
 The exact value `false` leaves `/docs` unregistered. Any other value stops
@@ -116,6 +119,8 @@ Never drift from it silently.
   with no Data API grant needs no policy.
 - `infra/render.yaml`: Render blueprint for this service.
 - `.github/workflows/backend.yml`: backend CI.
+- `.github/workflows/release.yml`: the only deployer. It runs on push to
+  `main`.
 
 ## Auth model
 

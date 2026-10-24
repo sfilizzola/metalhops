@@ -507,8 +507,9 @@ restriction stands; an attempt returns `409 commentary_locked` with the
 User-visible Restriction explanation.
 
 `review_moderation_actions` is an append-only audit log containing the target
-Review ID, reviewer User ID, Venue ID, action (`commentary_removed` or
-`review_deleted`), reason, optional note, operator User ID, and timestamp.
+Review ID, reviewer User ID, Venue ID, action (`commentary_removed`,
+`review_deleted`, or `commentary_restriction_lifted`), reason, optional note,
+operator User ID, and timestamp.
 Reasons are `spam`, `harassment`, `hate_or_discrimination`,
 `personal_information`, `illegal_content`, `off_topic`, or `other`; `other`
 requires a note. Removed commentary is never copied into the audit log.
@@ -520,8 +521,11 @@ append-only moderation action in the current uninterrupted restriction period;
 later actions preserve that source and start time. A restricted User may create
 or update a rating-only Review for that Venue and sees the source reason, note,
 and restriction start on their own Review and in a blocked-write response.
-User or Venue deletion cascades the restriction. Session 14 adds the Platform
-Moderator operation that lifts it before the admin handoff.
+User or Venue deletion cascades the restriction. A Platform Moderator lifts
+it through `lift_commentary_restriction`, which appends
+`commentary_restriction_lifted` with the source action's reason and note and
+deletes the row. The User's next commentary save clears
+`commentary_removed_at`.
 
 `review_reports` stores the reporter User, target Review, reason, optional
 note, status (`pending`, `actioned`, `dismissed`, or `author_resolved`),
@@ -714,9 +718,17 @@ verified-Venue, Venue-genre, and direct-submission policies without editing
   `DELETE MY ACCOUNT`. A refreshed JWT for an older session is not sufficient.
 - Deletes the Supabase Auth identity through the server-side admin API.
   Deletion is hard, not Supabase soft deletion.
-  Database cascades delete the Profile, Reviews, Check-ins, Reports,
-  restrictions, and idempotency records; Venue Submissions remain with a null
-  Submitter, and moderation audit records retain no deleted User identity.
+  Database cascades delete the Profile, Reviews, Check-ins, idempotency rows,
+  and Commentary restriction rows; Profile Reports, because both the reporter
+  and the target cascade; Review Reports, because the reporter cascades and
+  the author's Review cascades; and Venue Reports the deleted User filed.
+  Venue Submissions remain with a null Submitter, and Venue Reports filed by
+  someone else remain. The Profile and Review moderation audits remain with
+  deleted User ids set null; they are the Restriction records
+  [ADR 0003](docs/adr/0003-keep-restriction-records-after-user-deletion.md)
+  keeps. The Venue moderation audit remains as that Venue's eligibility
+  history and is not a Restriction record. A Commentary restriction row is
+  not a Restriction record, and it ends with the User.
 - Returns `204` only after Supabase confirms deletion. Authentication-provider
   failures return a safe `502 auth_provider_error` and do not claim success.
 
