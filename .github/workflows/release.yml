@@ -1,0 +1,56 @@
+name: release
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+      RENDER_DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+      API_BASE_URL: ${{ vars.API_BASE_URL }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.24"
+      - run: go vet ./...
+        working-directory: backend
+      - run: go test ./...
+        working-directory: backend
+      - name: Check release inputs
+        run: |
+          port=$(sed -nE 's#^postgres(ql)?://.*@[^:/@]+:([0-9]+)/.*#\2#p' <<<"$SUPABASE_DB_URL")
+          [[ $port == 5432 ]] || { echo "SUPABASE_DB_URL must use port 5432"; exit 1; }
+          [[ $API_BASE_URL =~ ^https://[^/]+$ ]] || { echo "API_BASE_URL must be an https origin with no path"; exit 1; }
+      - uses: supabase/setup-cli@v3
+        with:
+          version: 2.84.2
+      - name: Apply migrations
+        run: supabase db push --db-url "$SUPABASE_DB_URL" --workdir infra --yes
+      - name: Deploy
+        run: |
+          sep='?'; [[ $RENDER_DEPLOY_HOOK_URL == *\?* ]] && sep='&'
+          code=$(curl -sS -o /dev/null -w '%{http_code}' -X POST "${RENDER_DEPLOY_HOOK_URL}${sep}ref=${GITHUB_SHA}")
+          [[ $code == 200 || $code == 202 ]] || { echo "deploy hook returned $code"; exit 1; }
+      - name: Wait for readiness
+        run: |
+          deadline=$((SECONDS + 900))
+          while (( SECONDS < deadline )); do
+            body=$(curl -fsS --max-time 10 "$API_BASE_URL/readyz" || true)
+            [[ $(jq -r '.status + " " + (.commit // "")' <<<"$body" 2>/dev/null) == "ok $GITHUB_SHA" ]] && exit 0
+            sleep 15
+          done
+          echo "readyz never reported $GITHUB_SHA"; exit 1
