@@ -70,3 +70,40 @@ func TestReviewConstraints(t *testing.T) {
 		t.Fatalf("reviews after venue delete %d %v", n, err)
 	}
 }
+
+func TestLiftAuditAction(t *testing.T) {
+	ctx := context.Background()
+	pool, err := pgxpool.New(ctx, pgtest.MigratedURL(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(pool.Close)
+	user := "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+	venue := "cccccccc-cccc-4ccc-8ccc-cccccccccccc"
+	if _, err := pool.Exec(ctx, `insert into auth.users (id) values ($1)`, user); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `
+		insert into venues (id, name, location, address, city, country_code, venue_type)
+		values ($1, 'Bar', ST_MakePoint(10, 60)::geography, '1 Street', 'Oslo', 'NO', 'bar')`, venue); err != nil {
+		t.Fatal(err)
+	}
+	var reviewID string
+	if err := pool.QueryRow(ctx, `
+		insert into reviews (venue_id, user_id, rating, created_at, updated_at)
+		values ($1, $2, 4, now(), now())
+		returning id`, venue, user).Scan(&reviewID); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := pool.Exec(ctx, `
+		insert into review_moderation_actions (review_id, venue_id, action, reason, operator_user_id)
+		values ($1, $2, 'commentary_restriction_lifted', 'spam', $3)`, reviewID, venue, user); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `
+		insert into review_moderation_actions (review_id, venue_id, action, reason, operator_user_id)
+		values ($1, $2, 'restriction_lifted', 'spam', $3)`, reviewID, venue, user); vsCode(err) != "23514" {
+		t.Fatalf("unknown action: %v", err)
+	}
+}
