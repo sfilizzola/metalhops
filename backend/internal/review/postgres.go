@@ -261,7 +261,9 @@ func (s *Service) Save(ctx context.Context, cmd SaveCommand) (SaveResult, error)
 	now := s.clock()
 	if found {
 		_, err = tx.Exec(txCtx, `
-			update reviews set rating = $3, commentary = $4, updated_at = $5
+			update reviews
+			set rating = $3, commentary = $4, updated_at = $5,
+			    commentary_removed_at = case when $4::text is null then commentary_removed_at end
 			where venue_id = $1::uuid and user_id = $2::uuid`,
 			cmd.VenueID, cmd.UserID, draft.Rating, draft.Commentary, now)
 	} else {

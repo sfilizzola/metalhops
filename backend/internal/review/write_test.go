@@ -422,6 +422,136 @@ func TestLockedClearAndRecreate(t *testing.T) {
 	}
 }
 
+func TestSaveAfterLiftClearsMarker(t *testing.T) {
+	h := newWriteHarness(t)
+	insertVenue(t, h.pool, verifiedVenue, "verified")
+	insertUser(t, h.pool, userA, "active", nil)
+	insertUser(t, h.pool, userC, "", nil)
+	reviewID := insertReview(t, h.pool, verifiedVenue, userA, 4, ptr("loud"), t0)
+
+	if _, err := moderate(h, userC, reviewID, "mod-remove", "remove_commentary", "spam", nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := moderate(h, userC, reviewID, "mod-lift", "lift_commentary_restriction", "", nil); err != nil {
+		t.Fatal(err)
+	}
+
+	h.now = t0.Add(time.Hour)
+	got, err := h.save(userA, verifiedVenue, "4", json.RawMessage(`"back"`))
+	if err != nil || got.Review.Commentary == nil || *got.Review.Commentary != "back" ||
+		got.Review.CommentaryRemoved || !got.Review.UpdatedAt.Equal(h.now) || !got.Review.CreatedAt.Equal(t0) {
+		t.Fatalf("save after lift %+v %v", got, err)
+	}
+	var removedAt *time.Time
+	if err := h.pool.QueryRow(context.Background(), `
+		select commentary_removed_at from reviews where id = $1`, reviewID).Scan(&removedAt); err != nil || removedAt != nil {
+		t.Fatalf("removed_at %v %v", removedAt, err)
+	}
+	var audits int
+	if err := h.pool.QueryRow(context.Background(), `
+		select count(*) from review_moderation_actions
+		where review_id = $1 and action in ('commentary_removed', 'commentary_restriction_lifted')`,
+		reviewID).Scan(&audits); err != nil || audits != 2 {
+		t.Fatalf("audits %d %v", audits, err)
+	}
+}
+
+func TestRatingOnlySaveKeepsMarker(t *testing.T) {
+	h := newWriteHarness(t)
+	insertVenue(t, h.pool, verifiedVenue, "verified")
+	insertUser(t, h.pool, userA, "active", nil)
+	insertUser(t, h.pool, userC, "", nil)
+	reviewID := insertReview(t, h.pool, verifiedVenue, userA, 4, ptr("loud"), t0)
+
+	if _, err := moderate(h, userC, reviewID, "mod-remove", "remove_commentary", "spam", nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := moderate(h, userC, reviewID, "mod-lift", "lift_commentary_restriction", "", nil); err != nil {
+		t.Fatal(err)
+	}
+
+	h.now = t0.Add(time.Hour)
+	got, err := h.save(userA, verifiedVenue, "2", nil)
+	if err != nil || got.Review.Rating != 2 || got.Review.Commentary != nil {
+		t.Fatalf("rating-only save %+v %v", got, err)
+	}
+	var removedAt *time.Time
+	if err := h.pool.QueryRow(context.Background(), `
+		select commentary_removed_at from reviews where id = $1`, reviewID).Scan(&removedAt); err != nil || removedAt == nil {
+		t.Fatalf("removed_at %v %v", removedAt, err)
+	}
+
+	before := tokensLeft(h.limiter, userA)
+	repeat, err := h.save(userA, verifiedVenue, "2", nil)
+	if err != nil || repeat.Created || !repeat.Review.UpdatedAt.Equal(h.now) {
+		t.Fatalf("repeat %+v %v", repeat, err)
+	}
+	if left := tokensLeft(h.limiter, userA); left != before {
+		t.Fatalf("tokens %d want %d", left, before)
+	}
+}
+
+func TestCommentaryRestrictionLifecycle(t *testing.T) {
+	h := newWriteHarness(t)
+	insertVenue(t, h.pool, verifiedVenue, "verified")
+	insertUser(t, h.pool, userA, "active", nil)
+	insertUser(t, h.pool, userC, "", nil)
+
+	if _, err := h.save(userA, verifiedVenue, "4", json.RawMessage(`"loud"`)); err != nil {
+		t.Fatal(err)
+	}
+	own, err := h.service.GetOwn(context.Background(), userA, verifiedVenue)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reviewID := own.ID
+
+	if _, err := moderate(h, userC, reviewID, "lc-remove", "remove_commentary", "spam", nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := h.save(userA, verifiedVenue, "4", json.RawMessage(`"again"`)); !errors.Is(err, ErrCommentaryLocked) {
+		t.Fatalf("locked save err %v", err)
+	}
+	lift, err := moderate(h, userC, reviewID, "lc-lift-key", "lift_commentary_restriction", "", nil)
+	if err != nil || !lift.Created {
+		t.Fatalf("lift %+v %v", lift, err)
+	}
+	if _, err := h.save(userA, verifiedVenue, "4", json.RawMessage(`"again"`)); err != nil {
+		t.Fatalf("save after lift err %v", err)
+	}
+
+	var removedAt *time.Time
+	var restrictions int
+	if err := h.pool.QueryRow(context.Background(), `
+		select commentary_removed_at from reviews where id = $1`, reviewID).Scan(&removedAt); err != nil || removedAt != nil {
+		t.Fatalf("removed_at %v %v", removedAt, err)
+	}
+	if err := h.pool.QueryRow(context.Background(), `
+		select count(*) from review_commentary_restrictions where user_id = $1`, userA).Scan(&restrictions); err != nil || restrictions != 0 {
+		t.Fatalf("restrictions %d %v", restrictions, err)
+	}
+	rows, err := h.pool.Query(context.Background(), `
+		select action from review_moderation_actions where review_id = $1 order by created_at`, reviewID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	var actions []string
+	for rows.Next() {
+		var a string
+		if err := rows.Scan(&a); err != nil {
+			t.Fatal(err)
+		}
+		actions = append(actions, a)
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+	if len(actions) != 2 || actions[0] != "commentary_removed" || actions[1] != "commentary_restriction_lifted" {
+		t.Fatalf("actions %v", actions)
+	}
+}
+
 func TestAuthorChangeResolvesReports(t *testing.T) {
 	h := newWriteHarness(t)
 	insertVenue(t, h.pool, verifiedVenue, "verified")
