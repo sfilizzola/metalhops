@@ -277,11 +277,43 @@ the reported commentary. An author-resolved report is not a moderator dismissal.
 _Avoid_: Deleted report
 
 **Check-in**:
-A User's memory of visiting a Verified Venue or a pending Venue in the public
-catalogue at a stated time. It remains in that User's history if the Venue is
-later rejected, closes, or returns to the public catalogue, and it may be
-recorded during the visit or retrospectively within 24 hours.
-_Avoid_: Verified presence, location proof, visit log
+A User's memory of visiting a Venue in the public catalogue at one fixed
+stated time, recorded during the visit or within 24 hours. The same User may
+have many Check-ins at that Venue; correcting one removes it and records
+another, and each remains in that User's history if the Venue is later
+rejected, Delisted, or returns to the public catalogue.
+_Avoid_: Verified presence, location proof, visit log, Visit
+
+**Check-in history**:
+That User's own Check-ins. The User can read it while a Community Suspension
+or a rename requirement stands. Recording a Check-in and removing one are
+contribution, so both are refused while either stands. A sign-in that is not
+yet a User has none.
+_Avoid_: Activity feed, public history, Check-in feed
+
+**Check-in feed**:
+A public Venue's list of its most recent 20 Check-ins, newest first, each
+showing its Checker's Public identity. Any User may view it, including one
+who must rename or is suspended; a sign-in that is not yet a User cannot.
+There is no per-Check-in private toggle. The `check_in_count` number is
+unrelated and stays visible to a sign-in that is not yet a User.
+_Avoid_: Activity feed, who's here, Check-in history
+
+**Check-in spacing**:
+The one-hour gap required between one User's remaining Check-ins at one
+Venue, including after that Venue is rejected or Delisted and then returns
+to the public catalogue. A gap of one hour or smaller is refused, any later
+stated time is allowed, including one microsecond past the hour, and removing
+a Check-in removes its spacing; another User's Check-in has none.
+_Avoid_: Cooldown, rate limit, global spacing
+
+## Flagged ambiguities
+
+**Anonymous Venue viewing**: Whether a sign-in that is not yet a User sees
+only a reduced "basics" view of a Venue, versus full Venue details as today,
+is undecided and deferred to a future redesign. Until resolved, Session 13
+changes nothing about existing open venue detail/review routes; it adds only
+the Check-in feed, which already requires being a User.
 
 ## Example dialogue
 
@@ -361,6 +393,80 @@ Their Venue Submission remains, but it has no Submitter.
 
 **Domain expert:** Yes, if it was within the last 24 hours. The Check-in is a
 user declaration, not proof of physical presence.
+
+**Developer:** This User already has a Check-in at The Riff from last night,
+and they were there again this evening. Is that the same Check-in?
+
+**Domain expert:** No. Each stated time is its own Check-in. Both stay in
+that User's history. There is no separate Visit.
+
+**Developer:** The User checked in at The Riff for 8pm, then realized they
+were at The Pit. Does that Check-in move to The Pit?
+
+**Domain expert:** No. That Check-in is removed. The Pit is a new Check-in.
+
+**Developer:** User A and User B both check in at The Pit for 10pm. User A
+then tries another Check-in there for a stated time closer than the Check-in
+spacing. Which ones exist?
+
+**Domain expert:** Both 10pm Check-ins exist. User A's second one does not.
+Spacing applies to one User's stated times at one Venue, not to other Users,
+and not to the moment the Check-in was recorded.
+
+**Developer:** User A already has a Check-in at The Pit. They try another at
+a stated time exactly the Check-in spacing later, and another one second
+after that.
+
+**Domain expert:** The equal gap is refused. One second past the spacing is
+allowed. A smaller gap is refused too.
+
+**Developer:** The stated time is one microsecond past the Check-in spacing.
+Is that Check-in allowed?
+
+**Domain expert:** Yes. Any stated time past the spacing is allowed. The
+stated time is not rounded to the nearest second.
+
+**Developer:** User A checks in at The Pit for 10:00. Can they check in again
+for 11:00, or for one microsecond after 11:00?
+
+**Domain expert:** 11:00 is refused. One microsecond after 11:00 is allowed.
+The Check-in spacing is one hour.
+
+**Developer:** User A checks in at The Pit for 10:00, removes that Check-in,
+and records one for 10:30. Is the 10:30 Check-in allowed?
+
+**Domain expert:** Yes. The removed Check-in no longer holds its hour. User
+B's Check-ins at The Pit are unchanged.
+
+**Developer:** User A checks in at The Pit for 10:00. The Pit is Delisted,
+then verified again at 10:30. User A records a Check-in for 10:40. Does the
+10:00 Check-in still exist, and is 10:40 allowed?
+
+**Domain expert:** The 10:00 Check-in stays in User A's history. 10:40 is
+refused, because that hour still holds. A Venue can close or leave the
+public catalogue, and that history stays. There is no deleted Venue.
+
+**Developer:** User A is under a Community Suspension and opens their
+Check-in history. Can they see the 10:00 Check-in at The Pit, and can they
+remove it?
+
+**Domain expert:** They can see it. They cannot remove it, and they cannot
+record another. A rename requirement is the same split. A sign-in that is
+not yet a User has no Check-in history.
+
+**Developer:** A stranger who has not signed in opens The Pit. Do they see
+the `check_in_count` number? Do they see who checked in?
+
+**Domain expert:** They see the number. They see nothing about who checked
+in; the Check-in feed needs a User. Once they become a User, they see the
+most recent 20 Check-ins there, newest first, by Public identity.
+
+**Developer:** User A is suspended and opens The Pit's Check-in feed. Can
+they see it?
+
+**Domain expert:** Yes. Viewing the feed is a read, like their own Check-in
+history. The suspension stops them from recording or removing a Check-in,
+not from reading.
 
 **Developer:** The Username is `HateFan` and a rename requirement is in place.
 The User changes it to `MetalFan`. Are they free to contribute?
