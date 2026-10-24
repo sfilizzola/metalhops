@@ -13,6 +13,7 @@ concurrency:
 jobs:
   release:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     environment: production
     env:
       SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
@@ -43,7 +44,7 @@ jobs:
       - name: Deploy
         run: |
           sep='?'; [[ $RENDER_DEPLOY_HOOK_URL == *\?* ]] && sep='&'
-          code=$(curl -sS -o /dev/null -w '%{http_code}' -X POST "${RENDER_DEPLOY_HOOK_URL}${sep}ref=${GITHUB_SHA}")
+          code=$(curl -sS --max-time 30 -o /dev/null -w '%{http_code}' -X POST "${RENDER_DEPLOY_HOOK_URL}${sep}ref=${GITHUB_SHA}")
           [[ $code == 200 || $code == 202 ]] || { echo "deploy hook returned $code"; exit 1; }
       - name: Wait for readiness
         run: |
