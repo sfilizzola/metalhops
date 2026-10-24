@@ -2,9 +2,11 @@
 
 This is the sequence guide for the admin design cycle and for a later Google
 Play disclosure. [`backend/openapi.yaml`](../backend/openapi.yaml) is the
-field contract. Each step names the method, path, caller, success status, and
-the `operationId` to read for fields. A rule appears here only when it
-changes the sequence. [CONTEXT.md](../CONTEXT.md) keeps the language.
+field contract, and [`docs/api/`](api/README.md) explains each route on its
+own in business terms, grouped as public, app, and moderation. Each step here
+names the method, path, caller, success status, and the `operationId` to read
+for fields. A rule appears here only when it changes the sequence.
+[CONTEXT.md](../CONTEXT.md) keeps the language.
 
 ## Calling the API
 

@@ -33,6 +33,10 @@ PostGIS). Run commands from `backend/`.
 - `internal/pgtest`: PostGIS test harness. Production code does not import it.
 - `openapi.yaml`: contract for implemented HTTP routes.
 
+[`docs/api/`](../docs/api/README.md) explains those routes in business
+terms, grouped as public, app, and moderation. Update it in the same pull
+request as a route change, alongside `openapi.yaml`.
+
 Before adding backend packages or seams, read
 [`docs/architecture/backend.md`](../docs/architecture/backend.md). Capability
 modules are the primary shape. Handler, service, and repository roles do not
