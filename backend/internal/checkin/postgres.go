@@ -239,3 +239,167 @@ func (s *Service) Create(ctx context.Context, cmd CreateCommand) (CheckIn, error
 	}
 	return checkIn, nil
 }
+
+const historySQL = `
+	select c.id::text, c.venue_id::text, c.visited_at, c.recorded_at,
+	       v.name, v.city, v.country_code, v.venue_type, v.verification_status
+	from check_ins c
+	join venues v on v.id = c.venue_id
+	where c.user_id = $1::uuid
+	  and ($2::timestamptz is null or (c.visited_at, c.id) < ($2, $3::uuid))
+	order by c.visited_at desc, c.id desc
+	limit $4`
+
+func (s *Service) ListOwn(ctx context.Context, q ListQuery) (Page, error) {
+	if err := ValidateLimit(q.Limit); err != nil {
+		return Page{}, err
+	}
+	var afterAt *time.Time
+	var afterID *string
+	if q.Cursor != "" {
+		at, id, err := decodeCursor(q.Cursor)
+		if err != nil {
+			return Page{}, err
+		}
+		afterAt, afterID = &at, &id
+	}
+	queryCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	rows, err := s.pool.Query(queryCtx, historySQL, q.UserID, afterAt, afterID, q.Limit+1)
+	if err != nil {
+		return Page{}, fmt.Errorf("checkin: list: %w", err)
+	}
+	defer rows.Close()
+	checkIns := []CheckIn{}
+	for rows.Next() {
+		var c CheckIn
+		if err := rows.Scan(&c.ID, &c.VenueID, &c.VisitedAt, &c.RecordedAt,
+			&c.Venue.Name, &c.Venue.City, &c.Venue.CountryCode, &c.Venue.VenueType, &c.Venue.VerificationStatus); err != nil {
+			return Page{}, fmt.Errorf("checkin: list: %w", err)
+		}
+		c.VisitedAt, c.RecordedAt = c.VisitedAt.UTC(), c.RecordedAt.UTC()
+		if c.Venue.VerificationStatus == "rejected" || c.Venue.VerificationStatus == "delisted" {
+			c.Venue.VenueType = nil
+		}
+		checkIns = append(checkIns, c)
+	}
+	if err := rows.Err(); err != nil {
+		return Page{}, fmt.Errorf("checkin: list: %w", err)
+	}
+	page := Page{CheckIns: checkIns}
+	if len(checkIns) > q.Limit {
+		page.CheckIns = checkIns[:q.Limit]
+		last := page.CheckIns[q.Limit-1]
+		next := encodeCursor(last.VisitedAt, last.ID)
+		page.NextCursor = &next
+	}
+	return page, nil
+}
+
+const feedSQL = `
+	select c.id::text, c.visited_at, c.recorded_at, p.status, p.username, p.display_name
+	from check_ins c
+	join profiles p on p.id = c.user_id
+	where c.venue_id = $1::uuid
+	order by c.recorded_at desc, c.id desc
+	limit $2`
+
+func (s *Service) ListVenueFeed(ctx context.Context, venueID, callerUserID string) ([]FeedItem, error) {
+	if !CanonicalID(venueID) {
+		return nil, invalidVenueID()
+	}
+	queryCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	var one int
+	err := s.pool.QueryRow(queryCtx, `
+		select 1
+		from venues v
+		where v.id = $1::uuid
+		  and v.verification_status in ('pending', 'verified')
+		  and exists (select 1 from venue_genres g where g.venue_id = v.id)
+		for share of v`, venueID).Scan(&one)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, ErrVenueNotFound
+	}
+	if err != nil {
+		return nil, fmt.Errorf("checkin: venue: %w", err)
+	}
+	err = s.pool.QueryRow(queryCtx, `select 1 from profiles where id = $1::uuid`, callerUserID).Scan(&one)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, profile.ErrProfileRequired
+	}
+	if err != nil {
+		return nil, fmt.Errorf("checkin: caller: %w", err)
+	}
+	rows, err := s.pool.Query(queryCtx, feedSQL, venueID, feedLimit)
+	if err != nil {
+		return nil, fmt.Errorf("checkin: feed: %w", err)
+	}
+	defer rows.Close()
+	items := []FeedItem{}
+	for rows.Next() {
+		var item FeedItem
+		var status, username, displayName string
+		if err := rows.Scan(&item.ID, &item.VisitedAt, &item.RecordedAt, &status, &username, &displayName); err != nil {
+			return nil, fmt.Errorf("checkin: feed: %w", err)
+		}
+		item.VisitedAt, item.RecordedAt = item.VisitedAt.UTC(), item.RecordedAt.UTC()
+		item.Checker = profile.PublicIdentity(status, username, displayName)
+		items = append(items, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("checkin: feed: %w", err)
+	}
+	return items, nil
+}
+
+func (s *Service) Delete(ctx context.Context, userID, checkInID string) error {
+	if !CanonicalID(checkInID) {
+		return &ValidationError{Fields: map[string]string{"check_in_id": "must be a canonical uuid"}}
+	}
+	if s.profiles == nil || s.writes == nil {
+		return errWritesUnavailable
+	}
+	txCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	if err := s.profiles.NormalizeExpiry(txCtx, userID); err != nil {
+		return err
+	}
+	tx, err := s.pool.Begin(txCtx)
+	if err != nil {
+		return fmt.Errorf("checkin: begin: %w", err)
+	}
+	defer func() { _ = tx.Rollback(context.Background()) }()
+	var one int
+	err = tx.QueryRow(txCtx, `
+		select 1 from check_ins where id = $1::uuid and user_id = $2::uuid for update`,
+		checkInID, userID).Scan(&one)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ErrCheckInNotFound
+	}
+	if err != nil {
+		return fmt.Errorf("checkin: read: %w", err)
+	}
+	if err := profile.RequireContributor(txCtx, tx, userID); err != nil {
+		return err
+	}
+	reservation, retryAfter, ok := s.writes.Reserve(userID)
+	if !ok {
+		return &RateLimitError{RetryAfter: retryAfter}
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			reservation.Cancel()
+		}
+	}()
+	if _, err := tx.Exec(txCtx, `delete from check_ins where id = $1::uuid`, checkInID); err != nil {
+		return fmt.Errorf("checkin: delete: %w", err)
+	}
+	if err := tx.Commit(txCtx); err != nil {
+		return fmt.Errorf("checkin: commit: %w", err)
+	}
+	reservation.Commit()
+	committed = true
+	return nil
+}
