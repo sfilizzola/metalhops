@@ -241,7 +241,7 @@ func venueSelect(distance, tier string) string {
 		case when v.verification_status = 'verified' then
 			(select count(*)::int from reviews r where r.venue_id = v.id)
 		else 0 end,
-		0,
+		(select count(*)::int from check_ins c where c.venue_id = v.id),
 		venue_name_key(v.name), ` + distance + `, ` + tier + `
 	from venues v`
 }

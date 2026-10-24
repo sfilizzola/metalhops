@@ -208,8 +208,115 @@ func checkAggregate(t *testing.T, label string, got Venue, wantAvg *float64, wan
 	if got.ReviewCount != wantCount {
 		t.Fatalf("%s: review count %d, want %d", label, got.ReviewCount, wantCount)
 	}
-	if got.CheckInCount != 0 {
-		t.Fatalf("%s: check-in count %d", label, got.CheckInCount)
+}
+
+func TestCheckInCountAggregates(t *testing.T) {
+	ctx := context.Background()
+	pool := testPool(t)
+	punk := genreID(t, pool, "Punk")
+	verified := "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+	pending := "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+	insertVenue(t, pool, verified, "Alpha", "verified", punk)
+	insertVenue(t, pool, pending, "Beta", "pending", punk)
+
+	users := []string{
+		"00000000-0000-4000-8000-000000000001",
+		"00000000-0000-4000-8000-000000000002",
+		"00000000-0000-4000-8000-000000000003",
+		"00000000-0000-4000-8000-000000000004",
+	}
+	for _, id := range users {
+		insertUser(t, pool, id, "", nil)
+	}
+
+	service := New(pool, nil, nil, time.Now)
+	listed := func(venueID string) *Venue {
+		t.Helper()
+		page, err := service.ListVenues(ctx, Query{Limit: 20})
+		if err != nil {
+			t.Fatalf("list err %v", err)
+		}
+		for i := range page.Venues {
+			if page.Venues[i].ID == venueID {
+				return &page.Venues[i]
+			}
+		}
+		return nil
+	}
+	assertCount := func(label, venueID string, want int) {
+		t.Helper()
+		got := listed(venueID)
+		if got == nil {
+			t.Fatalf("%s: venue missing from list", label)
+		}
+		detail, err := service.GetVenue(ctx, venueID)
+		if err != nil {
+			t.Fatalf("%s: detail err %v", label, err)
+		}
+		for _, v := range []Venue{*got, detail} {
+			if v.CheckInCount != want {
+				t.Fatalf("%s: check-in count %d, want %d", label, v.CheckInCount, want)
+			}
+			checkAggregate(t, label, v, nil, 0)
+		}
+	}
+	assertHidden := func(label, venueID string) {
+		t.Helper()
+		if listed(venueID) != nil {
+			t.Fatalf("%s: venue present in list", label)
+		}
+		if _, err := service.GetVenue(ctx, venueID); !errors.Is(err, ErrNotFound) {
+			t.Fatalf("%s: detail err %v", label, err)
+		}
+	}
+
+	assertCount("verified no check-ins", verified, 0)
+	assertCount("pending no check-ins", pending, 0)
+
+	for _, user := range users[:3] {
+		insertCheckIn(t, pool, verified, user)
+	}
+	for _, user := range users[2:] {
+		insertCheckIn(t, pool, pending, user)
+	}
+	assertCount("verified three", verified, 3)
+	assertCount("pending two", pending, 2)
+
+	if _, err := pool.Exec(ctx, `delete from check_ins where venue_id = $1 and user_id = $2`, verified, users[0]); err != nil {
+		t.Fatal(err)
+	}
+	assertCount("verified after delete", verified, 2)
+
+	if _, err := pool.Exec(ctx, `update venues set verification_status = 'delisted', delisting_reason = 'duplicate' where id = $1`, verified); err != nil {
+		t.Fatal(err)
+	}
+	assertHidden("delisted", verified)
+	if _, err := pool.Exec(ctx, `update venues set verification_status = 'verified', delisting_reason = null where id = $1`, verified); err != nil {
+		t.Fatal(err)
+	}
+	assertCount("reopened", verified, 2)
+
+	if _, err := pool.Exec(ctx, `update venues set verification_status = 'rejected', rejection_reason = 'other', rejection_note = 'seed' where id = $1`, pending); err != nil {
+		t.Fatal(err)
+	}
+	assertHidden("rejected", pending)
+	if _, err := pool.Exec(ctx, `update venues set verification_status = 'pending', rejection_reason = null, rejection_note = null where id = $1`, pending); err != nil {
+		t.Fatal(err)
+	}
+	assertCount("pending again", pending, 2)
+
+	if _, err := pool.Exec(ctx, `delete from check_ins where venue_id = $1`, verified); err != nil {
+		t.Fatal(err)
+	}
+	assertCount("verified emptied", verified, 0)
+}
+
+func insertCheckIn(t *testing.T, pool *pgxpool.Pool, venueID, userID string) {
+	t.Helper()
+	if _, err := pool.Exec(context.Background(), `
+		insert into check_ins (venue_id, user_id, visited_at, recorded_at)
+		values ($1, $2, now(), now())`, venueID, userID); err != nil {
+		t.Fatal(err)
 	}
 }
 
