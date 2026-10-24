@@ -2,6 +2,7 @@ package contract
 
 import (
 	"bytes"
+	"strings"
 	"testing"
 )
 
@@ -111,6 +112,8 @@ func TestOpenAPIDocument(t *testing.T) {
 		"CheckInFeedItem:",
 		"Checker:",
 		"check_in",
+		"lift_commentary_restriction",
+		"commentary_restriction_lifted",
 	} {
 		if !bytes.Contains(OpenAPI, []byte(want)) {
 			t.Fatalf("missing %q", want)
@@ -203,6 +206,64 @@ func TestOpenAPIDocument(t *testing.T) {
 		}
 		if bytes.Contains(rest, []byte("security:")) {
 			t.Fatalf("%s became protected", op)
+		}
+	}
+}
+
+func TestSuccessExamples(t *testing.T) {
+	lines := strings.Split(string(OpenAPI), "\n")
+	var missing []string
+	operation := ""
+	for i, line := range lines {
+		if line == "components:" {
+			break
+		}
+		if trimmed := strings.TrimSpace(line); strings.HasPrefix(trimmed, "operationId:") {
+			operation = strings.TrimSpace(strings.TrimPrefix(trimmed, "operationId:"))
+		}
+		if line != `        "200":` && line != `        "201":` {
+			continue
+		}
+		var block []string
+		for j := i + 1; j < len(lines); j++ {
+			next := lines[j]
+			if strings.TrimSpace(next) != "" && !strings.HasPrefix(next, strings.Repeat(" ", 9)) {
+				break
+			}
+			block = append(block, next)
+		}
+		first := ""
+		for _, b := range block {
+			if strings.TrimSpace(b) != "" {
+				first = strings.TrimSpace(b)
+				break
+			}
+		}
+		if strings.HasPrefix(first, "$ref:") {
+			continue
+		}
+		body := strings.Join(block, "\n")
+		if strings.Contains(body, "application/json") && !strings.Contains(body, "example:") && !strings.Contains(body, "examples:") {
+			missing = append(missing, operation+" "+strings.Trim(strings.TrimSpace(line), `":`))
+		}
+	}
+	if len(missing) > 0 {
+		t.Fatalf("%d success responses have no example:\n%s", len(missing), strings.Join(missing, "\n"))
+	}
+}
+
+func TestReadyCommit(t *testing.T) {
+	start := bytes.Index(OpenAPI, []byte("operationId: getReady"))
+	if start < 0 {
+		t.Fatal("missing getReady")
+	}
+	rest := OpenAPI[start+len("operationId: getReady"):]
+	if next := bytes.Index(rest, []byte("operationId:")); next >= 0 {
+		rest = rest[:next]
+	}
+	for _, want := range []string{"commit:", "^[0-9a-f]{40}$"} {
+		if !bytes.Contains(rest, []byte(want)) {
+			t.Fatalf("getReady missing %q", want)
 		}
 	}
 }

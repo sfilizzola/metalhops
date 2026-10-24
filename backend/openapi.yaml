@@ -40,8 +40,18 @@ paths:
                 properties:
                   status:
                     const: ok
-              example:
-                status: ok
+                  commit:
+                    type: string
+                    pattern: "^[0-9a-f]{40}$"
+                    description: The deployed Git commit. Present only when RENDER_GIT_COMMIT is 40 lowercase hex characters.
+              examples:
+                ok:
+                  value:
+                    status: ok
+                release:
+                  value:
+                    status: ok
+                    commit: 4e8b56ac08852169c599c25c899044efaf3f579a
         "503":
           description: A required dependency is not ready.
           content:
@@ -266,6 +276,27 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/SubmissionResponse"
+              example:
+                data:
+                  id: bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb
+                  name: Iron Maiden Pub
+                  description: null
+                  latitude: 59.91
+                  longitude: 10.75
+                  address: 1 Metal Street
+                  city: Oslo
+                  country_code: "NO"
+                  venue_type: pub
+                  genres:
+                    - id: 1
+                      name: Classic rock
+                    - id: 4
+                      name: Death metal
+                  verification_status: pending
+                  rejection_reason: null
+                  rejection_note: null
+                  created_at: "2026-10-15T12:00:00Z"
+                  updated_at: "2026-10-15T12:00:00Z"
         "400":
           description: The body or idempotency key is invalid, or a Genre id does not exist.
           content:
@@ -462,6 +493,7 @@ paths:
                   - id: dddddddd-dddd-4ddd-8ddd-dddddddddddd
                     rating: 4
                     commentary: loud and cold
+                    commentary_removed: false
                     author:
                       username: metal_fan
                       display_name: Metal Fan
@@ -519,6 +551,22 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/OwnReviewResponse"
+              example:
+                data:
+                  id: dddddddd-dddd-4ddd-8ddd-dddddddddddd
+                  user_id: eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee
+                  rating: 4
+                  commentary: null
+                  commentary_removed: true
+                  commentary_restriction:
+                    reason: spam
+                    note: keep it down
+                    created_at: "2026-10-21T10:00:00Z"
+                  author:
+                    username: metal_fan
+                    display_name: Metal Fan
+                  created_at: "2026-10-21T09:00:00Z"
+                  updated_at: "2026-10-21T10:00:00Z"
         "400":
           description: The id is not a canonical UUID, or a query parameter was sent.
           content:
@@ -568,6 +616,19 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/OwnReviewResponse"
+              example:
+                data:
+                  id: dddddddd-dddd-4ddd-8ddd-dddddddddddd
+                  user_id: eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee
+                  rating: 5
+                  commentary: loud and cold
+                  commentary_removed: false
+                  commentary_restriction: null
+                  author:
+                    username: metal_fan
+                    display_name: Metal Fan
+                  created_at: "2026-10-21T09:00:00Z"
+                  updated_at: "2026-10-22T09:00:00Z"
         "201":
           description: The Review was created.
           content:
@@ -580,6 +641,8 @@ paths:
                   user_id: eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee
                   rating: 4
                   commentary: loud and cold
+                  commentary_removed: false
+                  commentary_restriction: null
                   author:
                     username: metal_fan
                     display_name: Metal Fan
@@ -717,6 +780,15 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ReviewReportResponse"
+              example:
+                data:
+                  id: cccccccc-cccc-4ccc-8ccc-cccccccccccc
+                  review_id: dddddddd-dddd-4ddd-8ddd-dddddddddddd
+                  venue_id: bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb
+                  reason: harassment
+                  note: null
+                  status: pending
+                  created_at: "2026-10-21T09:30:00Z"
         "400":
           description: Validation failed, the caller reported their own Review, or the commentary is not public.
           content:
@@ -829,6 +901,18 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/CheckInResponse"
+              example:
+                data:
+                  id: ffffffff-ffff-4fff-8fff-ffffffffffff
+                  venue_id: bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb
+                  visited_at: "2026-10-24T20:30:00Z"
+                  recorded_at: "2026-10-24T20:30:00Z"
+                  venue:
+                    name: Iron Maiden Pub
+                    city: Oslo
+                    country_code: "NO"
+                    venue_type: pub
+                    verification_status: verified
         "400":
           description: The id, body, or idempotency key is invalid.
           content:
@@ -934,6 +1018,14 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/CheckInFeedResponse"
+              example:
+                data:
+                  - id: ffffffff-ffff-4fff-8fff-ffffffffffff
+                    visited_at: "2026-10-24T20:30:00Z"
+                    recorded_at: "2026-10-24T20:30:00Z"
+                    checker:
+                      username: metal_fan
+                      display_name: Metal Fan
         "400":
           description: The id is not a canonical UUID, or a query parameter was sent.
           content:
@@ -1013,6 +1105,36 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ReviewReportItemListResponse"
+              example:
+                data:
+                  - id: cccccccc-cccc-4ccc-8ccc-cccccccccccc
+                    reason: harassment
+                    note: null
+                    status: pending
+                    review_id: dddddddd-dddd-4ddd-8ddd-dddddddddddd
+                    venue_id: bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb
+                    rating: 4
+                    commentary: loud and cold
+                    commentary_removed: false
+                    created_at: "2026-10-21T09:30:00Z"
+                    reporter:
+                      id: 00000000-0000-4000-8000-000000000001
+                      username: reporter
+                      display_name: Reporter
+                      status: active
+                      moderation_reason: null
+                      moderation_note: null
+                      suspended_until: null
+                    author:
+                      id: eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee
+                      username: metal_fan
+                      display_name: Metal Fan
+                      status: active
+                      moderation_reason: null
+                      moderation_note: null
+                      suspended_until: null
+                meta:
+                  next_cursor: null
         "400":
           description: The limit or cursor is invalid, or a query parameter is unknown.
           content:
@@ -1060,6 +1182,49 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ModerationReviewResponse"
+              example:
+                data:
+                  review:
+                    id: dddddddd-dddd-4ddd-8ddd-dddddddddddd
+                    venue_id: bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb
+                    user_id: eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee
+                    rating: 4
+                    commentary: null
+                    commentary_removed: true
+                    commentary_removed_at: "2026-10-21T10:00:00Z"
+                    author:
+                      id: eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee
+                      username: metal_fan
+                      display_name: Metal Fan
+                      status: active
+                      moderation_reason: null
+                      moderation_note: null
+                      suspended_until: null
+                    created_at: "2026-10-21T09:00:00Z"
+                    updated_at: "2026-10-21T10:00:00Z"
+                  reports: []
+                  history:
+                    - id: 00000000-0000-4000-8000-000000000010
+                      action: commentary_removed
+                      reason: spam
+                      note: keep it down
+                      review_id: dddddddd-dddd-4ddd-8ddd-dddddddddddd
+                      reviewer_user_id: eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee
+                      venue_id: bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb
+                      operator_user_id: 00000000-0000-4000-8000-000000000003
+                      created_at: "2026-10-21T10:00:00Z"
+                  commentary_restriction:
+                    created_at: "2026-10-21T10:00:00Z"
+                    source:
+                      id: 00000000-0000-4000-8000-000000000010
+                      action: commentary_removed
+                      reason: spam
+                      note: keep it down
+                      review_id: dddddddd-dddd-4ddd-8ddd-dddddddddddd
+                      reviewer_user_id: eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee
+                      venue_id: bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb
+                      operator_user_id: 00000000-0000-4000-8000-000000000003
+                      created_at: "2026-10-21T10:00:00Z"
         "400":
           description: The id is not a canonical UUID.
           content:
@@ -1099,8 +1264,8 @@ paths:
   /v1/moderation/reviews/{reviewID}/actions:
     post:
       operationId: applyReviewAction
-      summary: Remove commentary or delete a review
-      description: Requires Idempotency-Key. A write that appends an audit row is 201. A remove_commentary no-op is 200 with action_id null and is not stored. The stored idempotency body never contains a commentary key.
+      summary: Remove commentary, delete a review, or lift a commentary restriction
+      description: Requires Idempotency-Key. A write that appends an audit row is 201. A remove_commentary no-op is 200 with action_id null and is not stored. The stored idempotency body never contains a commentary key. lift_commentary_restriction sends only action. It copies the restriction's source reason and note into a commentary_restriction_lifted audit row, deletes the restriction, and leaves the Review unchanged. When the User and Venue pair has no restriction, the lift is 200 with action_id null, writes nothing, and is not stored.
       security:
         - bearerAuth: []
       parameters:
@@ -1135,21 +1300,124 @@ paths:
                   action: delete_review
                   reason: other
                   note: Illegal content.
+              lift:
+                value:
+                  action: lift_commentary_restriction
       responses:
         "200":
-          description: remove_commentary was a no-op. action_id is null.
+          description: remove_commentary was a no-op, or the lift found no restriction for the pair. action_id is null.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ReviewActionResponse"
+              examples:
+                remove:
+                  value:
+                    data:
+                      action_id: null
+                      review_id: dddddddd-dddd-4ddd-8ddd-dddddddddddd
+                      review:
+                        id: dddddddd-dddd-4ddd-8ddd-dddddddddddd
+                        venue_id: bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb
+                        user_id: eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee
+                        rating: 4
+                        commentary: null
+                        commentary_removed: true
+                        commentary_removed_at: "2026-10-21T10:00:00Z"
+                        author:
+                          id: eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee
+                          username: metal_fan
+                          display_name: Metal Fan
+                          status: active
+                          moderation_reason: null
+                          moderation_note: null
+                          suspended_until: null
+                        created_at: "2026-10-21T09:00:00Z"
+                        updated_at: "2026-10-21T10:00:00Z"
+                lift:
+                  value:
+                    data:
+                      action_id: null
+                      review_id: dddddddd-dddd-4ddd-8ddd-dddddddddddd
+                      review:
+                        id: dddddddd-dddd-4ddd-8ddd-dddddddddddd
+                        venue_id: bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb
+                        user_id: eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee
+                        rating: 4
+                        commentary: loud and cold
+                        commentary_removed: false
+                        commentary_removed_at: null
+                        author:
+                          id: eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee
+                          username: metal_fan
+                          display_name: Metal Fan
+                          status: active
+                          moderation_reason: null
+                          moderation_note: null
+                          suspended_until: null
+                        created_at: "2026-10-21T09:00:00Z"
+                        updated_at: "2026-10-21T09:00:00Z"
         "201":
-          description: The moderation action was stored.
+          description: The moderation action was stored. delete_review returns review null.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ReviewActionResponse"
+              examples:
+                remove:
+                  value:
+                    data:
+                      action_id: 00000000-0000-4000-8000-000000000010
+                      review_id: dddddddd-dddd-4ddd-8ddd-dddddddddddd
+                      review:
+                        id: dddddddd-dddd-4ddd-8ddd-dddddddddddd
+                        venue_id: bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb
+                        user_id: eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee
+                        rating: 4
+                        commentary: null
+                        commentary_removed: true
+                        commentary_removed_at: "2026-10-21T10:00:00Z"
+                        author:
+                          id: eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee
+                          username: metal_fan
+                          display_name: Metal Fan
+                          status: active
+                          moderation_reason: null
+                          moderation_note: null
+                          suspended_until: null
+                        created_at: "2026-10-21T09:00:00Z"
+                        updated_at: "2026-10-21T10:00:00Z"
+                delete:
+                  value:
+                    data:
+                      action_id: 00000000-0000-4000-8000-000000000011
+                      review_id: dddddddd-dddd-4ddd-8ddd-dddddddddddd
+                      review: null
+                lift:
+                  value:
+                    data:
+                      action_id: 00000000-0000-4000-8000-000000000012
+                      review_id: dddddddd-dddd-4ddd-8ddd-dddddddddddd
+                      review:
+                        id: dddddddd-dddd-4ddd-8ddd-dddddddddddd
+                        venue_id: bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb
+                        user_id: eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee
+                        rating: 4
+                        commentary: null
+                        commentary_removed: true
+                        commentary_removed_at: "2026-10-21T10:00:00Z"
+                        author:
+                          id: eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee
+                          username: metal_fan
+                          display_name: Metal Fan
+                          status: active
+                          moderation_reason: null
+                          moderation_note: null
+                          suspended_until: null
+                        created_at: "2026-10-21T09:00:00Z"
+                        updated_at: "2026-10-21T10:00:00Z"
         "400":
-          description: The body, Review id, or idempotency key is invalid.
+          description: The body, Review id, or idempotency key is invalid. A lift that sends a non-empty reason or a non-null note fails with that field must be omitted.
           content:
             application/json:
               schema:
@@ -1229,6 +1497,34 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ReviewReportItemResponse"
+              example:
+                data:
+                  id: cccccccc-cccc-4ccc-8ccc-cccccccccccc
+                  reason: harassment
+                  note: null
+                  status: dismissed
+                  review_id: dddddddd-dddd-4ddd-8ddd-dddddddddddd
+                  venue_id: bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb
+                  rating: 4
+                  commentary: loud and cold
+                  commentary_removed: false
+                  created_at: "2026-10-21T09:30:00Z"
+                  reporter:
+                    id: 00000000-0000-4000-8000-000000000001
+                    username: reporter
+                    display_name: Reporter
+                    status: active
+                    moderation_reason: null
+                    moderation_note: null
+                    suspended_until: null
+                  author:
+                    id: eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee
+                    username: metal_fan
+                    display_name: Metal Fan
+                    status: active
+                    moderation_reason: null
+                    moderation_note: null
+                    suspended_until: null
         "400":
           description: The body or report id is invalid.
           content:
@@ -1353,6 +1649,15 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ProfileResponse"
+              example:
+                data:
+                  id: 00000000-0000-4000-8000-000000000001
+                  username: metal_fan
+                  display_name: Metal Fan
+                  status: active
+                  moderation_reason: null
+                  moderation_note: null
+                  suspended_until: null
         "400":
           description: The profile was invalid or the username is reserved.
           content:
@@ -1512,6 +1817,27 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/SubmissionListResponse"
+              example:
+                data:
+                  - id: aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa
+                    name: Alpha
+                    description: A metal bar
+                    latitude: 59.91
+                    longitude: 10.75
+                    address: 1 Metal Street
+                    city: Oslo
+                    country_code: "NO"
+                    venue_type: bar
+                    genres:
+                      - id: 1
+                        name: Classic rock
+                    verification_status: rejected
+                    rejection_reason: insufficient_information
+                    rejection_note: Add the street number.
+                    created_at: "2026-10-15T12:00:00Z"
+                    updated_at: "2026-10-20T12:00:00Z"
+                meta:
+                  next_cursor: null
         "400":
           description: The limit or cursor is invalid, or a parameter is repeated or unknown.
           content:
@@ -1549,6 +1875,25 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/SubmissionResponse"
+              example:
+                data:
+                  id: aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa
+                  name: Alpha
+                  description: A metal bar
+                  latitude: 59.91
+                  longitude: 10.75
+                  address: 1 Metal Street
+                  city: Oslo
+                  country_code: "NO"
+                  venue_type: bar
+                  genres:
+                    - id: 1
+                      name: Classic rock
+                  verification_status: rejected
+                  rejection_reason: insufficient_information
+                  rejection_note: Add the street number.
+                  created_at: "2026-10-15T12:00:00Z"
+                  updated_at: "2026-10-20T12:00:00Z"
         "400":
           description: The id is not a canonical UUID, or a query parameter was sent.
           content:
@@ -1595,6 +1940,25 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/SubmissionResponse"
+              example:
+                data:
+                  id: aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa
+                  name: Alpha
+                  description: A metal bar
+                  latitude: 59.91
+                  longitude: 10.75
+                  address: 12 Metal Street
+                  city: Oslo
+                  country_code: "NO"
+                  venue_type: bar
+                  genres:
+                    - id: 1
+                      name: Classic rock
+                  verification_status: pending
+                  rejection_reason: null
+                  rejection_note: null
+                  created_at: "2026-10-15T12:00:00Z"
+                  updated_at: "2026-10-21T12:00:00Z"
         "400":
           description: The id or body is invalid, or a Genre id does not exist.
           content:
@@ -1669,6 +2033,20 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/CheckInListResponse"
+              example:
+                data:
+                  - id: ffffffff-ffff-4fff-8fff-ffffffffffff
+                    venue_id: bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb
+                    visited_at: "2026-10-24T20:30:00Z"
+                    recorded_at: "2026-10-24T20:30:00Z"
+                    venue:
+                      name: Iron Maiden Pub
+                      city: Oslo
+                      country_code: "NO"
+                      venue_type: pub
+                      verification_status: verified
+                meta:
+                  next_cursor: null
         "400":
           description: The limit or cursor is invalid, or a parameter is repeated or unknown.
           content:
@@ -2586,6 +2964,30 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/VenueReportItemResponse"
+              example:
+                data:
+                  id: cccccccc-cccc-4ccc-8ccc-cccccccccccc
+                  reason: permanently_closed
+                  note: null
+                  status: dismissed
+                  created_at: "2026-10-20T12:00:00Z"
+                  reporter:
+                    id: 00000000-0000-4000-8000-000000000001
+                    username: reporter
+                    display_name: Reporter
+                    status: active
+                    moderation_reason: null
+                    moderation_note: null
+                    suspended_until: null
+                    created_at: "2026-10-01T12:00:00Z"
+                    updated_at: "2026-10-01T12:00:00Z"
+                  venue:
+                    id: aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa
+                    name: Alpha
+                    city: Oslo
+                    country_code: "NO"
+                    verification_status: verified
+                  submitter: null
         "400":
           description: The body or report id is invalid.
           content:
@@ -2667,6 +3069,63 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ModerationVenueResponse"
+              example:
+                data:
+                  id: bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb
+                  name: Iron Maiden Pub
+                  description: null
+                  latitude: 59.91
+                  longitude: 10.75
+                  address: 1 Metal Street
+                  city: Oslo
+                  country_code: "NO"
+                  venue_type: pub
+                  genres:
+                    - id: 1
+                      name: Classic rock
+                  verification_status: verified
+                  rejection_reason: null
+                  rejection_note: null
+                  delisting_reason: null
+                  delisting_note: null
+                  created_at: "2026-10-15T12:00:00Z"
+                  updated_at: "2026-10-16T12:00:00Z"
+                  submitter:
+                    id: 00000000-0000-4000-8000-000000000002
+                    username: metalfan
+                    display_name: Metal Fan
+                    status: active
+                    moderation_reason: null
+                    moderation_note: null
+                    suspended_until: null
+                    created_at: "2026-10-01T12:00:00Z"
+                    updated_at: "2026-10-01T12:00:00Z"
+                  reports:
+                    - id: cccccccc-cccc-4ccc-8ccc-cccccccccccc
+                      reason: permanently_closed
+                      note: null
+                      created_at: "2026-10-20T12:00:00Z"
+                      reporter:
+                        id: 00000000-0000-4000-8000-000000000001
+                        username: reporter
+                        display_name: Reporter
+                        status: active
+                        moderation_reason: null
+                        moderation_note: null
+                        suspended_until: null
+                        created_at: "2026-10-01T12:00:00Z"
+                        updated_at: "2026-10-01T12:00:00Z"
+                  history:
+                    - id: 00000000-0000-4000-8000-000000000010
+                      action: verify
+                      prior_status: pending
+                      new_status: verified
+                      rejection_reason: null
+                      rejection_note: null
+                      delisting_reason: null
+                      delisting_note: null
+                      actor_user_id: 00000000-0000-4000-8000-000000000003
+                      created_at: "2026-10-16T12:00:00Z"
         "400":
           description: The Venue id is not canonical.
           content:
@@ -2729,6 +3188,27 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ModeratedVenueResponse"
+              example:
+                data:
+                  id: bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb
+                  name: Iron Maiden Pub
+                  description: null
+                  latitude: 59.91
+                  longitude: 10.75
+                  address: 12 Metal Street
+                  city: Oslo
+                  country_code: "NO"
+                  venue_type: pub
+                  genres:
+                    - id: 1
+                      name: Classic rock
+                  verification_status: verified
+                  rejection_reason: null
+                  rejection_note: null
+                  delisting_reason: null
+                  delisting_note: null
+                  created_at: "2026-10-15T12:00:00Z"
+                  updated_at: "2026-10-20T12:00:00Z"
         "400":
           description: The id or body is invalid, or a Genre id does not exist.
           content:
@@ -2841,12 +3321,58 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/VenueActionResponse"
+              example:
+                data:
+                  action_id: null
+                  venue:
+                    id: bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb
+                    name: Iron Maiden Pub
+                    description: null
+                    latitude: 59.91
+                    longitude: 10.75
+                    address: 1 Metal Street
+                    city: Oslo
+                    country_code: "NO"
+                    venue_type: pub
+                    genres:
+                      - id: 1
+                        name: Classic rock
+                    verification_status: verified
+                    rejection_reason: null
+                    rejection_note: null
+                    delisting_reason: null
+                    delisting_note: null
+                    created_at: "2026-10-15T12:00:00Z"
+                    updated_at: "2026-10-16T12:00:00Z"
         "201":
           description: The moderation action, or a feedback-only change, was stored.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/VenueActionResponse"
+              example:
+                data:
+                  action_id: 00000000-0000-4000-8000-000000000010
+                  venue:
+                    id: bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb
+                    name: Iron Maiden Pub
+                    description: null
+                    latitude: 59.91
+                    longitude: 10.75
+                    address: 1 Metal Street
+                    city: Oslo
+                    country_code: "NO"
+                    venue_type: pub
+                    genres:
+                      - id: 1
+                        name: Classic rock
+                    verification_status: delisted
+                    rejection_reason: null
+                    rejection_note: null
+                    delisting_reason: permanently_closed
+                    delisting_note: null
+                    created_at: "2026-10-15T12:00:00Z"
+                    updated_at: "2026-10-20T12:00:00Z"
         "400":
           description: The body, Venue id, or idempotency key is invalid.
           content:
@@ -3255,14 +3781,15 @@ components:
     ReviewModerationAction:
       type: object
       additionalProperties: false
-      required: [action, reason]
+      required: [action]
       properties:
         action:
           type: string
-          enum: [remove_commentary, delete_review]
+          enum: [remove_commentary, delete_review, lift_commentary_restriction]
         reason:
           type: string
           enum: [spam, harassment, hate_or_discrimination, personal_information, illegal_content, off_topic, other]
+          description: Required for remove_commentary and delete_review. Must be omitted for lift_commentary_restriction.
         note:
           type: [string, "null"]
           maxLength: 1000
@@ -3310,7 +3837,7 @@ components:
           format: uuid
         action:
           type: string
-          enum: [commentary_removed, review_deleted]
+          enum: [commentary_removed, review_deleted, commentary_restriction_lifted]
         reason:
           type: string
         note:
