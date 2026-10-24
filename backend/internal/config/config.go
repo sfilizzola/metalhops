@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -21,6 +22,7 @@ type Config struct {
 	SupabaseURL            string
 	SupabaseJWTAudience    string
 	SupabaseServiceRoleKey string
+	CheckInSpacing         time.Duration
 }
 
 func Load() (Config, error) {
@@ -67,6 +69,10 @@ func load(lookup func(string) (string, bool), dir string) (Config, error) {
 	if serviceRoleKey == "" {
 		return Config{}, fmt.Errorf("SUPABASE_SERVICE_ROLE_KEY is required")
 	}
+	spacing, err := parseCheckInSpacing(value("CHECKIN_SPACING"))
+	if err != nil {
+		return Config{}, err
+	}
 	return Config{
 		Port:                   port,
 		DatabaseURL:            databaseURL,
@@ -75,7 +81,20 @@ func load(lookup func(string) (string, bool), dir string) (Config, error) {
 		SupabaseURL:            supabaseURL,
 		SupabaseJWTAudience:    audience,
 		SupabaseServiceRoleKey: serviceRoleKey,
+		CheckInSpacing:         spacing,
 	}, nil
+}
+
+func parseCheckInSpacing(value string) (time.Duration, error) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return time.Hour, nil
+	}
+	spacing, err := time.ParseDuration(value)
+	if err != nil || spacing <= 0 {
+		return 0, fmt.Errorf("CHECKIN_SPACING must be a positive duration")
+	}
+	return spacing, nil
 }
 
 func parseSupabaseURL(value string) (string, error) {

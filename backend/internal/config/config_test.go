@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestLoadEnvironment(t *testing.T) {
@@ -32,6 +33,19 @@ func TestLoadEnvironment(t *testing.T) {
 	}
 	if cfg.SupabaseURL != "https://project.supabase.co" || cfg.SupabaseJWTAudience != "authenticated" || cfg.SupabaseServiceRoleKey != "service-secret" {
 		t.Fatalf("supabase %#v", cfg)
+	}
+	if cfg.CheckInSpacing != time.Hour {
+		t.Fatalf("spacing %s", cfg.CheckInSpacing)
+	}
+	lookup["CHECKIN_SPACING"] = " 90m "
+	cfg, err = load(getenv, dir)
+	if err != nil || cfg.CheckInSpacing != 90*time.Minute {
+		t.Fatalf("spacing %s %v", cfg.CheckInSpacing, err)
+	}
+	lookup["CHECKIN_SPACING"] = ""
+	cfg, err = load(getenv, dir)
+	if err != nil || cfg.CheckInSpacing != time.Hour {
+		t.Fatalf("empty spacing %s %v", cfg.CheckInSpacing, err)
 	}
 
 	lookup["PORT"] = "9090"
@@ -67,6 +81,9 @@ func TestLoadRejectsEnvironment(t *testing.T) {
 		{name: "supabase fragment", env: map[string]string{"DATABASE_URL": validURL, "SUPABASE_URL": "https://project.supabase.co#service-secret", "SUPABASE_JWT_AUDIENCE": "authenticated", "SUPABASE_SERVICE_ROLE_KEY": "service-secret"}, errText: "SUPABASE_URL must be an absolute HTTPS URL or a loopback HTTP URL"},
 		{name: "missing audience", env: map[string]string{"DATABASE_URL": validURL, "SUPABASE_URL": "https://project.supabase.co", "SUPABASE_SERVICE_ROLE_KEY": "service-secret"}, errText: "SUPABASE_JWT_AUDIENCE is required"},
 		{name: "missing service key", env: map[string]string{"DATABASE_URL": validURL, "SUPABASE_URL": "https://project.supabase.co", "SUPABASE_JWT_AUDIENCE": "authenticated"}, errText: "SUPABASE_SERVICE_ROLE_KEY is required"},
+		{name: "zero spacing", env: map[string]string{"DATABASE_URL": validURL, "SUPABASE_URL": "https://project.supabase.co", "SUPABASE_JWT_AUDIENCE": "authenticated", "SUPABASE_SERVICE_ROLE_KEY": "service-secret", "CHECKIN_SPACING": "0s"}, errText: "CHECKIN_SPACING must be a positive duration"},
+		{name: "negative spacing", env: map[string]string{"DATABASE_URL": validURL, "SUPABASE_URL": "https://project.supabase.co", "SUPABASE_JWT_AUDIENCE": "authenticated", "SUPABASE_SERVICE_ROLE_KEY": "service-secret", "CHECKIN_SPACING": "-1h"}, errText: "CHECKIN_SPACING must be a positive duration"},
+		{name: "bad spacing", env: map[string]string{"DATABASE_URL": validURL, "SUPABASE_URL": "https://project.supabase.co", "SUPABASE_JWT_AUDIENCE": "authenticated", "SUPABASE_SERVICE_ROLE_KEY": "service-secret", "CHECKIN_SPACING": "one hour"}, errText: "CHECKIN_SPACING must be a positive duration"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
