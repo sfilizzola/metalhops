@@ -394,7 +394,7 @@ paths:
                       name: Classic rock
                   average_rating: 4.3
                   review_count: 3
-                  check_in_count: 0
+                  check_in_count: 12
         "400":
           description: The id is not a canonical UUID, or a query parameter was sent.
           content:
@@ -786,6 +786,201 @@ paths:
                       code: quota_exceeded
                       message: The report limit has been reached.
                       request_id: abc
+        "500":
+          $ref: "#/components/responses/Internal"
+        "502":
+          $ref: "#/components/responses/AuthProvider"
+  /v1/venues/{venueID}/check-ins:
+    parameters:
+      - name: venueID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          pattern: "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    post:
+      operationId: createCheckIn
+      summary: Check in at a venue
+      description: Records a visit by the caller to a pending or verified Venue. Requires Idempotency-Key. Steps before idempotency lookup are not replayed.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          description: 8 to 128 printable ASCII characters. The idempotency operation is check_in. A replay returns the stored 201 body.
+          schema:
+            type: string
+            minLength: 8
+            maxLength: 128
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CheckInRequest"
+            example:
+              visited_at: "2026-10-24T20:30:00Z"
+      responses:
+        "201":
+          description: The Check-in was stored.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CheckInResponse"
+        "400":
+          description: The id, body, or idempotency key is invalid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                timestamp:
+                  value:
+                    error:
+                      code: validation_error
+                      message: The request is invalid.
+                      request_id: abc
+                      fields:
+                        visited_at: must be a timestamp
+                past:
+                  value:
+                    error:
+                      code: validation_error
+                      message: The request is invalid.
+                      request_id: abc
+                      fields:
+                        visited_at: must be within the last 24 hours
+                future:
+                  value:
+                    error:
+                      code: validation_error
+                      message: The request is invalid.
+                      request_id: abc
+                      fields:
+                        visited_at: must not be more than 5 minutes ahead
+                key:
+                  value:
+                    error:
+                      code: validation_error
+                      message: The request is invalid.
+                      request_id: abc
+                      fields:
+                        idempotency_key: required
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/ContributionForbidden"
+        "404":
+          description: The Venue is not in the public catalogue.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                error:
+                  code: venue_not_found
+                  message: Venue not found.
+                  request_id: abc
+        "409":
+          description: Another of the caller's Check-ins at this Venue is within the spacing window of this visit, the caller has no profile, or the idempotency key was reused. The spacing window defaults to one hour; the code stays check_in_spacing when the window changes.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                spacing:
+                  value:
+                    error:
+                      code: check_in_spacing
+                      message: Another check-in at this venue is too close to this visit.
+                      request_id: abc
+                      details:
+                        check_in_id: ffffffff-ffff-4fff-8fff-ffffffffffff
+                        visited_at: "2026-10-24T20:00:00Z"
+                profile:
+                  value:
+                    error:
+                      code: profile_required
+                      message: Create a profile first.
+                      request_id: abc
+                idempotency:
+                  value:
+                    error:
+                      code: idempotency_key_reused
+                      message: That idempotency key was already used.
+                      request_id: abc
+        "413":
+          $ref: "#/components/responses/BodyTooLarge"
+        "415":
+          $ref: "#/components/responses/UnsupportedMedia"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/Internal"
+        "502":
+          $ref: "#/components/responses/AuthProvider"
+    get:
+      operationId: listVenueCheckIns
+      summary: List a venue's recent check-ins
+      description: Takes no query parameters. Requires a Profile in any status. A checker who must rename or is suspended appears as MetalHops User with a null username.
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: At most 20 Check-ins, newest recorded_at first.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CheckInFeedResponse"
+        "400":
+          description: The id is not a canonical UUID, or a query parameter was sent.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                error:
+                  code: validation_error
+                  message: The request is invalid.
+                  request_id: abc
+                  fields:
+                    venue_id: must be a canonical uuid
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: The caller is a platform moderator, or has no profile. Unlike the write routes, a missing profile is 403 here.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                forbidden:
+                  value:
+                    error:
+                      code: forbidden
+                      message: This action is unavailable for this account.
+                      request_id: abc
+                profile:
+                  value:
+                    error:
+                      code: profile_required
+                      message: Create a profile first.
+                      request_id: abc
+        "404":
+          description: The Venue is not in the public catalogue.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                error:
+                  code: venue_not_found
+                  message: Venue not found.
+                  request_id: abc
+        "429":
+          $ref: "#/components/responses/RateLimited"
         "500":
           $ref: "#/components/responses/Internal"
         "502":
@@ -1439,6 +1634,103 @@ paths:
           $ref: "#/components/responses/BodyTooLarge"
         "415":
           $ref: "#/components/responses/UnsupportedMedia"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/Internal"
+        "502":
+          $ref: "#/components/responses/AuthProvider"
+  /v1/me/check-ins:
+    get:
+      operationId: listMyCheckIns
+      summary: List the caller's check-ins
+      description: Ordered by visited_at descending, then id descending. A rename_required or suspended caller can read this list. A caller without a profile receives an empty list.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: cursor
+          in: query
+          required: false
+          description: Opaque next_cursor from a previous page of this route.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: One page of the caller's Check-ins.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CheckInListResponse"
+        "400":
+          description: The limit or cursor is invalid, or a parameter is repeated or unknown.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/ContributionForbidden"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/Internal"
+        "502":
+          $ref: "#/components/responses/AuthProvider"
+  /v1/me/check-ins/{checkInID}:
+    delete:
+      operationId: deleteMyCheckIn
+      summary: Delete one of the caller's check-ins
+      description: Reads no body. It does not take an Idempotency-Key.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: checkInID
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+            pattern: "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+      responses:
+        "204":
+          description: The Check-in was deleted.
+        "400":
+          description: The id is not a canonical UUID, or a query parameter was sent.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                error:
+                  code: validation_error
+                  message: The request is invalid.
+                  request_id: abc
+                  fields:
+                    check_in_id: must be a canonical uuid
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/ContributionForbidden"
+        "404":
+          description: No Check-in with that id belongs to the caller.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                error:
+                  code: check_in_not_found
+                  message: Check-in not found.
+                  request_id: abc
         "429":
           $ref: "#/components/responses/RateLimited"
         "500":
@@ -3111,6 +3403,114 @@ components:
               oneOf:
                 - $ref: "#/components/schemas/OperatorReview"
                 - type: "null"
+    CheckInRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        visited_at:
+          type: [string, "null"]
+          format: date-time
+          description: RFC 3339 timestamp. Omitted or null means now. It must be within the last 24 hours and no more than 5 minutes ahead; a time up to 5 minutes ahead is stored as now.
+    CheckIn:
+      type: object
+      additionalProperties: false
+      required: [id, venue_id, visited_at, recorded_at, venue]
+      properties:
+        id:
+          type: string
+          format: uuid
+        venue_id:
+          type: string
+          format: uuid
+        visited_at:
+          type: string
+          format: date-time
+        recorded_at:
+          type: string
+          format: date-time
+        venue:
+          $ref: "#/components/schemas/CheckInVenue"
+    CheckInVenue:
+      type: object
+      additionalProperties: false
+      required: [name, city, country_code, verification_status]
+      properties:
+        name:
+          type: string
+        city:
+          type: string
+        country_code:
+          type: string
+          pattern: "^[A-Z]{2}$"
+        venue_type:
+          type: string
+          enum: [bar, pub, club]
+          description: Absent for rejected and delisted Venues.
+        verification_status:
+          type: string
+          enum: [pending, verified, rejected, delisted]
+    CheckInResponse:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          $ref: "#/components/schemas/CheckIn"
+    CheckInListResponse:
+      type: object
+      additionalProperties: false
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/CheckIn"
+        meta:
+          type: object
+          additionalProperties: false
+          required: [next_cursor]
+          properties:
+            next_cursor:
+              type: [string, "null"]
+    Checker:
+      type: object
+      additionalProperties: false
+      description: Redacted the same way as Review authorship.
+      required: [username, display_name]
+      properties:
+        username:
+          type: [string, "null"]
+          description: Null when the checker must rename or is suspended.
+        display_name:
+          type: string
+          description: MetalHops User when the checker must rename or is suspended.
+    CheckInFeedItem:
+      type: object
+      additionalProperties: false
+      required: [id, visited_at, recorded_at, checker]
+      properties:
+        id:
+          type: string
+          format: uuid
+        visited_at:
+          type: string
+          format: date-time
+        recorded_at:
+          type: string
+          format: date-time
+        checker:
+          $ref: "#/components/schemas/Checker"
+    CheckInFeedResponse:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          type: array
+          maxItems: 20
+          description: Newest recorded_at first, then id descending.
+          items:
+            $ref: "#/components/schemas/CheckInFeedItem"
     SubmissionRequest:
       type: object
       additionalProperties: false
@@ -3801,6 +4201,12 @@ components:
                 verification_status:
                   type: string
                   enum: [pending, verified]
+                check_in_id:
+                  type: string
+                  format: uuid
+                visited_at:
+                  type: string
+                  format: date-time
   responses:
     Unauthorized:
       description: The bearer token or live session was rejected.

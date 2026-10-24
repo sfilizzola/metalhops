@@ -95,6 +95,22 @@ func TestOpenAPIDocument(t *testing.T) {
 		"commentary_removed",
 		"UserCommentaryRestriction",
 		"OperatorCommentaryRestriction",
+		"/v1/venues/{venueID}/check-ins",
+		"/v1/me/check-ins",
+		"/v1/me/check-ins/{checkInID}",
+		"createCheckIn",
+		"listVenueCheckIns",
+		"listMyCheckIns",
+		"deleteMyCheckIn",
+		"check_in_spacing",
+		"check_in_not_found",
+		"Another check-in at this venue is too close to this visit.",
+		"CheckIn:",
+		"CheckInVenue:",
+		"CheckInRequest:",
+		"CheckInFeedItem:",
+		"Checker:",
+		"check_in",
 	} {
 		if !bytes.Contains(OpenAPI, []byte(want)) {
 			t.Fatalf("missing %q", want)
@@ -138,6 +154,21 @@ func TestOpenAPIDocument(t *testing.T) {
 	if !bytes.Contains(OpenAPI, []byte("commentary_locked")) || !bytes.Contains(OpenAPI, []byte("UserCommentaryRestriction")) {
 		t.Fatal("commentary_locked details missing UserCommentaryRestriction")
 	}
+	checkInVenue := schemaBlock("CheckInVenue")
+	if checkInVenue == nil {
+		t.Fatal("missing CheckInVenue schema")
+	}
+	if required := bytes.Index(checkInVenue, []byte("\n      required:")); required >= 0 {
+		lines := bytes.Split(checkInVenue[required+len("\n      required:"):], []byte("\n"))
+		for i, line := range lines {
+			if i > 0 && !bytes.HasPrefix(line, []byte("        - ")) {
+				break
+			}
+			if bytes.Contains(line, []byte("venue_type")) {
+				t.Fatal("CheckInVenue requires venue_type")
+			}
+		}
+	}
 	genres := bytes.Index(OpenAPI, []byte("/v1/genres"))
 	if genres < 0 || bytes.Contains(OpenAPI[:genres], []byte("security:")) {
 		t.Fatal("operational route requires security")
@@ -147,6 +178,7 @@ func TestOpenAPIDocument(t *testing.T) {
 		"reportVenue", "listVenueReports", "getModerationVenue", "applyVenueAction", "correctVenueAsOperator", "dismissVenueReport",
 		"getMyReview", "putMyReview", "deleteMyReview",
 		"reportReview", "listReviewReports", "getModerationReview", "applyReviewAction", "dismissReviewReport",
+		"createCheckIn", "listVenueCheckIns", "listMyCheckIns", "deleteMyCheckIn",
 	} {
 		start := bytes.Index(OpenAPI, []byte("operationId: "+op))
 		if start < 0 {

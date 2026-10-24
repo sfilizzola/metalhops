@@ -133,6 +133,11 @@ query reads `reviews` for `average_rating` and `review_count`, so list and
 detail stay one round trip. Venue delist updates pending `review_reports` in
 its own transaction. `internal/venue` does not import `internal/review`.
 
+The Check-in module owns visit validation, the spacing, authorship, the write
+transaction, personal history, the public per-Venue feed, and deletion. The
+Venue catalogue query reads `check_ins` for `check_in_count`. Each package
+keeps its own SQL, and `internal/venue` does not import `internal/checkin`.
+
 File names may describe implementation roles:
 
 ```text

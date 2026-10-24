@@ -26,6 +26,8 @@ PostGIS). Run commands from `backend/`.
   audit).
 - `internal/review`: Review validation, public list, the caller's own Review,
   save and delete.
+- `internal/checkin`: Check-in validation, the spacing rule, creation, personal
+  history, the public per-Venue feed, and deletion.
 - `internal/pgtest`: PostGIS test harness. Production code does not import it.
 - `openapi.yaml`: contract for implemented HTTP routes.
 
@@ -42,7 +44,7 @@ when that file exists. Variables already in the environment win.
 
 `GET /healthz` reports process health and does not check the database.
 `GET /readyz` returns 200 when the database ping succeeds and migration
-`0010` or newer is recorded. Otherwise it returns 503.
+`0011` or newer is recorded. Otherwise it returns 503.
 `GET /openapi.yaml` serves the embedded `openapi.yaml` in every environment.
 `GET /docs` serves the Scalar page when `DOCS_UI_ENABLED` is unset or `true`.
 The exact value `false` leaves `/docs` unregistered. Any other value stops
@@ -53,6 +55,10 @@ TCP peer is the client. `GET /healthz` and `GET /readyz` are not rate
 limited. Every other route uses a token bucket with burst capacity 120 and
 a sustained rate of 2 requests per second per resolved client IP. A refusal
 is `429` `rate_limited` with `Retry-After`.
+
+`CHECKIN_SPACING` is the minimum time between one User's Check-ins at one
+Venue. Unset means one hour. Any other value must be a positive Go duration;
+an invalid value stops the process at startup.
 
 HTTP behavior lives in `internal/api`. The contract embed remains
 `backend/contract.go`. `docs.html` lives beside the HTTP package.
@@ -125,8 +131,12 @@ Never drift from it silently.
   `GET /v1/me/venues`, `GET` and `PUT /v1/me/venues/{venueID}`,
   `POST /v1/profiles/{username}/reports`,
   `POST /v1/venues/{venueID}/reports`,
-  `POST /v1/venues/{venueID}/reviews/{reviewID}/reports`, and `GET`, `PUT`, and
-  `DELETE /v1/venues/{venueID}/reviews/me`. Privileged routes are
+  `POST /v1/venues/{venueID}/reviews/{reviewID}/reports`, `GET`, `PUT`, and
+  `DELETE /v1/venues/{venueID}/reviews/me`, `POST` and
+  `GET /v1/venues/{venueID}/check-ins`, `GET /v1/me/check-ins`, and
+  `DELETE /v1/me/check-ins/{checkInID}`. `GET /v1/venues/{venueID}/check-ins`
+  requires only a Profile, not an Active one, and returns `403 profile_required`
+  to a signed-in caller with none. Privileged routes are
   `GET /v1/moderation/profile-reports`,
   `GET /v1/moderation/profiles/{userID}`,
   `POST /v1/moderation/profiles/{userID}/actions`,
@@ -148,10 +158,10 @@ Never drift from it silently.
   applies.
 - Profile writes, profile and Venue reports, review reports, Venue submissions,
   changed Venue corrections (by a Submitter or an operator), changed Review
-  saves and Review deletes, moderation actions including review moderation
+  saves and Review deletes, Check-in creation and deletion, moderation actions including review moderation
   actions, report dismissals including review-report dismissals, and account
   deletion reserve a per-User bucket of burst 60 and one token per second. The
   reservation is committed only after the state change succeeds and cancelled
   when it does not. `GET` does not reserve.
-- Deleting a User removes the Profile and idempotency rows. Venue submissions
+- Deleting a User removes the Profile, Check-ins, and idempotency rows. Venue submissions
   remain with `submitted_by` null.

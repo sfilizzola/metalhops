@@ -3,7 +3,7 @@
 MetalHops MVP API roadmap. Refer to this document as **DevSteps** across every implementation session.
 
 **Date:** 2026-10-14
-**Status:** Sessions 1–12 are done. Session 13 is next. Sessions 13–14 are not started.
+**Status:** Sessions 1–13 are done. Session 14 is next. Session 14 is not started.
 
 ## Goal
 
@@ -1113,7 +1113,8 @@ The Check-in cooldown remains a separate domain rule and returns `409`.
 | 10. Venue safety and moderation API | Done |
 | 11. Reviews and ratings | Done |
 | 12. Review safety and moderation API | Done |
-| 13–14 | Not started |
+| 13. Check-ins | Done |
+| 14 | Not started |
 
 ### Session 1: Repository boundaries
 
@@ -1360,12 +1361,20 @@ can resolve reports through those endpoints without retaining removed text.
 
 ### Session 13: Check-ins
 
-**Status:** Not started.
+**Status:** Done.
 
 Add the check-in migration, RLS policies, cooldown rule, check-in creation,
 personal history, User-only deletion, and venue check-in aggregates. A
 corrected Check-in uses a new `Idempotency-Key` under the same operation.
 `DELETE /v1/me/check-ins/{checkInID}` does not require one.
+
+`POST /v1/venues/{venueID}/check-ins` records a visit and requires
+`Idempotency-Key`. `GET /v1/venues/{venueID}/check-ins` is the public per-Venue
+Check-in feed. `GET /v1/me/check-ins` lists the caller's history.
+`DELETE /v1/me/check-ins/{checkInID}` removes one of the caller's Check-ins.
+Migration `0011` adds `check_ins` and raises readiness to `0011`.
+`CHECKIN_SPACING` sets the spacing window, one hour by default. The Venue
+catalogue now reports the real `check_in_count`.
 
 **Exit condition:** Android can record visits and show the user's history
 without duplicate Check-in spam, and a User can remove an incorrect Check-in.
