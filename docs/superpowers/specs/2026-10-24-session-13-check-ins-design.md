@@ -5,21 +5,25 @@
 
 ## Goal
 
-Android can record a visit, show the caller's history, and remove an incorrect
-Check-in. A Check-in is one User's visit to one Venue. The same User may check
-in again after the cooldown. The visit time and the Venue are never edited in
-place. A correction deletes the Check-in and creates another with a new
-`Idempotency-Key`.
+Android can record a visit, show the caller's history, see who recently
+checked in at a Venue, and remove an incorrect Check-in. A Check-in is one
+User's memory of one visit to one Venue at one stated time; the same User may
+have many Check-ins at one Venue. A second Check-in for that User at that
+Venue is refused unless its stated time is more than the Check-in spacing
+away from every one of that User's remaining Check-ins there. The visit time
+and the Venue are never edited in place. A correction deletes the Check-in
+and creates another with a new `Idempotency-Key`.
 
 The session adds:
 
 - migration `0011`, which creates only `check_ins`;
 - the `internal/checkin` capability;
-- three routes;
+- four routes, including a public per-Venue Check-in feed;
 - a real `check_in_count` on the existing venue list and detail.
 
-**Exit condition:** Android can record visits and show the user's history
-without duplicate Check-in spam, and a User can remove an incorrect Check-in.
+**Exit condition:** Android can record visits, show the user's history, and
+show any User who recently checked in at a Venue, without duplicate Check-in
+spam, and a User can remove an incorrect Check-in.
 
 ## Constraints
 
@@ -28,21 +32,26 @@ without duplicate Check-in spam, and a User can remove an incorrect Check-in.
 - Do not edit migrations `0001` through `0010`. Add no Go dependency.
 - `cmd/api` stays composition only.
 - `DELETE` does not take an `Idempotency-Key`. A sent key is ignored.
-- No check-in moderation, public activity feed, operator read, photos, device
-  coordinates, daily quota, stored counter, or schema constraint for the
-  cooldown. Session 14 owns the admin handoff.
+- No check-in moderation, operator read of Check-ins, cross-Venue or global
+  activity feed, per-Check-in private toggle, photos, device coordinates,
+  daily quota, stored counter, or schema constraint for the spacing. Session
+  14 owns the admin handoff. Anonymous (not-yet-a-User) venue viewing stays
+  exactly as it is today; this session does not touch
+  `GET /v1/venues/{venueID}` or `GET /v1/venues/{venueID}/reviews`.
 
 ## Modules
 
-`internal/checkin` owns visit validation, the cooldown, authorship, the write
-transaction, personal history, and deletion. Its constructor takes the pool,
-the `*profile.Service`, the per-User write limiter, the clock, and the cooldown
-duration, matching `review.New` plus that duration. `profiles` and `writes` may
-be nil for read-only use; a write then fails. Writes call
+`internal/checkin` owns visit validation, the spacing, authorship, the write
+transaction, personal history, the public feed, and deletion. Its constructor
+takes the pool, the `*profile.Service`, the per-User write limiter, the clock,
+and the spacing duration, matching `review.New` plus that duration. `profiles`
+and `writes` may be nil for read-only use; a write then fails. Writes call
 `profiles.NormalizeExpiry` before the transaction, as Review writes do. Create
 and delete call `profile.RequireContributor`. The package reads `venues` in its
-own SQL for eligibility and the history summary. It imports `profile`,
-`ratelimit`, and `idempotency`. It does not import `internal/venue`.
+own SQL for eligibility, the history summary, and the public feed's Venue
+check, and reads `profiles` directly to confirm a feed caller is a User and to
+read a feed item's Public identity. It imports `profile`, `ratelimit`, and
+`idempotency`. It does not import `internal/venue`.
 
 HTTP adapters stay in `internal/api`. That package gains a `CheckIns` interface
 with two adapters: the PostgreSQL service, and a fake used by HTTP tests. The
@@ -50,26 +59,27 @@ interface lives with the caller. The check-in package exposes a concrete
 service and no extra seam. The plan chooses the file split inside
 `internal/checkin`.
 
-`internal/config` parses `CHECKIN_COOLDOWN` and passes the duration to the
-constructor. The value is trimmed. Empty or unset means six hours. Any other
+`internal/config` parses `CHECKIN_SPACING` and passes the duration to the
+constructor. The value is trimmed. Empty or unset means one hour. Any other
 value must be a Go duration greater than zero. Zero, a negative duration, and
 an unparseable value stop startup with
-`CHECKIN_COOLDOWN must be a positive duration`. Changing the duration keeps the
+`CHECKIN_SPACING must be a positive duration`. Changing the duration keeps the
 error code and the response shape. No migration encodes the interval.
 
 The Venue catalogue query replaces the literal `check_in_count` of `0` with a
 count of `check_ins`. `internal/venue` does not import `internal/checkin`.
 List and detail stay one round trip.
 
-`cmd/api` wires config, the service, and the three routes onto the existing
+`cmd/api` wires config, the service, and the four routes onto the existing
 authenticated app group. An operator on those routes receives the existing
 `403 forbidden`. A missing or invalid token is `401`. Reads and writes use a
-2-second timeout. The public per-IP bucket still applies to all three routes,
+2-second timeout. The public per-IP bucket still applies to all four routes,
 before the handler.
 
 | Route | Caller |
 | --- | --- |
 | `POST /v1/venues/{venueID}/check-ins` | Active Profile. Records one visit. |
+| `GET /v1/venues/{venueID}/check-ins` | Any User, including one who must rename or is suspended. Reads that Venue's public Check-in feed. |
 | `GET /v1/me/check-ins` | Signed-in caller, including one who must rename or is suspended. |
 | `DELETE /v1/me/check-ins/{checkInID}` | Active Profile. Removes one of their Check-ins. |
 
@@ -90,18 +100,21 @@ There is no `updated_at`, no device coordinates, and no status column.
 Rejecting or delisting a Venue leaves its Check-ins in place. Deleting the
 User or the Venue row cascades them away.
 
-The cooldown and the 24-hour backdating limit are not check constraints. Both
+The spacing and the 24-hour backdating limit are not check constraints. Both
 are compared to the request clock.
 
-Three indexes:
+Four indexes:
 
 - `check_ins_user_history_idx` on `(user_id, visited_at desc, id desc)` serves
   personal history. The integration test fails if that plan does not use the
   index.
 - `check_ins_user_venue_visit_idx` on `(user_id, venue_id, visited_at)` serves
-  the cooldown lookup.
+  the spacing lookup.
 - `check_ins_venue_idx` on `(venue_id)` serves the catalogue count. The history
   index leads with `user_id`, so it does not serve a per-Venue count.
+- `check_ins_venue_feed_idx` on `(venue_id, recorded_at desc, id desc)` serves
+  the public Check-in feed. The count index has no `recorded_at`, so it does
+  not serve the feed's order.
 
 `gen_random_uuid()` adds no sequence revoke. The migration enables row-level
 security and revokes `public`, `anon`, `authenticated`, and `service_role`.
@@ -141,7 +154,7 @@ response and on replay. The same key and command return that stored snapshot.
 A later Venue rename does not change it. Replay also returns it after the row
 was deleted and when the Venue is no longer in the catalogue. Replay does not
 insert again and does not spend a write token. A key that already succeeded
-stays a replay for 24 hours, including after the cooldown has passed. After
+stays a replay for 24 hours, including after the spacing has passed. After
 the record expires, the helper treats the key as unused. The next visit uses
 a new key. A different command with a live key is
 `409 idempotency_key_reused` with `That idempotency key was already used.`
@@ -166,22 +179,24 @@ transaction:
 4. Take `pg_advisory_xact_lock(hashtextextended('check_in' || chr(31) || userID || chr(31) || venueID, 0))`.
 5. `idempotency.Execute` runs the callback under its own key lock. The
    callback looks for this User's Check-in at this Venue whose stored
-   `visited_at` is strictly inside the cooldown of the visit time about to be
-   stored. The predicate is `existing > requested - cooldown` and
-   `existing < requested + cooldown`. A visit exactly one cooldown away is
-   allowed. The comparison uses the configured duration and the time that will
-   be stored, after clamping. The nearest `visited_at` wins. An equal distance
-   uses the lexicographically smaller canonical UUID. A hit returns
-   `409 check_in_cooldown`, `Another check-in at this venue is too close to
+   `visited_at` is within the spacing of the visit time about to be stored,
+   inclusive of the boundary. The predicate is `existing >= requested -
+   spacing` and `existing <= requested + spacing`. A visit exactly one
+   spacing away is refused; one microsecond further is allowed. The
+   comparison uses the configured duration and the time that will be stored,
+   after clamping. The nearest `visited_at` wins. An equal distance uses the
+   lexicographically smaller canonical UUID. A hit returns
+   `409 check_in_spacing`, `Another check-in at this venue is too close to
    this visit.`, with `details.check_in_id` and `details.visited_at`.
    `check_in_id` is the canonical UUID string. `visited_at` uses the same
    timestamp encoding as Profile. That error rolls the transaction back,
    stores no idempotency row, and spends no write token. A `{}` command that
-   failed this way can succeed with the same key once the clock has moved to
-   exactly one cooldown after the conflicting visit. The same explicit
-   `visited_at` conflicts again while it stays inside the window. Because no
-   row was stored, that key with a different `visited_at` is a new attempt.
-6. Reserve a write token only after the cooldown check passes. A refusal is
+   failed this way can succeed with the same key once the clock has moved
+   past one spacing from the conflicting visit. The same explicit
+   `visited_at` conflicts again while it stays at or inside that boundary.
+   Because no row was stored, that key with a different `visited_at` is a
+   new attempt.
+6. Reserve a write token only after the spacing check passes. A refusal is
    `429 rate_limited` with `Retry-After`. Nothing is inserted.
 7. Insert `visited_at` and `recorded_at` from the service clock. `recorded_at`
    is the server time. A backdated visit keeps the supplied `visited_at` and
@@ -275,9 +290,50 @@ The delete runs in one transaction:
    delete keeps the token. A `404` and a Profile failure spend no token.
 
 The caller can delete their Check-in while its Venue is `rejected` or
-`delisted`. That removes the visit and its cooldown block. The Venue row stays
+`delisted`. That removes the visit and its spacing block. The Venue row stays
 as it is, and a new Check-in still cannot target it while it is `rejected` or
 `delisted`. A second delete of the same id is `404`.
+
+## Public Check-in feed
+
+`GET /v1/venues/{venueID}/check-ins` requires a token but not an Active
+Profile. It reads no body and accepts no query parameter; any parameter is
+`is not accepted`. A venue id that is not a canonical UUID is `400` with
+`venue_id: must be a canonical uuid`.
+
+The route loads the Venue with the same catalogue predicate as create:
+`pending` or `verified`, with at least one Genre. Anything else, including
+rejected, Delisted, unknown, and genre-less rows, is `404 venue_not_found`,
+`Venue not found.`, for every caller, before the Profile check below. An
+operator receives the existing `403 forbidden`.
+
+The caller must be a User: a row in `profiles`, in any status. A sign-in that
+has not created one is `403 profile_required`, `Create a profile first.` This
+reuses the existing `profile_required` code at a different HTTP status than
+the write paths, which use `409`. A rename-required or suspended caller may
+read the feed; neither status blocks a read, matching Check-in history.
+
+The response is that Venue's most recent 20 remaining Check-ins, ordered by
+`recorded_at` descending, then `id` descending. There is no cursor and no
+`next_cursor`; a Venue with no Check-ins returns `data: []`. Each item is:
+
+```json
+{
+  "id": "uuid",
+  "visited_at": "2026-10-24T10:00:00Z",
+  "recorded_at": "2026-10-24T10:04:00Z",
+  "checker": {
+    "username": "metalfan",
+    "display_name": "Metal Fan"
+  }
+}
+```
+
+`checker` is that Check-in's User's Public identity: while a rename
+requirement or a Community Suspension stands on that User, `username` is
+`null` and `display_name` is `MetalHops User`, matching Review authorship.
+Removing a Check-in removes it from this feed. There is no per-Check-in
+private toggle, and this route does not reserve a write token.
 
 ## Public count
 
@@ -306,17 +362,21 @@ count with the cascade.
 HTTP tests in `internal/api` use the fake `CheckIns` adapter and cover
 transport only:
 
-- `401` on all three routes without a token, and `403 forbidden` for an
+- `401` on all four routes without a token, and `403 forbidden` for an
   operator;
 - `POST` requires `Idempotency-Key`, rejects an unknown field, a bad content
   type, a body over 64 KiB, and any query parameter;
 - `POST` maps `400` field errors, `404 venue_not_found`, `409 profile_required`,
   `403 profile_rename_required`, `403 profile_suspended` with `suspended_until`,
-  `409 check_in_cooldown` with `check_in_id` and `visited_at`,
+  `409 check_in_spacing` with `check_in_id` and `visited_at`,
   `409 idempotency_key_reused`, and `429` with `Retry-After`;
 - `POST` success is `201` and the Check-in document;
-- `GET` defaults `limit` to 20, passes the cursor through, and rejects a bad
-  limit, a bad cursor, and any other query parameter;
+- `GET /v1/me/check-ins` defaults `limit` to 20, passes the cursor through,
+  and rejects a bad limit, a bad cursor, and any other query parameter;
+- `GET /v1/venues/{venueID}/check-ins` rejects any query parameter and a bad
+  venue id, maps `404 venue_not_found` and `403 profile_required` (at `403`,
+  not the write path's `409`), and returns up to 20 items with their
+  `checker` redacted for a rename-required or suspended User;
 - `DELETE` is `204` with an empty body, ignores `Idempotency-Key`, and maps a
   bad id, `404 check_in_not_found`, the Profile errors above, and `429`.
 
@@ -331,19 +391,20 @@ clock is fixed. Cover:
 - a visit exactly five minutes ahead is stored as the server time, and one
   nanosecond further is `400`;
 - `10:00Z` and `12:00+02:00` share one idempotency command;
-- a `{}` create strictly inside another visit's cooldown is `409`, stores no
-  idempotency row, and spends no token. After the clock advances by exactly
-  one cooldown, that same key and `{}` command inserts. One nanosecond earlier
-  it conflicts again;
+- a `{}` create exactly one spacing away from another visit is `409`, stores
+  no idempotency row, and spends no token. After the clock advances past that
+  one spacing, that same key and `{}` command inserts. One microsecond
+  earlier, at the boundary, it conflicts again;
 - an explicit `visited_at` whose first attempt conflicts stores no row. The
-  same key and same `visited_at` conflict again while that visit stays inside
-  the window. That key with a different `visited_at` is a new attempt;
+  same key and same `visited_at` conflict again while that visit stays at or
+  inside the spacing. That key with a different `visited_at` is a new
+  attempt;
 - after a successful create, a different command on that key is
   `409 idempotency_key_reused` until the record expires;
-- two rows inside the window return the nearest `visited_at`, and an equal
+- two rows within the spacing return the nearest `visited_at`, and an equal
   distance returns the lexicographically smaller id;
 - two concurrent creates with different keys and the same visit time leave one
-  row. The loser receives `409 check_in_cooldown` and spends no token;
+  row. The loser receives `409 check_in_spacing` and spends no token;
 - two concurrent creates with the same key and command return the same `201`
   and leave one row;
 - a replay returns the stored `201`, spends no token, and does not insert,
@@ -358,9 +419,18 @@ clock is fixed. Cover:
 - a `rejected` or `delisted` summary omits the `venue_type` key, the rejection
   reason and note, and the delisting reason and note. The same row includes
   `venue_type` when the Venue is public again;
-- delete removes the caller's row and its cooldown block, a second delete is
+- delete removes the caller's row and its spacing block, a second delete is
   `404`, and another User's id is `404` while that row remains;
-- a token is spent only on a committed insert or delete.
+- a token is spent only on a committed insert or delete;
+- the public feed returns the most recent 20 remaining Check-ins for a
+  Venue, ordered `recorded_at` then `id`, both descending, with a redacted
+  `checker` for a rename-required or suspended User; the plan fails unless it
+  uses `check_ins_venue_feed_idx`;
+- a caller with no Profile gets `profile.ErrProfileRequired` from the feed; a
+  rename-required or suspended caller reads it successfully;
+  `rejected`/`delisted`/`bare`/`unknown` Venues give `ErrVenueNotFound` for
+  every caller regardless of their own Profile status;
+- deleting a Check-in removes it from the feed.
 
 Venue catalogue tests replace the old "`check_in_count` stays 0" pin. A
 `pending` Venue and a `verified` Venue report their Check-in counts. Deleting
@@ -374,37 +444,41 @@ A Delisted Venue stays out, and verifying it again counts them too.
 chain. The existing User-deletion test gains a Check-in that disappears with
 the User while the Venue Submission remains.
 
-`internal/config` tests that an unset or empty `CHECKIN_COOLDOWN` is six
-hours, a positive Go duration is kept, and zero, a negative duration, or an
-unparseable value returns `CHECKIN_COOLDOWN must be a positive duration`.
+`internal/config` tests that an unset or empty `CHECKIN_SPACING` is one
+hour, a positive Go duration is kept, and zero, a negative duration, or an
+unparseable value returns `CHECKIN_SPACING must be a positive duration`.
 
 ## Docs that land with the code
 
-- `backend/openapi.yaml` documents the three routes, the Check-in document,
-  both Venue summaries, and the error codes above. The cooldown description
-  states the six-hour default and the stable code `check_in_cooldown`. A
-  catalogue example may show a non-zero `check_in_count`. The Venue field
-  types stay as they are.
-- `backend/.env.example` sets `CHECKIN_COOLDOWN=6h` and comments that unsetting
-  it also means six hours. `infra/render.yaml` leaves the variable unset, so
+- `backend/openapi.yaml` documents the four routes, the Check-in document,
+  the Check-in feed item and `Checker`, both Venue summaries, and the error
+  codes above. The spacing description states the one-hour default and the
+  stable code `check_in_spacing`. A catalogue example may show a non-zero
+  `check_in_count`. The Venue field types stay as they are.
+- `backend/.env.example` sets `CHECKIN_SPACING=1h` and comments that unsetting
+  it also means one hour. `infra/render.yaml` leaves the variable unset, so
   production keeps that default.
-- `backend/AGENTS.md` names `internal/checkin`, the three routes, readiness
-  `0011`, and `CHECKIN_COOLDOWN`.
+- `backend/AGENTS.md` names `internal/checkin`, the four routes, readiness
+  `0011`, and `CHECKIN_SPACING`.
 - `docs/architecture/backend.md` adds one paragraph under Capability modules:
-  the Check-in module owns visit validation, the cooldown, authorship, the
-  write transaction, personal history, and deletion. The Venue catalogue query
-  reads `check_ins` for `check_in_count`. Each package keeps its own SQL.
+  the Check-in module owns visit validation, the spacing, authorship, the
+  write transaction, personal history, the public feed, and deletion. The
+  Venue catalogue query reads `check_ins` for `check_in_count`. Each package
+  keeps its own SQL.
 - `DevSteps.md` marks Session 13 done only when this work lands: migration
-  `0011`, the three routes, the real public count, and readiness `0011`. The
+  `0011`, the four routes, the real public count, and readiness `0011`. The
   header moves to Session 14 next.
 
 ## Out of scope
 
-- A public recent-check-ins list, a "who's here" view, and any operator read
-  of Check-ins.
+- A cross-Venue or global "who's here" view, pagination past the most recent
+  20 per Venue, a per-Check-in private toggle, and any operator read of
+  Check-ins.
 - Check-in reports, photos, and device coordinates.
 - Editing `visited_at` or the Venue in place.
 - A daily Check-in quota, a stored counter, and a schema constraint for the
-  cooldown.
+  spacing.
+- Anonymous (not-yet-a-User) venue viewing beyond what exists today. See
+  `CONTEXT.md`'s "Flagged ambiguities" for the deferred redesign.
 - The Session 14 handoff: cross-feature sweeps, the commentary-restriction
   lift, and deployment certification.
