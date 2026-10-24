@@ -456,6 +456,74 @@ func TestSaveAfterLiftClearsMarker(t *testing.T) {
 	}
 }
 
+// A save racing remove_commentary waits on the Review row lock and then sees the restriction.
+func TestSaveWaitsForCommentaryRemoval(t *testing.T) {
+	h := newWriteHarness(t)
+	insertVenue(t, h.pool, verifiedVenue, "verified")
+	insertUser(t, h.pool, userA, "active", nil)
+	insertUser(t, h.pool, userC, "", nil)
+	reviewID := insertReview(t, h.pool, verifiedVenue, userA, 4, ptr("loud"), t0)
+	ctx := context.Background()
+	tx, err := h.pool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	if _, err := tx.Exec(ctx, `select 1 from reviews where id = $1 for update`, reviewID); err != nil {
+		t.Fatal(err)
+	}
+	var actionID string
+	if err := tx.QueryRow(ctx, `
+		insert into review_moderation_actions (
+			review_id, reviewer_user_id, venue_id, action, reason, operator_user_id, created_at
+		) values ($1, $2, $3, 'commentary_removed', 'spam', $4, $5)
+		returning id::text`, reviewID, userA, verifiedVenue, userC, t0).Scan(&actionID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tx.Exec(ctx, `
+		insert into review_commentary_restrictions (user_id, venue_id, source_action_id, created_at)
+		values ($1, $2, $3, $4)`, userA, verifiedVenue, actionID, t0); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tx.Exec(ctx, `
+		update reviews set commentary = null, commentary_removed_at = $2, updated_at = $2 where id = $1`, reviewID, t0); err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan error, 1)
+	go func() {
+		_, err := h.save(userA, verifiedVenue, "4", json.RawMessage(`"louder"`))
+		done <- err
+	}()
+	deadline := time.Now().Add(1500 * time.Millisecond)
+	for {
+		var waiting bool
+		if err := h.pool.QueryRow(ctx, `
+			select exists (select 1 from pg_stat_activity where wait_event_type = 'Lock' and query like '%reviews%')`).Scan(&waiting); err != nil {
+			t.Fatal(err)
+		}
+		if waiting {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("save did not wait for the Review row lock")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if err := <-done; !errors.Is(err, ErrCommentaryLocked) {
+		t.Fatalf("save after removal: %v", err)
+	}
+	var commentary *string
+	var removedAt *time.Time
+	if err := h.pool.QueryRow(ctx, `
+		select commentary, commentary_removed_at from reviews where id = $1`, reviewID).Scan(&commentary, &removedAt); err != nil ||
+		commentary != nil || removedAt == nil {
+		t.Fatalf("stored %v %v %v", commentary, removedAt, err)
+	}
+}
+
 func TestRatingOnlySaveKeepsMarker(t *testing.T) {
 	h := newWriteHarness(t)
 	insertVenue(t, h.pool, verifiedVenue, "verified")

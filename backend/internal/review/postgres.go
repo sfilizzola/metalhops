@@ -230,7 +230,9 @@ func (s *Service) Save(ctx context.Context, cmd SaveCommand) (SaveResult, error)
 	if err := requireWritable(txCtx, tx, cmd.UserID, cmd.VenueID); err != nil {
 		return SaveResult{}, err
 	}
-	current, err := scanOwn(tx.QueryRow(txCtx, ownSQL, cmd.VenueID, cmd.UserID))
+	// The Review lock orders this save against remove_commentary: either the removal commits
+	// first and the restriction read below sees it, or the removal waits and removes this text.
+	current, err := scanOwn(tx.QueryRow(txCtx, ownSQL+" for update of r", cmd.VenueID, cmd.UserID))
 	found := err == nil
 	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 		return SaveResult{}, fmt.Errorf("review: read: %w", err)
