@@ -36,6 +36,7 @@ type Options struct {
 	VenueModeration  VenueModeration
 	Reviews          Reviews
 	ReviewModeration ReviewModeration
+	CheckIns         CheckIns
 }
 
 func New(options Options) http.Handler {
@@ -139,6 +140,18 @@ func New(options Options) http.Handler {
 	})))
 	mux.Handle("PATCH /v1/moderation/review-reports/{reportID}", requireOperator(options.Auth, options.Logger, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		dismissReviewReport(w, r, options.ReviewModeration, options.Logger)
+	})))
+	mux.Handle("POST /v1/venues/{venueID}/check-ins", requireApp(options.Auth, options.Logger, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		createCheckIn(w, r, options.CheckIns, options.Logger)
+	})))
+	mux.Handle("GET /v1/venues/{venueID}/check-ins", requireApp(options.Auth, options.Logger, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		listCheckInFeed(w, r, options.CheckIns, options.Logger)
+	})))
+	mux.Handle("GET /v1/me/check-ins", requireApp(options.Auth, options.Logger, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		listCheckIns(w, r, options.CheckIns, options.Logger)
+	})))
+	mux.Handle("DELETE /v1/me/check-ins/{checkInID}", requireApp(options.Auth, options.Logger, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		deleteCheckIn(w, r, options.CheckIns, options.Logger)
 	})))
 	return wrap(options.Logger, options.PublicLimit, mux)
 }

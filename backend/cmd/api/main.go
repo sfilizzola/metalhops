@@ -12,6 +12,7 @@ import (
 	"github.com/metalhops/metalhops/backend"
 	"github.com/metalhops/metalhops/backend/internal/api"
 	"github.com/metalhops/metalhops/backend/internal/auth"
+	"github.com/metalhops/metalhops/backend/internal/checkin"
 	"github.com/metalhops/metalhops/backend/internal/config"
 	"github.com/metalhops/metalhops/backend/internal/database"
 	"github.com/metalhops/metalhops/backend/internal/profile"
@@ -44,6 +45,7 @@ func main() {
 	profiles := profile.New(pool.Raw(), userLimiter, admin, time.Now)
 	venues := venue.New(pool.Raw(), profiles, userLimiter, time.Now)
 	reviews := review.New(pool.Raw(), profiles, userLimiter, time.Now)
+	checkIns := checkin.New(pool.Raw(), profiles, userLimiter, time.Now, cfg.CheckInSpacing)
 	srv := &http.Server{
 		Addr: ":" + cfg.Port,
 		Handler: api.New(api.Options{
@@ -58,6 +60,7 @@ func main() {
 			VenueModeration:  venues,
 			Reviews:          reviews,
 			ReviewModeration: reviews,
+			CheckIns:         checkIns,
 		}),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       10 * time.Second,
