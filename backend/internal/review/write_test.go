@@ -512,10 +512,12 @@ func TestCommentaryRestrictionLifecycle(t *testing.T) {
 	if _, err := h.save(userA, verifiedVenue, "4", json.RawMessage(`"again"`)); !errors.Is(err, ErrCommentaryLocked) {
 		t.Fatalf("locked save err %v", err)
 	}
+	h.now = h.now.Add(time.Minute)
 	lift, err := moderate(h, userC, reviewID, "lc-lift-key", "lift_commentary_restriction", "", nil)
 	if err != nil || !lift.Created {
 		t.Fatalf("lift %+v %v", lift, err)
 	}
+	h.now = h.now.Add(time.Minute)
 	if _, err := h.save(userA, verifiedVenue, "4", json.RawMessage(`"again"`)); err != nil {
 		t.Fatalf("save after lift err %v", err)
 	}
