@@ -6,7 +6,10 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
+	"regexp"
 )
+
+var commitPattern = regexp.MustCompile(`^[0-9a-f]{40}$`)
 
 //go:embed docs.html
 var docsHTML []byte
@@ -37,6 +40,7 @@ type Options struct {
 	Reviews          Reviews
 	ReviewModeration ReviewModeration
 	CheckIns         CheckIns
+	Commit           string
 }
 
 func New(options Options) http.Handler {
@@ -46,9 +50,13 @@ func New(options Options) http.Handler {
 	if options.PublicLimit == nil {
 		options.PublicLimit = func(next http.Handler) http.Handler { return next }
 	}
+	commit := options.Commit
+	if !commitPattern.MatchString(commit) {
+		commit = ""
+	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", healthHandler)
-	mux.HandleFunc("GET /readyz", readyHandler(options.Readiness))
+	mux.HandleFunc("GET /readyz", readyHandler(options.Readiness, commit))
 	mux.HandleFunc("GET /openapi.yaml", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/yaml")
 		_, _ = w.Write(options.OpenAPI)
@@ -163,15 +171,16 @@ func healthHandler(w http.ResponseWriter, _ *http.Request) {
 
 type readyBody struct {
 	Status string `json:"status"`
+	Commit string `json:"commit,omitempty"`
 	Reason string `json:"reason,omitempty"`
 }
 
-func readyHandler(ready Readiness) http.HandlerFunc {
+func readyHandler(ready Readiness, commit string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ok, reason := ready.Check(r.Context())
 		w.Header().Set("Content-Type", "application/json")
 		if ok {
-			_ = json.NewEncoder(w).Encode(readyBody{Status: "ok"})
+			_ = json.NewEncoder(w).Encode(readyBody{Status: "ok", Commit: commit})
 			return
 		}
 		w.WriteHeader(http.StatusServiceUnavailable)

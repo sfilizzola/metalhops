@@ -23,6 +23,7 @@ type Config struct {
 	SupabaseJWTAudience    string
 	SupabaseServiceRoleKey string
 	CheckInSpacing         time.Duration
+	Commit                 string
 }
 
 func Load() (Config, error) {
@@ -82,6 +83,7 @@ func load(lookup func(string) (string, bool), dir string) (Config, error) {
 		SupabaseJWTAudience:    audience,
 		SupabaseServiceRoleKey: serviceRoleKey,
 		CheckInSpacing:         spacing,
+		Commit:                 value("RENDER_GIT_COMMIT"),
 	}, nil
 }
 

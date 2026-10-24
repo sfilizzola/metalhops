@@ -37,6 +37,15 @@ func TestLoadEnvironment(t *testing.T) {
 	if cfg.CheckInSpacing != time.Hour {
 		t.Fatalf("spacing %s", cfg.CheckInSpacing)
 	}
+	if cfg.Commit != "" {
+		t.Fatalf("commit %q", cfg.Commit)
+	}
+	lookup["RENDER_GIT_COMMIT"] = "abc"
+	cfg, err = load(getenv, dir)
+	if err != nil || cfg.Commit != "abc" {
+		t.Fatalf("commit %q %v", cfg.Commit, err)
+	}
+	delete(lookup, "RENDER_GIT_COMMIT")
 	lookup["CHECKIN_SPACING"] = " 90m "
 	cfg, err = load(getenv, dir)
 	if err != nil || cfg.CheckInSpacing != 90*time.Minute {

@@ -88,14 +88,21 @@ func TestOperationalRoutes(t *testing.T) {
 }
 
 func TestReadyz(t *testing.T) {
-	ok := get(testServer(false, contract.OpenAPI, readyOK(), allowAll, slog.Default()), "/readyz")
-	if ok.Code != http.StatusOK || ok.Body.String() != "{\"status\":\"ok\"}\n" {
+	sha := "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef"
+	ok := get(New(Options{Readiness: readyOK(), PublicLimit: allowAll, Commit: sha}), "/readyz")
+	if ok.Code != http.StatusOK || ok.Body.String() != `{"status":"ok","commit":"`+sha+"\"}\n" {
 		t.Fatalf("ready %d %s", ok.Code, ok.Body.String())
 	}
+	for _, commit := range []string{"", "abc1234", strings.ToUpper(sha), sha + "0"} {
+		rec := get(New(Options{Readiness: readyOK(), PublicLimit: allowAll, Commit: commit}), "/readyz")
+		if rec.Code != http.StatusOK || rec.Body.String() != "{\"status\":\"ok\"}\n" {
+			t.Fatalf("%q ready %d %s", commit, rec.Code, rec.Body.String())
+		}
+	}
 	for _, reason := range []string{"database_unreachable", "migrations_unavailable", "migrations_behind"} {
-		handler := testServer(false, contract.OpenAPI, ReadinessFunc(func(context.Context) (bool, string) {
+		handler := New(Options{Readiness: ReadinessFunc(func(context.Context) (bool, string) {
 			return false, reason
-		}), allowAll, slog.Default())
+		}), PublicLimit: allowAll, Commit: sha})
 		rec := get(handler, "/readyz")
 		if rec.Code != http.StatusServiceUnavailable {
 			t.Fatalf("%s status %d", reason, rec.Code)

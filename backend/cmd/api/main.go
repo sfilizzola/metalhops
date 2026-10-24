@@ -61,6 +61,7 @@ func main() {
 			Reviews:          reviews,
 			ReviewModeration: reviews,
 			CheckIns:         checkIns,
+			Commit:           cfg.Commit,
 		}),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       10 * time.Second,
