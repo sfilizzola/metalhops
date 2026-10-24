@@ -4752,6 +4752,8 @@ components:
                 visited_at:
                   type: string
                   format: date-time
+                commentary_restriction:
+                  $ref: "#/components/schemas/UserCommentaryRestriction"
   responses:
     Unauthorized:
       description: The bearer token or live session was rejected.

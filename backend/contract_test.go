@@ -157,6 +157,9 @@ func TestOpenAPIDocument(t *testing.T) {
 	if !bytes.Contains(OpenAPI, []byte("commentary_locked")) || !bytes.Contains(OpenAPI, []byte("UserCommentaryRestriction")) {
 		t.Fatal("commentary_locked details missing UserCommentaryRestriction")
 	}
+	if !bytes.Contains(OpenAPI, []byte("                commentary_restriction:\n                  $ref: \"#/components/schemas/UserCommentaryRestriction\"\n  responses:")) {
+		t.Fatal("Error details missing commentary_restriction")
+	}
 	checkInVenue := schemaBlock("CheckInVenue")
 	if checkInVenue == nil {
 		t.Fatal("missing CheckInVenue schema")
