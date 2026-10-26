@@ -53,6 +53,7 @@ func main() {
 			OpenAPI:          contract.OpenAPI,
 			Readiness:        api.ReadinessFunc(pool.Check),
 			PublicLimit:      ratelimit.Middleware(ratelimit.New(time.Now, cfg.TrustedProxies)),
+			AllowedOrigins:   cfg.AllowedOrigins,
 			Auth:             authenticator,
 			Profiles:         profiles,
 			Catalogue:        venues,

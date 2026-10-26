@@ -31,6 +31,7 @@ type Options struct {
 	OpenAPI          []byte
 	Readiness        Readiness
 	PublicLimit      func(http.Handler) http.Handler
+	AllowedOrigins   []string
 	Auth             Authenticator
 	Profiles         Profiles
 	Logger           *slog.Logger
@@ -161,7 +162,11 @@ func New(options Options) http.Handler {
 	mux.Handle("DELETE /v1/me/check-ins/{checkInID}", requireApp(options.Auth, options.Logger, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		deleteCheckIn(w, r, options.CheckIns, options.Logger)
 	})))
-	return wrap(options.Logger, options.PublicLimit, mux)
+	var handler http.Handler = mux
+	if len(options.AllowedOrigins) > 0 {
+		handler = cors(options.AllowedOrigins, handler)
+	}
+	return wrap(options.Logger, options.PublicLimit, handler)
 }
 
 func healthHandler(w http.ResponseWriter, _ *http.Request) {

@@ -8,7 +8,7 @@ import (
 
 func TestOpenAPIDocument(t *testing.T) {
 	for _, want := range []string{
-		"openapi: 3.1.0", "/healthz", "/readyz", "http://localhost:8080",
+		"openapi: 3.1.0", "/healthz", "/readyz", "- url: /",
 		"/v1/me", "type: http", "scheme: bearer",
 		"username_reserved", "recent_authentication_required", "auth_provider_error",
 		"/v1/profiles/{username}/reports",

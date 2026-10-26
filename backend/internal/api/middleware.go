@@ -18,6 +18,35 @@ func wrap(logger *slog.Logger, limit func(http.Handler) http.Handler, next http.
 	return accessLog(logger, requestIDs(recoverPanic(logger, limit(next))))
 }
 
+// cors answers only browser callers whose Origin exactly matches the
+// allow-list. It responds to preflight requests directly, bypassing routing,
+// so a route that otherwise only registers GET still gets a 204 for OPTIONS.
+// Other callers (native apps, curl, same-origin pages) never send Origin and
+// pass straight to next; the request is never blocked server-side.
+func cors(origins []string, next http.Handler) http.Handler {
+	allowed := make(map[string]bool, len(origins))
+	for _, origin := range origins {
+		allowed[origin] = true
+	}
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Add("Vary", "Origin")
+		origin := r.Header.Get("Origin")
+		if !allowed[origin] {
+			next.ServeHTTP(w, r)
+			return
+		}
+		w.Header().Set("Access-Control-Allow-Origin", origin)
+		if r.Method == http.MethodOptions && r.Header.Get("Access-Control-Request-Method") != "" {
+			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE")
+			w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type, Idempotency-Key")
+			w.Header().Set("Access-Control-Max-Age", "600")
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
 func accessLog(logger *slog.Logger, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()

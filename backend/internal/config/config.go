@@ -19,6 +19,7 @@ type Config struct {
 	DatabaseURL            string
 	DocsUIEnabled          bool
 	TrustedProxies         []net.IPNet
+	AllowedOrigins         []string
 	SupabaseURL            string
 	SupabaseJWTAudience    string
 	SupabaseServiceRoleKey string
@@ -58,6 +59,10 @@ func load(lookup func(string) (string, bool), dir string) (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+	origins, err := parseAllowedOrigins(value("ALLOWED_ORIGINS"))
+	if err != nil {
+		return Config{}, err
+	}
 	supabaseURL, err := parseSupabaseURL(value("SUPABASE_URL"))
 	if err != nil {
 		return Config{}, err
@@ -79,6 +84,7 @@ func load(lookup func(string) (string, bool), dir string) (Config, error) {
 		DatabaseURL:            databaseURL,
 		DocsUIEnabled:          docs,
 		TrustedProxies:         proxies,
+		AllowedOrigins:         origins,
 		SupabaseURL:            supabaseURL,
 		SupabaseJWTAudience:    audience,
 		SupabaseServiceRoleKey: serviceRoleKey,
@@ -176,6 +182,28 @@ func parseTrustedProxies(value string) ([]net.IPNet, error) {
 		nets = append(nets, *network)
 	}
 	return nets, nil
+}
+
+// parseAllowedOrigins reads a comma-separated list of browser origins that may
+// call this API cross-origin. Empty or unset disables CORS entirely: no
+// Access-Control-Allow-Origin header is ever sent, and native app clients are
+// unaffected since they never send an Origin header.
+func parseAllowedOrigins(value string) ([]string, error) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return nil, nil
+	}
+	parts := strings.Split(value, ",")
+	origins := make([]string, 0, len(parts))
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		parsed, err := url.Parse(part)
+		if part == "" || err != nil || parsed.Scheme == "" || parsed.Host == "" || parsed.Path != "" || parsed.RawQuery != "" || parsed.Fragment != "" {
+			return nil, fmt.Errorf("ALLOWED_ORIGINS must be a comma-separated list of origins")
+		}
+		origins = append(origins, part)
+	}
+	return origins, nil
 }
 
 func readEnvFile(dir string) (map[string]string, error) {

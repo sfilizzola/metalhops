@@ -87,6 +87,48 @@ func TestOperationalRoutes(t *testing.T) {
 	}
 }
 
+func TestCORS(t *testing.T) {
+	handler := New(Options{Readiness: readyOK(), PublicLimit: allowAll, AllowedOrigins: []string{"https://metalhops.app"}})
+
+	preflight := httptest.NewRequest(http.MethodOptions, "/v1/genres", nil)
+	preflight.Header.Set("Origin", "https://metalhops.app")
+	preflight.Header.Set("Access-Control-Request-Method", "GET")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, preflight)
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("preflight status %d", rec.Code)
+	}
+	if rec.Header().Get("Access-Control-Allow-Origin") != "https://metalhops.app" {
+		t.Fatalf("allow-origin %q", rec.Header().Get("Access-Control-Allow-Origin"))
+	}
+	if rec.Header().Get("Access-Control-Allow-Methods") == "" || rec.Header().Get("Access-Control-Allow-Headers") == "" {
+		t.Fatal("missing preflight headers")
+	}
+
+	trusted := httptest.NewRequest(http.MethodGet, "/healthz", nil)
+	trusted.Header.Set("Origin", "https://metalhops.app")
+	rec = httptest.NewRecorder()
+	handler.ServeHTTP(rec, trusted)
+	if rec.Code != http.StatusOK || rec.Header().Get("Access-Control-Allow-Origin") != "https://metalhops.app" {
+		t.Fatalf("trusted origin %d %q", rec.Code, rec.Header().Get("Access-Control-Allow-Origin"))
+	}
+
+	untrusted := httptest.NewRequest(http.MethodGet, "/healthz", nil)
+	untrusted.Header.Set("Origin", "https://evil.example")
+	rec = httptest.NewRecorder()
+	handler.ServeHTTP(rec, untrusted)
+	if rec.Header().Get("Access-Control-Allow-Origin") != "" {
+		t.Fatalf("leaked header for untrusted origin %q", rec.Header().Get("Access-Control-Allow-Origin"))
+	}
+
+	disabled := New(Options{Readiness: readyOK(), PublicLimit: allowAll})
+	rec = httptest.NewRecorder()
+	disabled.ServeHTTP(rec, trusted)
+	if rec.Header().Get("Access-Control-Allow-Origin") != "" {
+		t.Fatalf("CORS active with no AllowedOrigins: %q", rec.Header().Get("Access-Control-Allow-Origin"))
+	}
+}
+
 func TestReadyz(t *testing.T) {
 	sha := "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef"
 	ok := get(New(Options{Readiness: readyOK(), PublicLimit: allowAll, Commit: sha}), "/readyz")

@@ -67,6 +67,19 @@ func TestLoadEnvironment(t *testing.T) {
 	if cfg.Port != "9090" || cfg.DocsUIEnabled || cfg.SupabaseURL != "http://127.0.0.1:54321" {
 		t.Fatalf("port %q docs %v url %q", cfg.Port, cfg.DocsUIEnabled, cfg.SupabaseURL)
 	}
+	if cfg.AllowedOrigins != nil {
+		t.Fatalf("origins %#v", cfg.AllowedOrigins)
+	}
+
+	lookup["ALLOWED_ORIGINS"] = " https://metalhops.app , https://admin.metalhops.app "
+	cfg, err = load(getenv, dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"https://metalhops.app", "https://admin.metalhops.app"}
+	if len(cfg.AllowedOrigins) != len(want) || cfg.AllowedOrigins[0] != want[0] || cfg.AllowedOrigins[1] != want[1] {
+		t.Fatalf("origins %#v", cfg.AllowedOrigins)
+	}
 }
 
 func TestLoadRejectsEnvironment(t *testing.T) {
@@ -93,6 +106,9 @@ func TestLoadRejectsEnvironment(t *testing.T) {
 		{name: "zero spacing", env: map[string]string{"DATABASE_URL": validURL, "SUPABASE_URL": "https://project.supabase.co", "SUPABASE_JWT_AUDIENCE": "authenticated", "SUPABASE_SERVICE_ROLE_KEY": "service-secret", "CHECKIN_SPACING": "0s"}, errText: "CHECKIN_SPACING must be a positive duration"},
 		{name: "negative spacing", env: map[string]string{"DATABASE_URL": validURL, "SUPABASE_URL": "https://project.supabase.co", "SUPABASE_JWT_AUDIENCE": "authenticated", "SUPABASE_SERVICE_ROLE_KEY": "service-secret", "CHECKIN_SPACING": "-1h"}, errText: "CHECKIN_SPACING must be a positive duration"},
 		{name: "bad spacing", env: map[string]string{"DATABASE_URL": validURL, "SUPABASE_URL": "https://project.supabase.co", "SUPABASE_JWT_AUDIENCE": "authenticated", "SUPABASE_SERVICE_ROLE_KEY": "service-secret", "CHECKIN_SPACING": "one hour"}, errText: "CHECKIN_SPACING must be a positive duration"},
+		{name: "blank origin", env: map[string]string{"DATABASE_URL": validURL, "SUPABASE_URL": "https://project.supabase.co", "SUPABASE_JWT_AUDIENCE": "authenticated", "SUPABASE_SERVICE_ROLE_KEY": "service-secret", "ALLOWED_ORIGINS": "https://metalhops.app, "}, errText: "ALLOWED_ORIGINS must be a comma-separated list of origins"},
+		{name: "origin with path", env: map[string]string{"DATABASE_URL": validURL, "SUPABASE_URL": "https://project.supabase.co", "SUPABASE_JWT_AUDIENCE": "authenticated", "SUPABASE_SERVICE_ROLE_KEY": "service-secret", "ALLOWED_ORIGINS": "https://metalhops.app/admin"}, errText: "ALLOWED_ORIGINS must be a comma-separated list of origins"},
+		{name: "schemeless origin", env: map[string]string{"DATABASE_URL": validURL, "SUPABASE_URL": "https://project.supabase.co", "SUPABASE_JWT_AUDIENCE": "authenticated", "SUPABASE_SERVICE_ROLE_KEY": "service-secret", "ALLOWED_ORIGINS": "metalhops.app"}, errText: "ALLOWED_ORIGINS must be a comma-separated list of origins"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

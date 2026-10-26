@@ -63,6 +63,17 @@ limited. Every other route uses a token bucket with burst capacity 120 and
 a sustained rate of 2 requests per second per resolved client IP. A refusal
 is `429` `rate_limited` with `Retry-After`.
 
+`ALLOWED_ORIGINS` is a comma-separated list of exact browser origins (scheme
+and host, no path) allowed to call this API cross-origin. Empty or unset
+sends no `Access-Control-Allow-Origin` header and answers every `OPTIONS`
+through the normal router, which is `405` for a route that does not register
+it; this never affects native app clients, which do not send `Origin`. A
+listed origin gets `Access-Control-Allow-Origin` on every response and a
+direct `204` preflight reply, bypassing routing, for `OPTIONS` requests that
+carry `Access-Control-Request-Method`. `openapi.yaml`'s one `servers` entry
+is the relative URL `/`, so Scalar's "Send" button targets whatever host
+served `/docs`, local or deployed, without per-environment edits.
+
 `CHECKIN_SPACING` is the minimum time between one User's Check-ins at one
 Venue. Unset means one hour. Any other value must be a positive Go duration;
 an invalid value stops the process at startup.
