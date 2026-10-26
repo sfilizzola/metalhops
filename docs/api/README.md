@@ -14,6 +14,8 @@ beside two other sources and does not repeat them:
   building a client (admin app, mobile app). Read it once you know which
   group of endpoints you need; this reference is for looking up one endpoint
   at a time.
+- [`user-flows.md`](user-flows.md) is a plain-language walkthrough of sign-up,
+  sign-in, and a check-in. Start there if the route pages are too dense.
 
 If this file and `openapi.yaml` ever disagree on a field, status code, or
 error, `openapi.yaml` wins — open an issue, it means this doc is stale.
@@ -62,6 +64,7 @@ what's different.
 
 Start from the business question you're answering:
 
+- "How does someone sign up and check in?" → [`user-flows.md`](user-flows.md)
 - "How do people find a bar?" → [`public.md`](public.md)
 - "How does a User submit a venue, leave a review, or check in?" →
   [`app.md`](app.md)
