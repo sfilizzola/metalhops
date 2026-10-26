@@ -64,7 +64,8 @@ a sustained rate of 2 requests per second per resolved client IP. A refusal
 is `429` `rate_limited` with `Retry-After`.
 
 `ALLOWED_ORIGINS` is a comma-separated list of exact browser origins (scheme
-and host, no path) allowed to call this API cross-origin. Empty or unset
+and host, no path) allowed to call this API cross-origin. Render sets
+`http://localhost:5173`. Empty or unset
 sends no `Access-Control-Allow-Origin` header and answers every `OPTIONS`
 through the normal router, which is `405` for a route that does not register
 it; this never affects native app clients, which do not send `Origin`. A
