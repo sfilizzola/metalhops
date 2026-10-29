@@ -134,7 +134,8 @@ on pull requests. A design change therefore always runs the sync test.
 ## Derived components
 
 The design system has classes for tokens, buttons, fields, alerts, identity,
-list states, skeletons, and icons. It has no spec for the app shell. These
+list states, skeletons, and icons. It has no spec for the app shell, the profile
+summary, or multi-line and select fields. These
 components are derived from those tokens and are not part of the design
 system:
 
@@ -145,6 +146,10 @@ system:
 | `MobileNav` | `src/shell/MobileNav.tsx` | Top bar with menu button and the drawer (`role="dialog"`) |
 | `NavItem` | `src/shell/NavItem.tsx` | One nav link: icon and label |
 | `UnderConstruction` | `src/pages/UnderConstruction.tsx` | Placeholder page built on `.list-state` |
+| Profile summary card | `src/profile/ProfilePage.tsx`, `profile.css` | Avatar, name, bio, From and gender on `surface-raised` with `elevation-1`, like `.venue-card` |
+| Profile stat tiles | `src/profile/ProfilePage.tsx`, `profile.css` | Check-in and Venue counters; Following, Followers and Crews as dashed "Coming soon" tiles in muted text at full contrast |
+| `AvatarUpload` | `src/profile/AvatarUpload.tsx` | Add, change and remove photo using `Button`, `Alert` and the Supabase `avatars` bucket |
+| `Field` textarea and select | `src/ui/Field.tsx`, `src/ui/ui.css` | `as="textarea"` and `as="select"` variants with the same label, help and error pattern; the design system has no spec for either |
 
 Why they are derived: the design system gives no layout, navigation, or
 placeholder pattern. Each one uses existing tokens, so a change to the design
