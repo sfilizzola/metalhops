@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Direction C · Backline (Territory Studio)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Grenze+Gotisch:wght@600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/lucide@0.469.0/dist/umd/lucide.min.js"></script>
+<style>
+  /* Assumptions: stage-monitor UI under tungsten light. Blackletter only for headings; body, labels and numbers stay Plex. Grain lives on the page background only. */
+  :root {
+    --surface: oklch(0.15 0.018 25);
+    --surface-raised: oklch(0.205 0.024 25);
+    --on-surface: oklch(0.94 0.02 75);
+    --on-surface-muted: oklch(0.76 0.03 70);
+    --outline: oklch(0.4 0.04 40);
+    --primary: oklch(0.8 0.15 68);
+    --on-primary: oklch(0.17 0.02 40);
+    --accent: oklch(0.6 0.19 27);
+    --success: oklch(0.8 0.13 150);
+  }
+  * { box-sizing: border-box; margin: 0; }
+  body { color: var(--on-surface); font: 400 16px/1.5 "IBM Plex Sans", sans-serif; padding: 48px 56px; font-variant-numeric: tabular-nums;
+    background:
+      radial-gradient(120% 70% at 50% -10%, oklch(0.24 0.05 50 / .6), transparent 60%),
+      url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.06'/%3E%3C/svg%3E"),
+      var(--surface); }
+  .display { font-family: "Grenze Gotisch", serif; font-weight: 700; line-height: 1; letter-spacing: 0.005em; }
+  .mono { font: 600 12px/1.2 "IBM Plex Mono", monospace; letter-spacing: .12em; text-transform: uppercase; color: var(--on-surface-muted); }
+  header { display: flex; justify-content: space-between; align-items: end; padding-bottom: 18px; border-bottom: 1px solid var(--outline); }
+  .wordmark { font-size: 84px; color: var(--primary); }
+  .grid { display: grid; grid-template-columns: 1.15fr 1fr; gap: 44px; margin-top: 32px; }
+  .card { background: var(--surface-raised); border-radius: 10px; overflow: hidden; box-shadow: 0 0 0 1px oklch(0.3 0.03 30), 0 18px 40px -12px oklch(0 0 0 / .6); }
+  .photo { aspect-ratio: 16/8; display: grid; place-items: center; background: oklch(0.24 0.025 30); border-bottom: 1px solid var(--outline); }
+  .body { padding: 20px 22px 22px; }
+  .plate { display: inline-flex; align-items: center; gap: 6px; padding: 5px 9px; border-radius: 4px; background: oklch(0.8 0.13 150 / .14); color: var(--success); font: 600 12px/1 "IBM Plex Mono"; letter-spacing: .1em; text-transform: uppercase; }
+  .plate svg { width: 14px; height: 14px; stroke-width: 3; }
+  .name { font-size: 50px; margin: 12px 0 8px; }
+  .meta { display: flex; gap: 14px; color: var(--on-surface-muted); flex-wrap: wrap; align-items: center; }
+  .meta svg { width: 16px; height: 16px; vertical-align: -3px; }
+  .tags { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 16px; }
+  .tag { font: 500 14px/1 "IBM Plex Sans"; min-height: 36px; padding: 0 14px; display: inline-flex; align-items: center; gap: 6px; border-radius: 6px; border: 1px solid var(--outline); color: var(--on-surface); background: oklch(0.25 0.025 30); }
+  .tag[aria-pressed="true"] { border-color: var(--primary); color: var(--primary); background: oklch(0.8 0.15 68 / .12); }
+  .tag[aria-pressed="true"]::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--primary); box-shadow: 0 0 8px var(--primary); }
+  .row { display: flex; justify-content: space-between; align-items: center; margin-top: 18px; padding-top: 16px; border-top: 1px dashed var(--outline); }
+  .score { font: 600 40px/1 "IBM Plex Mono"; color: var(--primary); }
+  .vu { display: flex; gap: 3px; margin-top: 6px; }
+  .vu span { width: 22px; height: 6px; border-radius: 1px; background: var(--outline); }
+  .vu span.on { background: var(--primary); box-shadow: 0 0 6px oklch(0.8 0.15 68 / .6); }
+  .btn { font: 600 16px/1 "IBM Plex Sans"; min-height: 52px; padding: 0 22px; border-radius: 8px; border: 0; display: inline-flex; gap: 10px; align-items: center; }
+  .btn svg { width: 20px; height: 20px; }
+  .primary { background: var(--primary); color: var(--on-primary); }
+  .done { background: oklch(0.8 0.13 150 / .14); color: var(--success); }
+  h2 { font-size: 32px; margin-bottom: 12px; }
+  section + section { margin-top: 28px; }
+  .rate { display: flex; gap: 8px; }
+  .rate button { width: 52px; height: 52px; border-radius: 8px; border: 1px solid var(--outline); background: oklch(0.22 0.025 30); color: var(--on-surface-muted); display: grid; place-items: center; }
+  .rate button svg { width: 24px; height: 24px; }
+  .rate button.on { color: var(--primary); border-color: var(--primary); }
+  .rate button.on svg { fill: currentColor; }
+  .swatches { display: flex; height: 48px; border-radius: 8px; overflow: hidden; box-shadow: 0 0 0 1px var(--outline); }
+  .swatches div { flex: 1; }
+  .note { color: var(--on-surface-muted); font-size: 14px; margin-top: 8px; }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <div class="mono">Direction C · Backline · after Territory Studio · placeholder wordmark</div>
+    <div class="display wordmark">MetalHops</div>
+  </div>
+  <div class="mono">Dark mode · Grenze Gotisch + IBM Plex</div>
+</header>
+
+<div class="grid">
+  <article class="card">
+    <div class="photo"><span class="mono">Photo · venue interior</span></div>
+    <div class="body">
+      <span class="plate"><i data-lucide="check"></i>Verified Venue</span>
+      <div class="display name">Zum Schwarzen Amboss</div>
+      <div class="meta"><span>Pub</span><span><i data-lucide="map-pin"></i> Düsseldorf, Germany</span><span class="mono" style="color:var(--on-surface-muted)">1.2 km</span></div>
+      <div class="tags"><span class="tag">Classic hard rock</span><span class="tag">Thrash</span><span class="tag">Stoner</span></div>
+      <div class="meta" style="margin-top:14px"><span><i data-lucide="target"></i> Darts</span><span><i data-lucide="music"></i> Live music</span><span><i data-lucide="utensils"></i> Kitchen</span></div>
+      <div class="row">
+        <div><span class="score">4.3</span> <span class="mono">· 128 Reviews</span>
+          <div class="vu"><span class="on"></span><span class="on"></span><span class="on"></span><span class="on"></span><span></span></div></div>
+        <button class="btn primary"><i data-lucide="map-pin-check"></i>Check in</button>
+      </div>
+    </div>
+  </article>
+
+  <div>
+    <section>
+      <h2 class="display">Your rating</h2>
+      <div class="rate" role="radiogroup" aria-label="Rating, 1 to 5">
+        <button class="on" aria-label="1"><i data-lucide="star"></i></button><button class="on" aria-label="2"><i data-lucide="star"></i></button><button class="on" aria-label="3"><i data-lucide="star"></i></button><button class="on" aria-label="4" aria-checked="true"><i data-lucide="star"></i></button><button aria-label="5"><i data-lucide="star"></i></button>
+      </div>
+      <p class="note">4 of 5. Whole numbers only; 5 is best.</p>
+    </section>
+    <section>
+      <h2 class="display">Filter by Genre</h2>
+      <div class="tags"><button class="tag" aria-pressed="true">Death metal</button><button class="tag">Black metal</button><button class="tag" aria-pressed="true">Doom</button><button class="tag">Folk metal</button><button class="tag">Punk</button></div>
+    </section>
+    <section>
+      <h2 class="display">Check-in</h2>
+      <div style="display:flex;gap:12px"><button class="btn primary"><i data-lucide="map-pin-check"></i>Check in</button><button class="btn done"><i data-lucide="check"></i>Checked in</button></div>
+    </section>
+    <section>
+      <h2 class="display">Palette</h2>
+      <div class="swatches"><div style="background:var(--surface)"></div><div style="background:var(--surface-raised)"></div><div style="background:var(--on-surface)"></div><div style="background:var(--primary)"></div><div style="background:var(--accent)"></div><div style="background:var(--success)"></div></div>
+      <p class="note">Oxblood black, tungsten amber, faint grain. Feels like the stage monitor, reads like an app.</p>
+    </section>
+  </div>
+</div>
+<script>lucide.createIcons();</script>
+</body>
+</html>
