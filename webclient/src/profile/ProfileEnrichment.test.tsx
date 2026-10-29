@@ -48,7 +48,7 @@ test("full profile shows photo, bio, From with country name, gender, counters an
   expect(card.getByText("@metal_fan")).toBeTruthy();
   expect(card.getByText(/Louder\s+than hell/)).toBeTruthy();
   expect(card.getByText("From Hamburg, Germany")).toBeTruthy();
-  expect(card.getByText("Non-binary")).toBeTruthy();
+  expect(card.getByText("Gender: Non-binary")).toBeTruthy();
   const stats = within(screen.getByRole("list", { name: "Stats" }));
   expect(stats.getByText("Check-ins").previousElementSibling?.textContent).toBe("3");
   expect(stats.getByText("Venues").previousElementSibling?.textContent).toBe("2");
@@ -69,10 +69,20 @@ test("empty profile shows initials, no empty labels, zero counters", async () =>
 
 test("Following, Followers and Crews are Coming soon with no inputs or links; counters are not editable", async () => {
   await loaded(full);
-  const list = screen.getByRole("list", { name: "Stats" });
-  expect(within(list).getAllByText("Coming soon")).toHaveLength(3);
-  for (const l of ["Following", "Followers", "Crews"]) expect(within(list).getByText(l).closest("li")?.textContent).toContain("Coming soon");
-  expect(list.querySelector("input, a, button, select, textarea")).toBeNull();
+  const soon = screen.getByRole("region", { name: "Coming soon" });
+  expect(within(soon).getByText("Coming soon")).toBeTruthy();
+  for (const l of ["Following", "Followers", "Crews"]) expect(within(soon).getByText(l)).toBeTruthy();
+  expect(soon.querySelector("input, a, button, select, textarea")).toBeNull();
+  const live = screen.getByRole("list", { name: "Stats" });
+  expect(within(live).getAllByRole("listitem")).toHaveLength(2);
+  expect(live.querySelector("input, a, button, select, textarea")).toBeNull();
+});
+
+test("the edit form sits under an Edit profile heading and selects carry a chevron icon", async () => {
+  await loaded(full);
+  expect(screen.getByRole("heading", { name: "Edit profile" })).toBeTruthy();
+  expect(document.querySelectorAll(".field__control select").length).toBe(2);
+  expect(document.querySelectorAll(".field__control .field__chevron").length).toBe(2);
 });
 
 test("editing every field saves only the changed fields", async () => {

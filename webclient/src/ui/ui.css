@@ -6,6 +6,8 @@
 .field__control textarea { all: unset; flex: 1; min-width: 0; box-sizing: border-box; font: var(--type-body-weight) var(--type-body-size)/var(--type-body-line-height) var(--font-body); color: var(--color-on-surface); }
 .field__control textarea { display: block; padding: var(--space-3) 0; white-space: pre-wrap; overflow-wrap: anywhere; resize: vertical; }
 .field__control:has(textarea) { align-items: stretch; }
-.field__control select { flex: 1; min-width: 0; border: 0; background: transparent; cursor: pointer; min-height: calc(var(--size-tap-min) - 2 * var(--border-hairline)); font: var(--type-body-weight) var(--type-body-size)/var(--type-body-line-height) var(--font-body); color: var(--color-on-surface); }
+.field__control:has(select) { position: relative; }
+.field__chevron { position: absolute; inset-inline-end: var(--space-4); pointer-events: none; color: var(--color-on-surface-muted); }
+.field__control select { flex: 1; min-width: 0; appearance: none; padding: 0 calc(var(--size-icon-md) + var(--space-2)) 0 0; border: 0; background: transparent; cursor: pointer; min-height: calc(var(--size-tap-min) - 2 * var(--border-hairline)); font: var(--type-body-weight) var(--type-body-size)/var(--type-body-line-height) var(--font-body); color: var(--color-on-surface); }
 .field__control select:focus { outline: none; }
 .field__control select option { background: var(--color-surface-field); color: var(--color-on-surface); }

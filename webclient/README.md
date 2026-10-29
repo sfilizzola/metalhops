@@ -147,9 +147,9 @@ system:
 | `NavItem` | `src/shell/NavItem.tsx` | One nav link: icon and label |
 | `UnderConstruction` | `src/pages/UnderConstruction.tsx` | Placeholder page built on `.list-state` |
 | Profile summary card | `src/profile/ProfilePage.tsx`, `profile.css` | Avatar, name, bio, From and gender on `surface-raised` with `elevation-1`, like `.venue-card` |
-| Profile stat tiles | `src/profile/ProfilePage.tsx`, `profile.css` | Check-in and Venue counters; Following, Followers and Crews as dashed "Coming soon" tiles in muted text at full contrast |
+| Profile stat tiles | `src/profile/ProfilePage.tsx`, `profile.css` | Check-in and Venue counters in a 2-column row; Following, Followers and Crews in one dashed "Coming soon" group of 3 columns, muted text at full contrast |
 | `AvatarUpload` | `src/profile/AvatarUpload.tsx` | Add, change and remove photo using `Button`, `Alert` and the Supabase `avatars` bucket |
-| `Field` textarea and select | `src/ui/Field.tsx`, `src/ui/ui.css` | `as="textarea"` and `as="select"` variants with the same label, help and error pattern; the design system has no spec for either |
+| `Field` textarea and select | `src/ui/Field.tsx`, `src/ui/ui.css` | `as="textarea"` and `as="select"` variants with the same label, help and error pattern; the select hides the native arrow (`appearance: none`) and shows a Lucide `ChevronDown`; the design system has no spec for either |
 
 Why they are derived: the design system gives no layout, navigation, or
 placeholder pattern. Each one uses existing tokens, so a change to the design

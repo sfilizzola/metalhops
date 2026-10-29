@@ -1,5 +1,5 @@
 import type { InputHTMLAttributes, ReactNode } from "react";
-import { CircleAlert } from "lucide-react";
+import { ChevronDown, CircleAlert } from "lucide-react";
 import { Icon } from "./Icon";
 
 // `as` swaps the control; textarea and select take the same label, help and error pattern.
@@ -17,6 +17,7 @@ export function Field({ id, label, error, help, disabled, className = "", as: Co
       <label className="field__label" htmlFor={id}>{label}</label>
       <div className="field__control">
         <Control {...(input as object)} id={id} disabled={disabled} aria-invalid={error ? true : undefined} aria-describedby={describedBy} />
+        {Control === "select" && <Icon icon={ChevronDown} className="field__chevron" />}
       </div>
       {help && <div className="field__help" id={helpId}>{help}</div>}
       {error && (

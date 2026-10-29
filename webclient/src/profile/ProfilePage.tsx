@@ -52,23 +52,31 @@ export function ProfilePage({ email }: { email: string }) {
             {(profile.from_city || profile.from_country) && (
               <p className="profile__meta">From {[profile.from_city, profile.from_country && countryName(profile.from_country)].filter(Boolean).join(", ")}</p>
             )}
-            {profile.gender && <p className="profile__meta">{GENDER_LABEL[profile.gender]}</p>}
+            {profile.gender && <p className="profile__meta">Gender: {GENDER_LABEL[profile.gender]}</p>}
             <AvatarUpload profile={profile} />
           </section>
           <ul className="profile__stats" aria-label="Stats">
             <li><span className="t-heading">{profile.stats.check_ins}</span><span className="t-label">Check-ins</span></li>
             <li><span className="t-heading">{profile.stats.venues}</span><span className="t-label">Venues</span></li>
-            {SOON.map((label) => (
-              <li key={label} className="profile__stat--soon"><span className="t-label">{label}</span><span>Coming soon</span></li>
-            ))}
           </ul>
+          <section className="profile__soon" aria-label="Coming soon">
+            <span className="t-caption">Coming soon</span>
+            <ul>
+              {SOON.map((label) => <li key={label} className="t-label">{label}</li>)}
+            </ul>
+          </section>
           {/* Static status shown on load, so not live regions. */}
           {profile.status === "rename_required" && <Alert kind="error" live={false}>Your username needs to change. Choose a new username to continue.</Alert>}
           {profile.status === "suspended" && <Alert kind="error" live={false}>This profile is suspended, so it can't be changed right now.</Alert>}
         </>
       )}
       {/* One slot for both modes so "Profile saved" survives create -> edit. */}
-      {(me?.kind === "no_profile" || profile) && <ProfileForm profile={profile} suspended={profile?.status === "suspended"} />}
+      {(me?.kind === "no_profile" || profile) && (
+        <div className="profile__edit">
+          {profile && <h2 className="t-heading">Edit profile</h2>}
+          <ProfileForm profile={profile} suspended={profile?.status === "suspended"} />
+        </div>
+      )}
       {(me?.kind === "no_profile" || profile) && (
         <dl className="profile__facts">
           <div><dt className="t-label">Email</dt><dd>{email}</dd></div>
