@@ -135,7 +135,7 @@ on pull requests. A design change therefore always runs the sync test.
 
 The design system has classes for tokens, buttons, fields, alerts, identity,
 list states, skeletons, and icons. It has no spec for the app shell, the profile
-summary, or multi-line and select fields. These
+user page and edit screen, or multi-line and select fields. These
 components are derived from those tokens and are not part of the design
 system:
 
@@ -146,10 +146,16 @@ system:
 | `MobileNav` | `src/shell/MobileNav.tsx` | Top bar with menu button and the drawer (`role="dialog"`) |
 | `NavItem` | `src/shell/NavItem.tsx` | One nav link: icon and label |
 | `UnderConstruction` | `src/pages/UnderConstruction.tsx` | Placeholder page built on `.list-state` |
-| Profile summary card | `src/profile/ProfilePage.tsx`, `profile.css` | Avatar, name, bio, From and gender on `surface-raised` with `elevation-1`, like `.venue-card` |
-| Profile stat tiles | `src/profile/ProfilePage.tsx`, `profile.css` | Check-in and Venue counters in a 2-column row; Following, Followers and Crews in one dashed "Coming soon" group of 3 columns, muted text at full contrast |
-| `AvatarUpload` | `src/profile/AvatarUpload.tsx` | Add, change and remove photo using `Button`, `Alert` and the Supabase `avatars` bucket |
-| `Field` textarea and select | `src/ui/Field.tsx`, `src/ui/ui.css` | `as="textarea"` and `as="select"` variants with the same label, help and error pattern; the select hides the native arrow (`appearance: none`) and shows a Lucide `ChevronDown`; the design system has no spec for either |
+| Stage card hero | `src/profile/ProfilePage.tsx`, `profile.css` (`.profile-stage`) | User page hero on `surface-raised` with `elevation-1` and `radius-lg`: a 128px `.avatar` (photo or initials) breaking the card's top edge with a `surface-raised` ring, the display name as the h1 in display type (title size below 960px), `@username`, bio, and the Edit profile button top right from 960px. Mockup: `design/mockups/profile/page-b-stage.html` |
+| Stat strip | `src/profile/ProfilePage.tsx`, `profile.css` (`.profile-strip`) | Check-ins and Venues docked along the bottom of the stage card in 2 columns split by hairlines, tabular numbers, Lucide icons in the labels |
+| Coming soon group | `src/profile/ProfilePage.tsx`, `profile.css` (`.profile-soon`) | Following, Followers and Crews in one dashed group of 3 columns with the caption once; muted text at full contrast, never opacity |
+| Account facts | `src/profile/ProfilePage.tsx`, `profile.css` (`.profile-account`) | The owner-only account facts (email, status, moderation) below a hairline, quiet and uncarded |
+| Byline facts | `src/profile/ProfilePage.tsx`, `profile.css` (`.profile-byline`) | From and Gender folded into the stage card's `@username` line (replaces the old Details card): `@hel_hammer · ⌂ Hamburg – Germany` plus the gender symbol, label-size type, muted Lucide `House` and symbol (no amber), city in on-surface, the dash and country muted, a screen-reader-only "From". Each part is omitted when unset and the whole group when all are empty; under 600px the facts wrap to their own line under the handle. Mockup: `design/mockups/profile/card-compact.html` (treatment 3) |
+| Edit section cards | `src/profile/ProfileForm.tsx`, `profile.css` (`.profile-section`, `.profile-edit__cols`) | Raised cards for Photo, Identity, About, and Location and details: Photo and Identity left, the rest right from 960px, one column below; Save and Cancel bottom right on desktop. Mockup: `design/mockups/profile/edit-2-two-column.html` |
+| `Avatar` | `src/profile/Avatar.tsx` | `.avatar` with the uploaded photo (`alt=""`, the name is adjacent) or initials; used by the user page, the edit Photo card, and the sidebar identity |
+| `GenderIcon` | `src/ui/GenderIcon.tsx` | Inline SVG gender symbol (Venus for Woman, Mars for Man, a ring with a stem ending in an X for Non-binary; Lucide `EyeOff` for Prefer not to say), 16px, muted, `role="img"` with `aria-label` "Gender: …" and a native `title`. **Approved exception to "Lucide icons only"**: Lucide 0.469.0 has no gender symbols, so these are drawn in Lucide's style (24 grid, stroke 2, round caps and joins, no fill) from the mockup sprite |
+| `AvatarUpload` | `src/profile/AvatarUpload.tsx` | Add, change and remove photo using `Button` (Lucide `Camera` and `Trash2`), `Alert` and the Supabase `avatars` bucket |
+| `Field` textarea and select | `src/ui/Field.tsx`, `src/ui/ui.css` | `as="textarea"` and `as="select"` variants with the same label, help and error pattern; the select hides the native arrow (`appearance: none`) and shows a Lucide `ChevronDown`, and its field column is `minmax(0, 1fr)` so a long option cannot widen it past its container; the design system has no spec for either |
 
 Why they are derived: the design system gives no layout, navigation, or
 placeholder pattern. Each one uses existing tokens, so a change to the design
@@ -220,5 +226,6 @@ The production API is `https://metalhops-qua7.onrender.com`; its docs are at
 - Venue submission is not built.
 - No deployment: no Vercel project and no production Supabase URL settings.
 - The wordmark is the design system's placeholder.
-- The 360px and desktop layouts have not been checked in a browser.
+- Only the profile screens have been checked in a browser (375px and 1280px,
+  dark and light, with mocked auth and API). Other pages and 360px have not.
 - No automated test covers the 960px switch.

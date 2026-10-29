@@ -1,9 +1,11 @@
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, expect, test, vi } from "vitest";
 import { getMe, saveProfile } from "../api";
 import type { Profile } from "../api";
 import { MeProvider } from "./MeProvider";
+import { ProfileEditPage } from "./ProfileEditPage";
 import { ProfilePage } from "./ProfilePage";
 
 const m = vi.hoisted(() => ({ supabase: null as unknown }));
@@ -34,21 +36,36 @@ beforeEach(() => {
   m.supabase = { auth, storage: { from: vi.fn(() => storage) } };
 });
 
-async function loaded(profile: Profile) {
+// View tests start on /profile; form and photo tests on /profile/edit.
+async function loaded(profile: Profile, path = "/profile/edit") {
   vi.mocked(getMe).mockResolvedValue({ kind: "ok", profile });
-  render(<MeProvider userId="u1"><ProfilePage email="fan@example.com" /></MeProvider>);
+  render(
+    <MemoryRouter initialEntries={[path]}>
+      <MeProvider userId="u1">
+        <Routes>
+          <Route path="/profile" element={<ProfilePage email="fan@example.com" />} />
+          <Route path="/profile/edit" element={<ProfileEditPage email="fan@example.com" />} />
+        </Routes>
+      </MeProvider>
+    </MemoryRouter>,
+  );
   await waitFor(() => expect(screen.queryByText("Loading…")).toBeNull());
 }
+const summary = () => within(screen.getByRole("region", { name: "Profile summary" }));
+// Textual content of the byline location group, e.g. "From Hamburg – Germany".
+const from = () => document.querySelector(".profile-byline__loc")?.textContent;
 
 test("full profile shows photo, bio, From with country name, gender, counters and email", async () => {
-  await loaded(full);
+  await loaded(full, "/profile");
   const card = within(screen.getByRole("region", { name: "Profile summary" }));
   expect(document.querySelector("img.profile__photo")?.getAttribute("src")).toBe(full.avatar_url);
-  expect(card.getByText("Metal Fan")).toBeTruthy();
+  expect(card.getByRole("heading", { level: 1, name: "Metal Fan" })).toBeTruthy();
   expect(card.getByText("@metal_fan")).toBeTruthy();
   expect(card.getByText(/Louder\s+than hell/)).toBeTruthy();
-  expect(card.getByText("From Hamburg, Germany")).toBeTruthy();
-  expect(card.getByText("Gender: Non-binary")).toBeTruthy();
+  expect(card.getByRole("link", { name: "Edit profile" }).getAttribute("href")).toBe("/profile/edit");
+  expect(from()).toBe("From Hamburg – Germany");
+  expect(summary().getByRole("img", { name: "Gender: Non-binary" })).toBeTruthy();
+  expect(screen.queryByText("Details")).toBeNull();
   const stats = within(screen.getByRole("list", { name: "Stats" }));
   expect(stats.getByText("Check-ins").previousElementSibling?.textContent).toBe("3");
   expect(stats.getByText("Venues").previousElementSibling?.textContent).toBe("2");
@@ -56,19 +73,49 @@ test("full profile shows photo, bio, From with country name, gender, counters an
 });
 
 test("empty profile shows initials, no empty labels, zero counters", async () => {
-  await loaded(empty);
+  await loaded(empty, "/profile");
   const card = screen.getByRole("region", { name: "Profile summary" });
   expect(card.querySelector("img")).toBeNull();
   expect(within(card).getByText("MF")).toBeTruthy();
-  expect(within(card).queryByText(/From/)).toBeNull();
-  expect(card.querySelector(".profile__bio, .profile__meta")).toBeNull();
+  expect(screen.queryByText(/From/)).toBeNull();
+  expect(screen.queryByText("Gender")).toBeNull();
+  expect(screen.queryByText(/Details/)).toBeNull();
+  expect(screen.queryByRole("region", { name: "Details" })).toBeNull();
+  expect(card.querySelector(".profile-byline")).toBeNull();
+  expect(within(card).queryByRole("img", { name: /^Gender/ })).toBeNull();
+  expect(card.querySelector(".profile-stage__bio")).toBeNull();
   const stats = within(screen.getByRole("list", { name: "Stats" }));
   expect(stats.getByText("Check-ins").previousElementSibling?.textContent).toBe("0");
   expect(stats.getByText("Venues").previousElementSibling?.textContent).toBe("0");
 });
 
+test("byline handles partial data: city only, country only, gender only", async () => {
+  await loaded({ ...full, from_country: null, gender: null }, "/profile");
+  expect(from()).toBe("From Hamburg");
+  expect(summary().queryByRole("img", { name: /^Gender/ })).toBeNull();
+});
+
+test("byline with country only shows the country name and no separator", async () => {
+  await loaded({ ...full, from_city: null }, "/profile");
+  expect(from()).toBe("From Germany");
+  expect(summary().getByText("Germany").closest(".profile-byline__loc")?.querySelector("svg")).toBeTruthy();
+});
+
+test("byline with gender only has the symbol and no location", async () => {
+  await loaded({ ...full, from_city: null, from_country: null }, "/profile");
+  expect(summary().queryByText(/From/)).toBeNull();
+  expect(summary().getByRole("img", { name: "Gender: Non-binary" })).toBeTruthy();
+});
+
+test.each([
+  ["woman", "Gender: Woman"], ["man", "Gender: Man"], ["non_binary", "Gender: Non-binary"], ["prefer_not_to_say", "Gender: Prefer not to say"],
+] as const)("gender %s maps to the accessible name %s", async (gender, name) => {
+  await loaded({ ...full, gender }, "/profile");
+  expect(summary().getByRole("img", { name }).getAttribute("title")).toBe(name.replace("Gender: ", ""));
+});
+
 test("Following, Followers and Crews are Coming soon with no inputs or links; counters are not editable", async () => {
-  await loaded(full);
+  await loaded(full, "/profile");
   const soon = screen.getByRole("region", { name: "Coming soon" });
   expect(within(soon).getByText("Coming soon")).toBeTruthy();
   for (const l of ["Following", "Followers", "Crews"]) expect(within(soon).getByText(l)).toBeTruthy();
@@ -76,6 +123,18 @@ test("Following, Followers and Crews are Coming soon with no inputs or links; co
   const live = screen.getByRole("list", { name: "Stats" });
   expect(within(live).getAllByRole("listitem")).toHaveLength(2);
   expect(live.querySelector("input, a, button, select, textarea")).toBeNull();
+  expect(document.querySelectorAll(".profile-soon")).toHaveLength(1);
+});
+
+test("the edit screen has Photo, Identity, About and Location sections and no counters or Coming soon", async () => {
+  await loaded(full);
+  for (const name of ["Photo", "Identity", "About", "Location & details"]) expect(screen.getByRole("region", { name })).toBeTruthy();
+  expect(within(screen.getByRole("region", { name: "Identity" })).getByLabelText("Username")).toBeTruthy();
+  expect(within(screen.getByRole("region", { name: "About" })).getByLabelText("Bio")).toBeTruthy();
+  expect(within(screen.getByRole("region", { name: "Location & details" })).getByLabelText("Gender")).toBeTruthy();
+  expect(screen.queryByRole("list", { name: "Stats" })).toBeNull();
+  expect(screen.queryByText("Coming soon")).toBeNull();
+  expect(screen.getByRole("link", { name: "Back to profile" }).getAttribute("href")).toBe("/profile");
 });
 
 test("the edit form sits under an Edit profile heading and selects carry a chevron icon", async () => {
@@ -103,10 +162,12 @@ test("editing every field saves only the changed fields", async () => {
     username: "new_name", display_name: "New Name", bio: "Hi", from_city: "Oslo", from_country: "NO", gender: "woman",
   });
   expect(await screen.findByText("Profile saved")).toBeTruthy();
-  expect((screen.getByRole("button", { name: "Save changes" }) as HTMLButtonElement).disabled).toBe(true);
+  expect(screen.getByRole("heading", { level: 1, name: "New Name" })).toBeTruthy();
+  expect(from()).toBe("From Oslo – Norway");
+  expect(summary().getByRole("img", { name: "Gender: Woman" })).toBeTruthy();
 });
 
-test("clearing a field sends an empty string; Cancel resets every field", async () => {
+test("clearing a field sends an empty string; a confirmed Cancel discards every edit", async () => {
   await loaded(full);
   const user = userEvent.setup();
   await user.clear(screen.getByLabelText("From city"));
@@ -114,9 +175,18 @@ test("clearing a field sends an empty string; Cancel resets every field", async 
   vi.mocked(saveProfile).mockResolvedValue({ kind: "ok", profile: { ...full, from_city: null, gender: "man" } });
   await user.click(screen.getByRole("button", { name: "Save changes" }));
   expect(saveProfile).toHaveBeenCalledWith("http://api.test", expect.any(Function), { from_city: "", gender: "man" });
+  expect(await screen.findByText("Profile saved")).toBeTruthy();
+  expect(from()).toBe("From Germany");
+  expect(summary().getByRole("img", { name: "Gender: Man" })).toBeTruthy();
+  await user.click(screen.getByRole("link", { name: "Edit profile" }));
   await user.type(screen.getByLabelText("Bio"), "zzz");
   await user.type(screen.getByLabelText("From city"), "Rome");
+  vi.spyOn(window, "confirm").mockReturnValue(true);
   await user.click(screen.getByRole("button", { name: "Cancel" }));
+  expect(saveProfile).toHaveBeenCalledTimes(1);
+  expect(screen.getByText(/Louder\s+than hell/)).toBeTruthy();
+  expect(screen.queryByText(/zzz|Rome/)).toBeNull();
+  await user.click(screen.getByRole("link", { name: "Edit profile" }));
   expect((screen.getByLabelText("Bio") as HTMLTextAreaElement).value).toBe(full.bio);
   expect((screen.getByLabelText("From city") as HTMLInputElement).value).toBe("");
   expect((screen.getByLabelText("Gender") as HTMLSelectElement).value).toBe("man");

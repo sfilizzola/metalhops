@@ -1,20 +1,77 @@
-.profile { display: grid; gap: var(--space-5); width: 100%; max-width: 36rem; min-width: 0; }
-@media (min-width: 960px) { .profile { max-width: 48rem; } }
-.profile__card { display: grid; gap: var(--space-3); padding: var(--space-4); background: var(--color-surface-raised); box-shadow: var(--elevation-1); border-radius: var(--radius-md); min-width: 0; }
-.profile__photo { width: 100%; height: 100%; border-radius: inherit; object-fit: cover; }
-.profile__bio { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
-.profile__meta { margin: 0; color: var(--color-on-surface-muted); overflow-wrap: anywhere; }
-.profile__avatar-actions { display: flex; flex-wrap: wrap; gap: var(--space-3); }
-.profile__avatar-actions .form-alert { flex-basis: 100%; }
-.profile__stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-3); margin: 0; padding: 0; list-style: none; }
-.profile__stats li { display: grid; gap: var(--space-1); padding: var(--space-3); border: var(--border-hairline) solid var(--color-outline-variant); border-radius: var(--radius-md); min-width: 0; }
-.profile__soon { display: grid; gap: var(--space-2); padding: var(--space-3); border: var(--border-hairline) dashed var(--color-outline-variant); border-radius: var(--radius-md); color: var(--color-on-surface-muted); }
-.profile__soon ul { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-3); margin: 0; padding: 0; list-style: none; }
-.profile__edit { display: grid; gap: var(--space-4); }
-.profile__edit h2 { margin: 0; }
-.profile__form { display: grid; gap: var(--space-4); }
-.profile__actions { display: flex; flex-wrap: wrap; gap: var(--space-3); }
-.profile__facts { display: grid; gap: var(--space-3); margin: 0; }
-.profile__facts dt { color: var(--color-on-surface-muted); }
-.profile__facts dd { margin: 0; overflow-wrap: anywhere; }
+/* Profile user page and edit screen: derived from tokens (mockups design/mockups/profile/page-b-stage.html and edit-2-two-column.html). */
+
+/* ---------- Shared ---------- */
+.profile-view, .profile-edit { --profile-avatar-xl: calc(var(--space-16) * 2); --profile-avatar-lg: calc(var(--space-16) + var(--space-8)); font-variant-numeric: tabular-nums; }
+:where(.profile-view, .profile-edit) :where(h1, h2, p, dl, dd, ul) { margin: 0; padding: 0; }
+:where(.profile-view, .profile-edit) ul { list-style: none; }
+/* The avatar is a fixed-size grid, so a percentage height does not resolve and a non-square photo would keep its own
+   proportions. Width plus aspect-ratio keeps it a square, and the avatar clips whatever is left. */
+.profile__photo { display: block; width: 100%; aspect-ratio: 1; border-radius: inherit; object-fit: cover; }
+.avatar:has(.profile__photo) { overflow: hidden; }
 .profile__skeleton { height: var(--space-10); }
+.profile-card { background: var(--color-surface-raised); box-shadow: var(--elevation-1); border-radius: var(--radius-lg); min-width: 0; }
+/* .avatar comes from components.css, which loads after this file, so the size modifiers need the extra class. */
+.avatar.profile-avatar--xl { width: var(--profile-avatar-xl); height: var(--profile-avatar-xl); font-size: var(--type-title-size); }
+.avatar.profile-avatar--lg { width: var(--profile-avatar-lg); height: var(--profile-avatar-lg); font-size: var(--type-heading-size); }
+.profile-facts { display: grid; gap: var(--space-4); }
+.profile-facts dt { color: var(--color-on-surface-muted); }
+.profile-facts dd { overflow-wrap: anywhere; }
+.profile-section-title { color: var(--color-on-surface-muted); }
+
+/* ---------- User page (stage card) ---------- */
+.profile-view { display: grid; gap: var(--space-6); width: 100%; max-width: 60rem; min-width: 0; margin-inline: auto; }
+/* Room above the card for the half of the avatar that breaks its top edge. */
+.profile-stage { margin-top: calc(var(--profile-avatar-xl) / 2); display: grid; gap: var(--space-3); }
+.profile-stage__top { display: grid; gap: var(--space-3); padding: 0 var(--space-5) var(--space-5); }
+.profile-stage__avatar { margin-top: calc(var(--profile-avatar-xl) / -2); box-shadow: 0 0 0 var(--border-focus) var(--color-surface-raised); }
+.profile-stage__id { display: grid; gap: var(--space-1); min-width: 0; }
+.profile-name { overflow-wrap: anywhere; }
+.profile-username { color: var(--color-on-surface-muted); overflow-wrap: anywhere; }
+/* Byline facts (mockup card-compact treatment 3): own line under the handle on narrow cards, inline after it from 600px. */
+.profile-byline { display: block; font: 400 var(--type-label-size)/var(--type-label-line-height) var(--font-body); overflow-wrap: anywhere; }
+.profile-byline__loc { display: inline; }
+/* An unbreakable place name would jump to the next line and strand the house alone on line one. */
+.profile-byline__city { color: var(--color-on-surface); overflow-wrap: anywhere; word-break: break-all; }
+.profile-byline__sub { color: var(--color-on-surface-muted); }
+.profile-byline .icon, .profile-byline .gender-icon { color: var(--color-on-surface-muted); display: inline; vertical-align: middle; position: relative; top: calc(var(--border-hairline) * -1); }
+.profile-byline__house { margin-right: var(--space-1); }
+.profile-byline__g { margin-left: var(--space-2); }
+@media (min-width: 600px) {
+  .profile-byline { display: inline; }
+  .profile-byline::before { content: "·"; margin: 0 var(--space-2); }
+}
+.profile-stage__bio { max-width: 44ch; white-space: pre-wrap; overflow-wrap: anywhere; }
+.profile-strip { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); border-top: var(--border-hairline) solid var(--color-outline-variant); }
+.profile-stat { display: grid; gap: var(--space-1); padding: var(--space-4) var(--space-5); min-width: 0; }
+.profile-stat + .profile-stat { border-left: var(--border-hairline) solid var(--color-outline-variant); }
+.profile-stat__n { font: 600 var(--type-title-size)/var(--type-title-line-height) var(--font-body); }
+.profile-stat__l { display: flex; align-items: center; gap: var(--space-2); color: var(--color-on-surface-muted); }
+/* Full muted colour, never opacity: the caption must keep its contrast pair. */
+.profile-soon { display: grid; gap: var(--space-2); padding: var(--space-3) var(--space-4); border: var(--border-hairline) dashed var(--color-outline-variant); border-radius: var(--radius-md); color: var(--color-on-surface-muted); }
+.profile-soon ul { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-3); }
+.profile-account { display: grid; gap: var(--space-3); padding-top: var(--space-5); border-top: var(--border-hairline) solid var(--color-outline-variant); }
+.profile-account .profile-facts { gap: var(--space-3); }
+
+/* ---------- Edit screen (two columns) ---------- */
+.profile-edit { display: grid; gap: var(--space-6); width: 100%; max-width: 64rem; min-width: 0; margin-inline: auto; }
+.profile-edit__back { margin-left: calc(var(--space-3) * -1); justify-self: start; }
+.profile-form { display: grid; gap: var(--space-6); min-width: 0; }
+.profile-edit__cols { display: grid; gap: var(--space-6); align-items: start; }
+.profile-edit__col { display: grid; gap: var(--space-6); min-width: 0; }
+.profile-section { display: grid; gap: var(--space-4); padding: var(--space-5); }
+.profile-photo { display: flex; align-items: center; gap: var(--space-4); flex-wrap: wrap; }
+.profile-photo__actions { display: flex; flex-wrap: wrap; gap: var(--space-3); }
+.profile-photo__actions .form-alert { flex-basis: 100%; }
+.profile-actions { display: flex; flex-wrap: wrap; gap: var(--space-3); }
+
+@media (min-width: 960px) {
+  .profile-stage__top { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "av av" "id act" "bio act"; column-gap: var(--space-6); padding: 0 var(--space-8) var(--space-6); }
+  .profile-stage__avatar { grid-area: av; justify-self: start; }
+  .profile-stage__id { grid-area: id; }
+  .profile-stage__bio { grid-area: bio; }
+  .profile-stage__act { grid-area: act; align-self: start; }
+  .profile-stat { padding: var(--space-5) var(--space-8); }
+  .t-title.profile-name { font: var(--type-display-weight) var(--type-display-size)/var(--type-display-line-height) var(--font-display); }
+  .profile-edit__cols { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-8); }
+  .profile-actions { justify-content: flex-end; }
+}

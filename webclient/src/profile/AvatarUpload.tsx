@@ -1,10 +1,12 @@
 import { useRef, useState } from "react";
 import type { ChangeEvent } from "react";
+import { Camera, Trash2 } from "lucide-react";
 import { saveProfile } from "../api";
 import type { Profile } from "../api";
 import { apiBaseUrl, supabase } from "../supabase";
 import { Alert } from "../ui/Alert";
 import { Button } from "../ui/Button";
+import { Icon } from "../ui/Icon";
 import { useMe } from "./MeProvider";
 
 const BUCKET = "avatars";
@@ -77,10 +79,10 @@ export function AvatarUpload({ profile }: { profile: Profile }) {
 
   if (profile.status === "suspended") return null;
   return (
-    <div className="profile__avatar-actions">
+    <div className="profile-photo__actions">
       <input ref={input} type="file" accept="image/*" hidden aria-label="Photo file" onChange={pick} />
-      <Button variant="secondary" loading={busy} onClick={() => input.current?.click()}>{profile.avatar_url ? "Change photo" : "Add photo"}</Button>
-      {profile.avatar_url && <Button variant="ghost" disabled={busy} onClick={remove}>Remove</Button>}
+      <Button variant="secondary" loading={busy} onClick={() => input.current?.click()}><Icon icon={Camera} />{profile.avatar_url ? "Change photo" : "Add photo"}</Button>
+      {profile.avatar_url && <Button variant="ghost" disabled={busy} onClick={remove}><Icon icon={Trash2} />Remove</Button>}
       {error && <Alert kind="error">{error}</Alert>}
     </div>
   );

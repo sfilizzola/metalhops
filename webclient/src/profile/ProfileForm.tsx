@@ -6,6 +6,8 @@ import { apiBaseUrl, supabase } from "../supabase";
 import { Alert } from "../ui/Alert";
 import { Button } from "../ui/Button";
 import { Field } from "../ui/Field";
+import { Avatar } from "./Avatar";
+import { AvatarUpload } from "./AvatarUpload";
 import { COUNTRIES } from "./countries";
 import { useMe } from "./MeProvider";
 
@@ -36,8 +38,16 @@ function failureMessage(f: ApiFailure): string {
   return `Something went wrong. Please try again.${id ? ` (request ${id})` : ""}`;
 }
 
-// profile === null means create mode (no profile yet).
-export function ProfileForm({ profile, suspended }: { profile: Profile | null; suspended: boolean }) {
+type Props = {
+  profile: Profile | null;
+  suspended: boolean;
+  onSaved: () => void;
+  onCancel: () => void;
+  onDirtyChange?: (dirty: boolean) => void;
+};
+
+// profile === null means create mode (no profile yet). The edit screen layout (mockup edit-2): Photo and Identity, then About and Location and details.
+export function ProfileForm({ profile, suspended, onSaved, onCancel, onDirtyChange }: Props) {
   const { getToken, setProfile, reload } = useMe();
   const [username, setUsername] = useState(profile?.username ?? "");
   const [displayName, setDisplayName] = useState(profile?.display_name ?? "");
@@ -48,7 +58,6 @@ export function ProfileForm({ profile, suspended }: { profile: Profile | null; s
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [general, setGeneral] = useState("");
   const [retryable, setRetryable] = useState(false);
-  const [saved, setSaved] = useState(false);
   const [pending, setPending] = useState(false);
 
   // Fields that differ from the loaded profile, in API wording ("" clears a nullable field).
@@ -64,6 +73,7 @@ export function ProfileForm({ profile, suspended }: { profile: Profile | null; s
     return Object.fromEntries(Object.entries(next).filter(([k, v]) => v !== before[k as keyof ProfileInput]));
   }
   const dirty = !!profile && Object.keys(changes()).length > 0;
+  useEffect(() => onDirtyChange?.(dirty), [dirty, onDirtyChange]);
 
   // Runs for client and server errors alike; every setErrors call passes a new object.
   useEffect(() => {
@@ -72,27 +82,13 @@ export function ProfileForm({ profile, suspended }: { profile: Profile | null; s
   }, [errors]);
 
   function edit(set: (v: string) => void) {
-    return (e: { target: { value: string } }) => { set(e.target.value); setSaved(false); };
-  }
-
-  function cancel() {
-    setUsername(profile?.username ?? "");
-    setDisplayName(profile?.display_name ?? "");
-    setBio(profile?.bio ?? "");
-    setCity(profile?.from_city ?? "");
-    setCountry(profile?.from_country ?? "");
-    setGender(profile?.gender ?? "");
-    setErrors({});
-    setGeneral("");
-    setRetryable(false);
-    setSaved(false);
+    return (e: { target: { value: string } }) => set(e.target.value);
   }
 
   async function submit(e?: FormEvent) {
     e?.preventDefault();
     setGeneral("");
     setRetryable(false);
-    setSaved(false);
     const name = displayName.trim();
     const next: Record<string, string> = {};
     // Count code points like the backend (RuneCountInString), not UTF-16 units.
@@ -109,14 +105,8 @@ export function ProfileForm({ profile, suspended }: { profile: Profile | null; s
     setPending(false);
     switch (res.kind) {
       case "ok":
-        setUsername(res.profile.username);
-        setDisplayName(res.profile.display_name);
-        setBio(res.profile.bio ?? "");
-        setCity(res.profile.from_city ?? "");
-        setCountry(res.profile.from_country ?? "");
-        setGender(res.profile.gender ?? "");
         setProfile(res.profile);
-        return setSaved(true);
+        return onSaved();
       case "invalid": {
         // Never show backend field text: known keys get the client wording, anything else the general message.
         const keys = Object.keys(res.fields ?? {});
@@ -139,31 +129,54 @@ export function ProfileForm({ profile, suspended }: { profile: Profile | null; s
     }
   }
 
-  return (
-    <form className="profile__form" onSubmit={submit} noValidate>
+  const identity = (
+    <section className="profile-card profile-section" aria-labelledby="profile-identity-title">
+      <h2 id="profile-identity-title" className="t-heading">Identity</h2>
       <Field id="profile-username" label="Username" value={username} onChange={edit(setUsername)} error={errors.username} disabled={suspended} autoComplete="username" autoCapitalize="none" spellCheck={false} />
       <Field id="profile-display-name" label="Display name" value={displayName} onChange={edit(setDisplayName)} error={errors.display_name} disabled={suspended} autoComplete="nickname" />
-      {profile && (
-        <>
-          <Field as="textarea" rows={4} id="profile-bio" label="Bio" value={bio} onChange={edit(setBio)} error={errors.bio} disabled={suspended} help={`${[...bio].length}/${BIO_MAX}`} />
-          <Field id="profile-from-city" label="From city" value={city} onChange={edit(setCity)} error={errors.from_city} disabled={suspended} autoComplete="address-level2" />
-          <Field as="select" id="profile-from-country" label="From country" value={country} onChange={edit(setCountry)} error={errors.from_country} disabled={suspended} autoComplete="country">
-            <option value="">Not set</option>
-            {COUNTRIES.map((c) => <option key={c.code} value={c.code}>{c.name}</option>)}
-          </Field>
-          <Field as="select" id="profile-gender" label="Gender" value={gender} onChange={edit(setGender)} error={errors.gender} disabled={suspended}>
-            <option value="">Not set</option>
-            {(Object.keys(GENDER_LABEL) as Gender[]).map((g) => <option key={g} value={g}>{GENDER_LABEL[g]}</option>)}
-          </Field>
-        </>
-      )}
+    </section>
+  );
+
+  return (
+    <form className="profile-form" onSubmit={submit} noValidate>
+      {profile ? (
+        <div className="profile-edit__cols">
+          <div className="profile-edit__col">
+            <section className="profile-card profile-section" aria-labelledby="profile-photo-title">
+              <h2 id="profile-photo-title" className="t-heading">Photo</h2>
+              <div className="profile-photo">
+                <Avatar profile={profile} className="profile-avatar--lg" />
+                <AvatarUpload profile={profile} />
+              </div>
+            </section>
+            {identity}
+          </div>
+          <div className="profile-edit__col">
+            <section className="profile-card profile-section" aria-labelledby="profile-about-title">
+              <h2 id="profile-about-title" className="t-heading">About</h2>
+              <Field as="textarea" rows={4} id="profile-bio" label="Bio" value={bio} onChange={edit(setBio)} error={errors.bio} disabled={suspended} help={`${[...bio].length}/${BIO_MAX}`} className="num" />
+            </section>
+            <section className="profile-card profile-section" aria-labelledby="profile-location-title">
+              <h2 id="profile-location-title" className="t-heading">Location &amp; details</h2>
+              <Field id="profile-from-city" label="From city" value={city} onChange={edit(setCity)} error={errors.from_city} disabled={suspended} autoComplete="address-level2" />
+              <Field as="select" id="profile-from-country" label="From country" value={country} onChange={edit(setCountry)} error={errors.from_country} disabled={suspended} autoComplete="country">
+                <option value="">Not set</option>
+                {COUNTRIES.map((c) => <option key={c.code} value={c.code}>{c.name}</option>)}
+              </Field>
+              <Field as="select" id="profile-gender" label="Gender" value={gender} onChange={edit(setGender)} error={errors.gender} disabled={suspended}>
+                <option value="">Not set</option>
+                {(Object.keys(GENDER_LABEL) as Gender[]).map((g) => <option key={g} value={g}>{GENDER_LABEL[g]}</option>)}
+              </Field>
+            </section>
+          </div>
+        </div>
+      ) : identity}
       {general && <Alert kind="error">{general}</Alert>}
-      {saved && <Alert kind="success">Profile saved</Alert>}
       {!suspended && (
-        <div className="profile__actions">
+        <div className="profile-actions">
           <Button type="submit" loading={pending} disabled={!!profile && !dirty}>{profile ? "Save changes" : "Create profile"}</Button>
           {retryable && <Button variant="secondary" onClick={() => void submit()} disabled={pending}>Retry</Button>}
-          {dirty && <Button variant="ghost" onClick={cancel} disabled={pending}>Cancel</Button>}
+          {profile && <Button variant="secondary" onClick={onCancel} disabled={pending}>Cancel</Button>}
         </div>
       )}
     </form>

@@ -6,6 +6,7 @@ import { CheckIns } from "./pages/CheckIns";
 import { Discover } from "./pages/Discover";
 import { Home } from "./pages/Home";
 import { MyVenues } from "./pages/MyVenues";
+import { ProfileEditPage } from "./profile/ProfileEditPage";
 import { ProfilePage } from "./profile/ProfilePage";
 import { apiBaseUrl, supabase } from "./supabase";
 import { Alert } from "./ui/Alert";
@@ -13,6 +14,10 @@ import { Spinner } from "./ui/Spinner";
 
 function ProfileRoute() {
   return <ProfilePage email={useSession()?.user.email ?? ""} />;
+}
+
+function ProfileEditRoute() {
+  return <ProfileEditPage email={useSession()?.user.email ?? ""} />;
 }
 
 function AppRoutes() {
@@ -32,6 +37,7 @@ function AppRoutes() {
         <Route path="/check-ins" element={<CheckIns />} />
         <Route path="/my-venues" element={<MyVenues />} />
         <Route path="/profile" element={<ProfileRoute />} />
+        <Route path="/profile/edit" element={<ProfileEditRoute />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
