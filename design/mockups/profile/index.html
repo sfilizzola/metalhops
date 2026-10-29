@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Profile mockups, comparison</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Grenze+Gotisch:wght@700&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../../system/tokens.css">
+<link rel="stylesheet" href="../../system/components.css">
+<link rel="stylesheet" href="mockup.css">
+<style>
+:root { --s: 0.7; }
+.ix { padding: var(--space-6) var(--space-6) var(--space-16); max-width: 96rem; margin-inline: auto; }
+.ix__bar { display: flex; align-items: center; gap: var(--space-4); flex-wrap: wrap; margin-bottom: var(--space-8); }
+.ix__bar p { color: var(--color-on-surface-muted); flex: 1 1 20rem; }
+.seg { display: inline-flex; border: var(--border-hairline) solid var(--color-outline); border-radius: var(--radius-md); overflow: hidden; }
+.seg button { min-height: var(--size-tap-min); padding: 0 var(--space-4); background: none; border: 0; color: var(--color-on-surface-muted); font: var(--type-label-weight) var(--type-label-size)/1 var(--font-body); cursor: pointer; }
+.seg button + button { border-left: var(--border-hairline) solid var(--color-outline); }
+.seg button[aria-pressed="true"] { background: var(--color-primary-container); color: var(--color-on-primary-container); }
+.row { display: grid; gap: var(--space-3); margin-bottom: var(--space-12); }
+.row h2 { display: flex; gap: var(--space-3); align-items: baseline; flex-wrap: wrap; }
+.row h2 a { color: var(--color-primary); font: var(--type-label-weight) var(--type-label-size)/1 var(--font-body); }
+.frames { display: flex; gap: var(--space-6); align-items: flex-start; overflow-x: auto; padding-bottom: var(--space-2); }
+.frame { flex: none; }
+.frame > span { display: block; margin-bottom: var(--space-2); color: var(--color-on-surface-muted); }
+.frame__box { overflow: hidden; border-radius: var(--radius-lg); box-shadow: var(--elevation-1); background: var(--color-surface); }
+.frame iframe { border: 0; display: block; transform: scale(var(--s)); transform-origin: 0 0; }
+.frame--m .frame__box { width: calc(375px * var(--s)); height: calc(800px * var(--s)); } .frame--m iframe { width: 375px; height: 800px; }
+.frame--d .frame__box { width: calc(1280px * var(--s)); height: calc(900px * var(--s)); } .frame--d iframe { width: 1280px; height: 900px; }
+</style>
+</head>
+<body>
+<main class="ix">
+  <div class="ix__bar">
+    <h1 class="t-title">Profile mockups</h1>
+    <p>Three user page variants (A, B, C) and two edit variants (1, 2), at 375 and 1280 px. Sample data, not for production.</p>
+    <div class="seg" role="group" aria-label="Theme"><button type="button" data-t="dark" aria-pressed="true">Dark</button><button type="button" data-t="light" aria-pressed="false">Light</button></div>
+  </div>
+  <div id="rows"></div>
+</main>
+<script>
+var PAGES = [
+  ["A", "Stacked hero (by the book)", "page-a-stacked.html"],
+  ["B", "Backline stage card", "page-b-stage.html"],
+  ["C", "Split profile", "page-c-split.html"],
+  ["1", "Edit: sectioned, sticky bar", "edit-1-sectioned.html"],
+  ["2", "Edit: two columns", "edit-2-two-column.html"]
+];
+var theme = new URLSearchParams(location.search).get("theme") === "light" ? "light" : "dark";
+function frame(cls, w, label, f) {
+  return '<div class="frame frame--' + cls + '"><span class="t-caption">' + label + '</span><div class="frame__box"><iframe title="' + label + '" data-f="' + f + '"></iframe></div></div>';
+}
+document.getElementById("rows").innerHTML = PAGES.map(function (p) {
+  return '<section class="row"><h2 class="t-heading">' + p[0] + '. ' + p[1] + ' <a href="' + p[2] + '">Open full size</a></h2><div class="frames">' + frame("m", 375, "375 px", p[2]) + frame("d", 1280, "1280 px", p[2]) + '</div></section>';
+}).join("");
+function apply(t) {
+  theme = t;
+  document.documentElement.dataset.theme = t;
+  document.querySelectorAll(".seg button").forEach(function (b) { b.setAttribute("aria-pressed", String(b.dataset.t === t)); });
+  // Query param, not contentDocument: file:// iframes are cross-origin.
+  document.querySelectorAll("iframe").forEach(function (i) { i.src = i.dataset.f + "?theme=" + t; });
+}
+document.querySelectorAll(".seg button").forEach(function (b) { b.onclick = function () { apply(b.dataset.t); }; });
+apply(theme);
+</script>
+</body>
+</html>

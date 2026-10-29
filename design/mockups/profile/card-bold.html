@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Profile card, bold concepts</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Grenze+Gotisch:wght@700&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../../system/tokens.css">
+<link rel="stylesheet" href="../../system/components.css">
+<link rel="stylesheet" href="mockup.css">
+<link rel="stylesheet" href="card-bold.css">
+<script src="mockup.js"></script>
+</head>
+<body>
+<!--
+Round 2: three bold concepts for the merged stage card (From, Gender and the counters live in the card; no Details card).
+1 Backstage pass, 2 Tour poster, 3 Amp faceplate. Sample data, not for production.
+Gender symbols are custom, drawn in Lucide's style (24 grid, stroke 2, round caps and joins, no fill); house, eye-off,
+map-pin-check, store, user-check, users, users-round are Lucide 0.469.0 paths. ?only=1|2|3 shows one concept as a page.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" style="display:none" aria-hidden="true"><symbol id="i-menu" viewBox="0 0 24 24"><line x1="4" x2="20" y1="12" y2="12"/><line x1="4" x2="20" y1="6" y2="6"/><line x1="4" x2="20" y1="18" y2="18"/></symbol><symbol id="i-house" viewBox="0 0 24 24"><path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8"/><path d="M3 10a2 2 0 0 1 .709-1.528l7-5.999a2 2 0 0 1 2.582 0l7 5.999A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></symbol><symbol id="i-compass" viewBox="0 0 24 24"><path d="m16.24 7.76-1.804 5.411a2 2 0 0 1-1.265 1.265L7.76 16.24l1.804-5.411a2 2 0 0 1 1.265-1.265z"/><circle cx="12" cy="12" r="10"/></symbol><symbol id="i-map-pin-check" viewBox="0 0 24 24"><path d="M19.43 12.935c.357-.967.57-1.955.57-2.935a8 8 0 0 0-16 0c0 4.993 5.539 10.193 7.399 11.799a1 1 0 0 0 1.202 0 32.197 32.197 0 0 0 .813-.728"/><circle cx="12" cy="10" r="3"/><path d="m16 18 2 2 4-4"/></symbol><symbol id="i-store" viewBox="0 0 24 24"><path d="m2 7 4.41-4.41A2 2 0 0 1 7.83 2h8.34a2 2 0 0 1 1.42.59L22 7"/><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><path d="M15 22v-4a2 2 0 0 0-2-2h-2a2 2 0 0 0-2 2v4"/><path d="M2 7h20"/></symbol><symbol id="i-user-round" viewBox="0 0 24 24"><circle cx="12" cy="8" r="5"/><path d="M20 21a8 8 0 0 0-16 0"/></symbol><symbol id="i-pencil" viewBox="0 0 24 24"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/><path d="m15 5 4 4"/></symbol><symbol id="i-mail" viewBox="0 0 24 24"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></symbol><symbol id="i-user-check" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><polyline points="16 11 18 13 22 9"/></symbol><symbol id="i-users" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></symbol><symbol id="i-users-round" viewBox="0 0 24 24"><path d="M18 21a8 8 0 0 0-16 0"/><circle cx="10" cy="8" r="5"/><path d="M22 20c0-3.37-2-6.5-4-8a5 5 0 0 0-.45-8.3"/></symbol>
+<!-- Gender glyphs (custom, Lucide style) -->
+<symbol id="g-woman" viewBox="0 0 24 24"><circle cx="12" cy="9" r="6"/><path d="M12 15v7"/><path d="M9 19h6"/></symbol>
+<symbol id="g-man" viewBox="0 0 24 24"><circle cx="10" cy="14" r="6"/><path d="M16 3h5v5"/><path d="m21 3-6.75 6.75"/></symbol>
+<symbol id="g-nb" viewBox="0 0 24 24"><circle cx="12" cy="15.5" r="5.5"/><path d="M12 10V5"/><path d="m9 2 6 6"/><path d="m15 2-6 6"/></symbol>
+<symbol id="g-nb-ast" viewBox="0 0 24 24"><circle cx="12" cy="15.5" r="5.5"/><path d="M12 10V2"/><path d="m9.4 3.5 5.2 3"/><path d="m14.6 3.5-5.2 3"/></symbol>
+<symbol id="g-nb-bar" viewBox="0 0 24 24"><circle cx="12" cy="15.5" r="5.5"/><path d="M12 10V2"/><path d="M9 5h6"/></symbol>
+<symbol id="g-pns" viewBox="0 0 24 24"><path d="M10.733 5.076a10.744 10.744 0 0 1 11.205 6.575 1 1 0 0 1 0 .696 10.747 10.747 0 0 1-1.444 2.49"/><path d="M14.084 14.158a3 3 0 0 1-4.242-4.242"/><path d="M17.479 17.499a10.75 10.75 0 0 1-15.417-5.151 1 1 0 0 1 0-.696 10.75 10.75 0 0 1 4.446-5.143"/><path d="m2 2 20 20"/></symbol>
+</svg>
+<button class="mock-theme" type="button" aria-label="Toggle theme (mockup only)">Dark</button>
+<div class="shell">
+  <aside class="shell__sidebar"><div class="sidebar">
+    <p class="sidebar__wordmark t-title">MetalHops</p>
+    <nav class="sidebar__nav" aria-label="Main"><a class="nav-item" href="#"><svg class="icon" aria-hidden="true"><use href="#i-house"/></svg>Home</a><a class="nav-item" href="#"><svg class="icon" aria-hidden="true"><use href="#i-compass"/></svg>Discover</a><a class="nav-item" href="#"><svg class="icon" aria-hidden="true"><use href="#i-map-pin-check"/></svg>Check-ins</a><a class="nav-item" href="#"><svg class="icon" aria-hidden="true"><use href="#i-store"/></svg>My venues</a><a class="nav-item" href="#" aria-current="page"><svg class="icon" aria-hidden="true"><use href="#i-user-round"/></svg>Profile</a></nav>
+    <div class="sidebar__foot"><div class="identity identity--compact" style="padding:var(--space-2) var(--space-3)"><span class="avatar avatar--photo" aria-hidden="true"></span><span class="identity__text"><span class="identity__name">Hel Hammerfall</span></span></div></div>
+  </div></aside>
+  <div>
+    <header class="topbar"><span class="btn btn--ghost topbar__menu" aria-label="Open menu"><svg class="icon icon--lg" aria-hidden="true"><use href="#i-menu"/></svg></span><span class="topbar__wordmark t-title">MetalHops</span></header>
+    <main class="shell__main"><div class="bd-page" id="root"></div>
+      <p class="mock-foot t-caption">Sample data. Design mockup, not for production.</p>
+    </main>
+  </div>
+</div>
+<script>
+(function () {
+  var G = { woman: "Woman", man: "Man", nb: "Non-binary", pns: "Prefer not to say" };
+  var FULL = { city: "Hamburg", country: "Germany", g: "nb" };
+  var COUNTS = [["Check-ins", 42, "i-map-pin-check", 100], ["Venues", 17, "i-store", 50]];
+  var FUTURE = COUNTS.concat([["Following", 128, "i-user-check", 200], ["Followers", 256, "i-users", 500], ["Crews", 3, "i-users-round", 10]]);
+  var STATES = [
+    ["woman", "Woman", { city: "Hamburg", country: "Germany", g: "woman" }],
+    ["man", "Man", { city: "Hamburg", country: "Germany", g: "man" }],
+    ["pns", "Prefer not to say", { city: "Hamburg", country: "Germany", g: "pns" }],
+    ["country", "City missing, country set", { country: "Germany", g: "nb" }],
+    ["none", "No location, gender unset: nothing rendered for them", {}],
+    ["long", "Very long city", { city: "Llanfairpwllgwyngyllgogerychwyrndrobwllllantysiliogogogoch", country: "United Kingdom", g: "nb" }],
+    ["future", "Future: Following, Followers, Crews added", FULL, FUTURE]
+  ];
+  function ic(id, c) { return '<svg class="icon ' + (c || "") + '" aria-hidden="true"><use href="#' + id + '"/></svg>'; }
+  // Gender glyph: accessible name and tooltip on the wrapper; the shape carries meaning, colour never does alone.
+  function gsym(g, cls, tag) { tag = tag || "span"; return '<' + tag + ' class="' + cls + '" role="img" aria-label="Gender: ' + G[g] + '" title="' + G[g] + '"><svg class="g-icon" viewBox="0 0 24 24" aria-hidden="true"><use href="#g-' + g + '"/></svg></' + tag + '>'; }
+  function hasLoc(p) { return p.city || p.country; }
+  function loc(p) {
+    var s = '<span class="vh">From </span>';
+    if (p.city) s += '<span class="loc__city">' + p.city + '</span>';
+    if (p.city && p.country) s += '<span class="loc__sep"> – </span>';
+    if (p.country) s += '<span class="' + (p.city ? "loc__country--sub" : "") + '">' + p.country + '</span>';
+    return s;
+  }
+  var NAME = '<h1 class="name">Hel Hammerfall</h1>', USER = '@hel_hammer', BIO = 'Louder than hell.<br>Tuesday doom nights at the Anvil.';
+  var EDIT = '<a class="btn btn--primary" href="edit-1-sectioned.html">' + ic("i-pencil") + 'Edit profile</a>';
+
+  /* 1. Backstage pass */
+  function pass(p, counts) {
+    counts = counts || COUNTS;
+    var b = '<div class="bc"><section class="card pass" aria-label="Profile summary">' +
+      '<div class="pass__head" aria-hidden="true"><span class="pass__brand">MetalHops</span><span class="pass__slot"></span><span class="pass__tier t-label">Member</span></div>' +
+      '<div class="pass__body"><span class="avatar avatar--photo pass__photo" role="img" aria-label="Profile photo placeholder">Photo</span>' +
+      (p.g ? gsym(p.g, "stamp") : "") +
+      '<div class="pass__id">' + NAME + '<p class="username">' + USER + '</p></div><p class="pass__bio">' + BIO + '</p>' +
+      (hasLoc(p) ? '<p class="tour">' + ic("i-house", "icon--lg") + '<span class="tour__text">' + loc(p) + '</span></p>' : "") +
+      '<div class="pass__act">' + EDIT + '</div></div>' +
+      '<div class="perf" aria-hidden="true"></div>' +
+      '<ul class="stubs' + (counts.length > 3 ? ' stubs--scroll" tabindex="0' : '') + '" aria-label="Stats">' +
+      counts.map(function (c) { return '<li class="stub"><span class="stub__n">' + c[1] + '</span><span class="stub__l t-label">' + ic(c[2], "icon--sm") + c[0] + '</span></li>'; }).join("") +
+      '</ul></section></div>';
+    return b;
+  }
+  /* 2. Tour poster */
+  function poster(p, counts) {
+    counts = counts || COUNTS;
+    return '<div class="bc bc--lift"><section class="card poster" aria-label="Profile summary"><div class="poster__top">' +
+      '<span class="avatar avatar--photo avatar--xl poster__av" role="img" aria-label="Profile photo placeholder">Photo</span>' +
+      (p.g ? gsym(p.g, "gdisc") : "") + NAME + '<p class="username poster__user">' + USER + '</p><p class="poster__bio">' + BIO + '</p>' +
+      (hasLoc(p) ? '<p class="stop">' + (p.city && p.country ? loc({ city: p.city }) + ic("i-house") + '<span class="vh">, </span><span class="loc__country--sub">' + p.country + '</span>' : ic("i-house") + loc(p)) + '</p>' : "") +
+      '<div class="poster__act">' + EDIT + '</div></div>' +
+      '<ol class="setlist" aria-label="Stats"><li class="setlist__h t-label caps" aria-hidden="true">Set list</li>' +
+      counts.map(function (c, i) { return '<li class="track"><span class="track__no" aria-hidden="true">' + (i < 9 ? "0" : "") + (i + 1) + '</span><span class="track__l">' + c[0] + '</span><span class="track__lead" aria-hidden="true"></span><span class="track__n">' + c[1] + '</span></li>'; }).join("") +
+      '</ol></section></div>';
+  }
+  /* 3. Amp faceplate */
+  var TICKS = (function () { var d = ""; for (var i = 0; i <= 6; i++) { var a = (-225 + i * 45) * Math.PI / 180, c = Math.cos(a), s = Math.sin(a); d += "M" + (40 + 34 * c).toFixed(2) + " " + (40 + 34 * s).toFixed(2) + "L" + (40 + 38.5 * c).toFixed(2) + " " + (40 + 38.5 * s).toFixed(2); } return d; })();
+  function meter(v, max) { var f = Math.max(1, Math.round(v / max * 10)), s = ""; for (var i = 0; i < 10; i++) s += '<span style="--fill:' + (i < f ? 100 : 0) + '%"></span>'; return '<span class="rating__meter" aria-hidden="true">' + s + '</span>'; }
+  function amp(p, counts) {
+    counts = counts || COUNTS;
+    var mods = "";
+    if (hasLoc(p)) mods += '<div class="mod mod--from"><span class="mod__l t-caption" aria-hidden="true">From</span><p class="plate" title="' + [p.city, p.country].filter(Boolean).join(" – ") + '">' + ic("i-house", "icon--sm") + '<span class="plate__text">' + loc(p) + '</span></p></div>';
+    if (p.g) mods += '<div class="mod mod--knob"><span class="mod__l t-caption" aria-hidden="true">Gender</span><span class="knob"><svg class="knob__ticks" viewBox="0 0 80 80" aria-hidden="true"><path d="' + TICKS + '" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>' + gsym(p.g, "knob__cap") + '</span></div>';
+    var meters = counts.map(function (c) { return '<li class="mod mod--meter"><span class="mod__l t-caption">' + c[0] + '</span><span class="level"><span class="level__n">' + c[1] + '</span>' + meter(c[1], c[3]) + '</span></li>'; }).join("");
+    var wide = counts.length > 2;
+    return '<div class="bc bc--lift"><section class="card amp" aria-label="Profile summary">' +
+      '<span class="amp__screw amp__screw--tl" aria-hidden="true"></span><span class="amp__screw amp__screw--tr" aria-hidden="true"></span><span class="amp__screw amp__screw--bl" aria-hidden="true"></span><span class="amp__screw amp__screw--br" aria-hidden="true"></span>' +
+      '<div class="amp__top"><span class="avatar avatar--photo avatar--xl amp__av" role="img" aria-label="Profile photo placeholder">Photo</span>' +
+      '<div class="amp__id">' + NAME + '<p class="username">' + USER + '</p></div><p class="amp__bio">' + BIO + '</p><div class="amp__act">' + EDIT + '</div></div>' +
+      '<div class="panel' + (wide ? " panel--wide" : "") + '" style="--m:' + counts.length + '">' + mods + '<ul class="meters" aria-label="Stats">' + meters + '</ul></div>' +
+      '</section></div>';
+  }
+
+  var C = {
+    1: { fn: pass, name: "Backstage pass", sig: "Signature: the perforation. The counters are tear-off stubs below a dashed line with two punched notches; the gender symbol is a rotated, double-ringed access stamp.",
+      one: "A laminated member pass: lanyard slot and wordmark header, square photo-ID, oversized blackletter name, the hometown set like a tour date (HAMBURG – GERMANY, house as the venue mark), gender as an access stamp, counters as stubs.",
+      opt: "Memorability and a single strong metaphor. The facts are the loudest they have ever been: the hometown is the second-largest text on the card and the stamp is impossible to miss.",
+      trade: "The heaviest and tallest card; the pass header (slot, wordmark, Member) is pure ornament that costs ~56 px. A rotated stamp can read as an achievement or a status badge, which gender is not. Uppercase letterspaced city names get long fast.",
+      grow: "More counters become more stubs. Up to three share the width; from four on the stub row scrolls sideways on narrow cards (snap, keyboard focusable) and spreads to five columns from 640 px.",
+      mob: "Photo and stamp share the top row, the name drops below at display size, the tour line wraps per word (the long Welsh city breaks anywhere). Five stubs scroll, so Crews is off-screen on a phone: the main weakness." },
+    2: { fn: poster, name: "Tour poster", sig: "Signature: the set list. Counters are numbered tracks, 01 Check-ins …… 42, with a dotted leader, so Following, Followers and Crews simply become tracks 03 to 05.",
+      one: "A typographic gig poster: the name scales with the card (clamp, up to 96 px), the tour stop runs HAMBURG [amber house] GERMANY under a rule, the gender symbol sits large in a ringed amber disc in the corner opposite the photo, and the counters are a set list.",
+      opt: "Type hierarchy and growth. It reads top to bottom like a flyer, the numbers are the biggest numerals in the app, and the list grows without layout changes.",
+      trade: "The gender disc is the largest single shape after the photo, so gender gets more visual weight than some people will want; the amber house between city and country is a decorative separator (the screen reader hears ‘Hamburg, Germany’). The scaled name needs a test with 30-character names.",
+      grow: "Tracks 03 to 05 append to the list: one column on phones, two columns on desktop. Nothing else moves.",
+      mob: "Disc moves up beside the photo, the name stays at 48 px, the tour stop wraps around the house glyph, the set list is a single column of full-width rows. Degrades the most gracefully of the three." },
+    3: { fn: amp, name: "Amp faceplate", sig: "Signature: the control panel. Below a heavy rule, silkscreened labels sit over a FROM plate, a GENDER knob ringed with tick marks and two segmented LED meters reusing .rating__meter.",
+      one: "The lower half of the card is an amp head: corner screws, engraved FROM plate (house + Hamburg – Germany), the gender symbol on a knob cap, Check-ins and Venues as level meters beside their numbers. The identity half stays variant B.",
+      opt: "Density and a calm, systematic panel: every fact has a labelled slot of the same weight, and the identity half is unchanged from B, so the build risk is low.",
+      trade: "Meters imply a scale (42 of what?), which invites comparison and needs a defined maximum; a knob implies something you can turn, and gender on a dial is a loaded image. Silkscreen labels add text the other two avoid. Most metaphor, least clarity.",
+      grow: "Following, Followers and Crews become more channels; from three counters the meters move to their own row (auto-fit, two or three per row).",
+      mob: "The plate and knob share a row, each meter is a full-width channel. The long city wraps inside the plate, which grows taller (full text also in the title tooltip)." }
+  };
+  var ctx = '<section class="soon" aria-label="Coming soon"><span class="t-caption">Coming soon</span><ul><li class="t-label">Following</li><li class="t-label">Followers</li><li class="t-label">Crews</li></ul></section>' +
+    '<section class="account" aria-labelledby="acc"><h2 id="acc" class="t-label section-title">Account (only you see this)</h2><dl class="facts"><div><dt class="t-label">Email</dt><dd>hel@example.com</dd></div><div><dt class="t-label">Account status</dt><dd><span class="tag">Active</span></dd></div></dl></section>';
+  function note(k) { var d = C[k]; return '<div class="bd-note"><dl><div><dt class="t-label">What it optimises</dt><dd>' + d.opt + '</dd></div><div><dt class="t-label">Trade-off</dt><dd>' + d.trade + '</dd></div><div><dt class="t-label">How it grows</dt><dd>' + d.grow + '</dd></div><div><dt class="t-label">On mobile</dt><dd>' + d.mob + '</dd></div></dl></div>'; }
+
+  var only = new URLSearchParams(location.search).get("only"), h = "";
+  if (only && C[only]) {
+    document.getElementById("root").innerHTML = '<div class="bd-flow" id="c' + only + '">' + C[only].fn(FULL) + ctx + '</div>';
+    return;
+  }
+  h += '<section class="bd-sec"><h1 class="t-heading">Profile card, round 2: three bold concepts</h1><p>From, Gender, Check-ins and Venues all live in the one stage card. Each concept is shown with full data (Hamburg – Germany, non-binary, 42 / 17), with the Coming soon group and Account section beneath, then its states and a future preview. Tokens only; no new colours. Toggle Dark/Light; ?only=1, 2 or 3 shows a concept as a plain page.</p></section>';
+
+  var glyphs = [["g-woman", "Woman"], ["g-man", "Man"], ["g-nb", "Non-binary A: stem + X (picked)"], ["g-nb-ast", "Non-binary B: stem + asterisk"], ["g-nb-bar", "Non-binary C: stem + bar"], ["g-pns", "Prefer not to say (Lucide eye-off)"]];
+  function g(id) { return '<svg class="g-icon" viewBox="0 0 24 24" aria-hidden="true"><use href="#' + id + '"/></svg>'; }
+  h += '<section class="bd-sec" id="glyphs"><h2 class="t-heading">Gender glyphs</h2><p>Three non-binary candidates beside Venus and Mars at 16, 20, 24 and 48 px. A is picked: its top is a closed X that Mars (open arrowhead on a diagonal) and Venus (one horizontal bar below) never have, and it is the established non-binary symbol. B blurs into a dot at 16 px; C is an upside-down Venus.</p>' +
+    '<div class="card"><div class="glab"><span class="t-label">Glyph</span><span class="t-label">16</span><span class="t-label">20</span><span class="t-label">24</span><span class="t-label">48</span><span></span>' +
+    glyphs.map(function (x) { var pick = x[0] === "g-nb" ? " glab__pick" : ""; return '<span class="t-label' + pick + '">' + x[1] + '</span>' + ["16", "20", "24", "48"].map(function (s) { return '<span class="glab__sz glab__' + s + pick + '">' + g(x[0]) + '</span>'; }).join("") + '<span></span>'; }).join("") +
+    '</div><div class="glab-row">' + ["g-man", "g-nb", "g-woman", "g-nb", "g-man", "g-pns"].map(function (id) { return '<figure>' + g(id) + '<figcaption class="t-caption muted">' + { "g-man": "Man", "g-nb": "NB", "g-woman": "Woman", "g-pns": "PNS" }[id] + '</figcaption></figure>'; }).join("") + '<span class="t-caption muted">All at 16 px, in a row, as they would sit in a list.</span></div></div></section>';
+
+  [1, 2, 3].forEach(function (k) {
+    var d = C[k];
+    h += '<section class="bd-sec" id="c' + k + '"><p class="t-label caps bd-kicker">Concept ' + k + '</p><h2 class="t-title">' + d.name + '</h2><p>' + d.one + '</p><p>' + d.sig + '</p>' +
+      '<div class="bd-flow">' + d.fn(FULL) + ctx + '</div>' + note(k) + '</section>' +
+      '<section class="bd-sec" id="s' + k + '"><h3 class="t-label section-title">' + k + '. ' + d.name + ': states</h3><div class="bd-states">' +
+      STATES.map(function (s) { return '<div class="bd-state' + (s[0] === "future" ? " bd-wide" : "") + '" id="s' + k + '-' + s[0] + '"><span class="t-caption">' + s[1] + '</span>' + d.fn(s[2], s[3]) + '</div>'; }).join("") + '</div></section>';
+  });
+  h += '<section class="bd-sec" id="rec"><h2 class="t-heading">Ranking and recommendation</h2><div class="bd-note bd-rec"><dl>' +
+    '<div><dt class="t-label">1. Tour poster</dt><dd>Recommended. The set list is the one idea that is both memorable and structural: it gives the counters a voice of their own and absorbs Following, Followers and Crews as tracks 03 to 05 with no redesign, on every width. The hometown line and the corner disc make From and Gender bold without chips or labels.</dd></div>' +
+    '<div><dt class="t-label">2. Backstage pass</dt><dd>The most fun and the most "MetalHops", but risky: it is the tallest card, the stamp reads like a status mark, and five stubs do not fit a phone. Worth stealing the perforation for a check-in receipt or a venue ticket later.</dd></div>' +
+    '<div><dt class="t-label">3. Amp faceplate</dt><dd>Not recommended for Profile. Meters and a knob turn identity facts into levels; it is the safest build (identity half is B) but the metaphor fights the content. The meter idea suits venue stats (loudness, crowd) better.</dd></div>' +
+    '</dl></div></section>';
+  document.getElementById("root").innerHTML = h;
+})();
+</script>
+</body>
+</html>

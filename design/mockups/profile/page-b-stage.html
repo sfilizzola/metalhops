@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Profile B, stage card</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Grenze+Gotisch:wght@700&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../../system/tokens.css">
+<link rel="stylesheet" href="../../system/components.css">
+<link rel="stylesheet" href="mockup.css">
+<script src="mockup.js"></script>
+<style>
+
+.b { display: grid; gap: var(--space-6); max-width: 60rem; margin-inline: auto; padding-top: calc(var(--avatar-xl) / 2); }
+.b__stage { position: relative; display: grid; gap: var(--space-3); padding: 0; }
+.b__top { display: grid; gap: var(--space-3); padding: 0 var(--space-5) var(--space-5); }
+.b__avatar { margin-top: calc(var(--avatar-xl) / -2); box-shadow: 0 0 0 var(--border-focus) var(--color-surface-raised); }
+.b__id { display: grid; gap: var(--space-1); }
+.b__bio { max-width: 44ch; }
+.b__strip { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); border-top: var(--border-hairline) solid var(--color-outline-variant); }
+.b__strip .stat { padding: var(--space-4) var(--space-5); }
+.b__strip .stat + .stat { border-left: var(--border-hairline) solid var(--color-outline-variant); }
+.b__details { display: grid; gap: var(--space-4); padding: var(--space-5); }
+@media (min-width: 600px) { .b__details .facts { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (min-width: 960px) {
+  .b__top { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "av av" "id act" "bio act"; column-gap: var(--space-6); padding: 0 var(--space-8) var(--space-6); }
+  .b__avatar { grid-area: av; justify-self: start; }
+  .b__id { grid-area: id; } .b__bio { grid-area: bio; } .b__act { grid-area: act; align-self: start; }
+  .b__strip .stat { padding: var(--space-5) var(--space-8); }
+  .b .name { font: var(--type-display-weight) var(--type-display-size)/var(--type-display-line-height) var(--font-display); }
+}
+</style>
+</head>
+<body>
+<!--
+B. Backline stage card, user page, owner view.
+Narrative role: a stage: the person is presented, the numbers are the set list.
+Viewer distance: the name and avatar read from across a desk; the strip is glanceable.
+Visual temperature: warmer and more theatrical; one big raised card, avatar breaking its top edge, display-size name.
+Capacity: the strip holds two counters now and can dock more; details grid grows by row.
+Sample data, not for production. Layout uses design-system tokens only.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" style="display:none" aria-hidden="true"><symbol id="i-menu" viewBox="0 0 24 24"><line x1="4" x2="20" y1="12" y2="12"/><line x1="4" x2="20" y1="6" y2="6"/><line x1="4" x2="20" y1="18" y2="18"/></symbol><symbol id="i-house" viewBox="0 0 24 24"><path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8"/><path d="M3 10a2 2 0 0 1 .709-1.528l7-5.999a2 2 0 0 1 2.582 0l7 5.999A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></symbol><symbol id="i-compass" viewBox="0 0 24 24"><path d="m16.24 7.76-1.804 5.411a2 2 0 0 1-1.265 1.265L7.76 16.24l1.804-5.411a2 2 0 0 1 1.265-1.265z"/><circle cx="12" cy="12" r="10"/></symbol><symbol id="i-map-pin-check" viewBox="0 0 24 24"><path d="M19.43 12.935c.357-.967.57-1.955.57-2.935a8 8 0 0 0-16 0c0 4.993 5.539 10.193 7.399 11.799a1 1 0 0 0 1.202 0 32.197 32.197 0 0 0 .813-.728"/><circle cx="12" cy="10" r="3"/><path d="m16 18 2 2 4-4"/></symbol><symbol id="i-store" viewBox="0 0 24 24"><path d="m2 7 4.41-4.41A2 2 0 0 1 7.83 2h8.34a2 2 0 0 1 1.42.59L22 7"/><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><path d="M15 22v-4a2 2 0 0 0-2-2h-2a2 2 0 0 0-2 2v4"/><path d="M2 7h20"/></symbol><symbol id="i-user-round" viewBox="0 0 24 24"><circle cx="12" cy="8" r="5"/><path d="M20 21a8 8 0 0 0-16 0"/></symbol><symbol id="i-arrow-left" viewBox="0 0 24 24"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></symbol><symbol id="i-pencil" viewBox="0 0 24 24"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/><path d="m15 5 4 4"/></symbol><symbol id="i-camera" viewBox="0 0 24 24"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></symbol><symbol id="i-trash-2" viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/></symbol><symbol id="i-chevron-down" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol><symbol id="i-map-pin" viewBox="0 0 24 24"><path d="M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0"/><circle cx="12" cy="10" r="3"/></symbol><symbol id="i-mail" viewBox="0 0 24 24"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></symbol></svg>
+<button class="mock-theme" type="button" aria-label="Toggle theme (mockup only)">Dark</button>
+<div class="shell">
+  <aside class="shell__sidebar"><div class="sidebar">
+    <p class="sidebar__wordmark t-title">MetalHops</p>
+    <nav class="sidebar__nav" aria-label="Main"><a class="nav-item" href="#"><svg class="icon " aria-hidden="true"><use href="#i-house"/></svg>Home</a><a class="nav-item" href="#"><svg class="icon " aria-hidden="true"><use href="#i-compass"/></svg>Discover</a><a class="nav-item" href="#"><svg class="icon " aria-hidden="true"><use href="#i-map-pin-check"/></svg>Check-ins</a><a class="nav-item" href="#"><svg class="icon " aria-hidden="true"><use href="#i-store"/></svg>My venues</a><a class="nav-item" href="#" aria-current="page"><svg class="icon " aria-hidden="true"><use href="#i-user-round"/></svg>Profile</a></nav>
+    <div class="sidebar__foot"><div class="identity identity--compact" style="padding:var(--space-2) var(--space-3)"><span class="avatar avatar--photo" aria-hidden="true"></span><span class="identity__text"><span class="identity__name">Hel Hammerfall</span></span></div></div>
+  </div></aside>
+  <div>
+    <header class="topbar"><span class="btn btn--ghost topbar__menu" aria-label="Open menu"><svg class="icon icon--lg" aria-hidden="true"><use href="#i-menu"/></svg></span><span class="topbar__wordmark t-title">MetalHops</span></header>
+    <main class="shell__main ">
+<div class="b">
+  <section class="card b__stage" aria-label="Profile summary">
+    <div class="b__top">
+      <span class="avatar avatar--photo avatar--xl b__avatar" role="img" aria-label="Profile photo placeholder">Photo</span>
+      <div class="b__id"><h1 class="name">Hel Hammerfall</h1><p class="username">@hel_hammer</p></div>
+      <p class="b__bio">Louder than hell.<br>Tuesday doom nights at the Anvil.</p>
+      <div class="b__act"><a class="btn btn--primary " href="edit-1-sectioned.html"><svg class="icon " aria-hidden="true"><use href="#i-pencil"/></svg>Edit profile</a></div>
+    </div>
+    <ul class="b__strip" aria-label="Stats"><li class="stat "><span class="stat__n">42</span><span class="stat__l t-label"><svg class="icon icon--sm" aria-hidden="true"><use href="#i-map-pin-check"/></svg>Check-ins</span></li><li class="stat "><span class="stat__n">17</span><span class="stat__l t-label"><svg class="icon icon--sm" aria-hidden="true"><use href="#i-store"/></svg>Venues</span></li></ul>
+  </section>
+  <section class="soon" aria-label="Coming soon"><span class="t-caption">Coming soon</span><ul><li class="t-label">Following</li><li class="t-label">Followers</li><li class="t-label">Crews</li></ul></section>
+  <section class="card b__details" aria-labelledby="det"><h2 id="det" class="t-label section-title">Details</h2><dl class="facts"><div><dt class="t-label">From</dt><dd>Hamburg, Germany</dd></div><div><dt class="t-label">Gender</dt><dd>Non-binary</dd></div></dl></section>
+  <section class="account" aria-labelledby="acc"><h2 id="acc" class="t-label section-title">Account (only you see this)</h2><dl class="facts"><div><dt class="t-label">Email</dt><dd>hel@example.com</dd></div><div><dt class="t-label">Account status</dt><dd><span class="tag">Active</span></dd></div></dl></section>
+</div>
+      <p class="mock-foot t-caption">Sample data. Design mockup, not for production.</p>
+    </main>
+  </div>
+</div>
+</body>
+</html>

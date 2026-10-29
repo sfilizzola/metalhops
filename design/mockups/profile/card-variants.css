@@ -1,0 +1,63 @@
+/* Card variants mockup. Tokens only; layout uses container queries so the same card fits the 375 px page and narrow state tiles. */
+.cv-page { display: grid; gap: var(--space-10); max-width: 60rem; margin-inline: auto; }
+.cv-sec { display: grid; gap: var(--space-4); min-width: 0; }
+.cv-sec > p, .cv-note { max-width: 68ch; }
+.cv-note { display: grid; gap: var(--space-2); padding: var(--space-4); border: var(--border-hairline) solid var(--color-outline-variant); border-radius: var(--radius-md); }
+.cv-note dt { color: var(--color-on-surface-muted); }
+.cv-note dl { display: grid; gap: var(--space-2); }
+.cv-rec { background: var(--color-primary-container); color: var(--color-on-primary-container); border-color: var(--color-primary); }
+.cv-rec dt { color: var(--color-on-primary-container); }
+.cv-flow { display: grid; gap: var(--space-6); }
+.cv-states { display: grid; gap: var(--space-8) var(--space-4); grid-template-columns: repeat(auto-fill, minmax(min(100%, 20rem), 1fr)); }
+.cv-state { display: grid; gap: var(--space-2); align-content: start; min-width: 0; }
+.cv-state > .t-caption { color: var(--color-on-surface-muted); }
+
+.cv { container-type: inline-size; padding-top: calc(var(--avatar-xl) / 2); min-width: 0; }
+.cv__card { display: grid; padding: 0; }
+.cv__top { display: grid; gap: var(--space-3); padding: 0 var(--space-5) var(--space-5); min-width: 0; }
+.cv__avatar { margin-top: calc(var(--avatar-xl) / -2); box-shadow: 0 0 0 var(--border-focus) var(--color-surface-raised); justify-self: start; }
+.cv__id { display: grid; gap: var(--space-1); min-width: 0; }
+.cv__namerow { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); min-width: 0; }
+.cv__bio { max-width: 44ch; }
+.cv__act { justify-self: start; }
+
+/* Symbols and discs */
+.disc { display: inline-grid; place-items: center; flex: none; width: var(--size-avatar-compact); height: var(--size-avatar-compact); border-radius: var(--radius-full); background: var(--color-primary-container); color: var(--color-on-primary-container); }
+.disc--ring { box-shadow: 0 0 0 var(--border-strong) var(--color-primary); }
+.disc--badge { width: var(--size-avatar-compact); height: var(--size-avatar-compact); }
+
+/* A: meta chips */
+.cv__meta { display: flex; flex-wrap: wrap; gap: var(--space-2); min-width: 0; }
+.mchip { display: inline-flex; align-items: center; gap: var(--space-2); min-width: 0; max-width: 100%; min-height: var(--space-10); padding: var(--space-1) var(--space-4) var(--space-1) var(--space-1); border: var(--border-hairline) solid var(--color-outline-variant); border-radius: var(--radius-full); }
+.mchip--sym { padding: var(--space-1); }
+.mchip__text { min-width: 0; overflow-wrap: anywhere; }
+
+/* B: quiet location line */
+.locline { display: flex; align-items: flex-start; gap: var(--space-2); min-width: 0; }
+.locline .icon { margin-top: var(--space-1); color: var(--color-on-surface-muted); }
+.locline__text { min-width: 0; overflow-wrap: anywhere; }
+
+/* Shared location typography: city on-surface, en dash and country muted */
+.loc__sep, .loc__country--sub { color: var(--color-on-surface-muted); }
+
+/* Strip: hairlines are the grid gap showing the strip background */
+.cv__strip { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--border-hairline); padding-top: var(--border-hairline); background: var(--color-outline-variant); border-radius: 0 0 var(--radius-lg) var(--radius-lg); overflow: hidden; }
+.cv__strip > li { align-content: start; background: var(--color-surface-raised); padding: var(--space-4) var(--space-5); }
+.cv__strip > li:last-child:nth-child(odd) { grid-column: 1 / -1; }
+.cv__strip .stat { padding: var(--space-4) var(--space-5); }
+.cell__n { display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-2); min-width: 0; }
+.cell__n > span:last-child { align-self: stretch; min-width: 0; overflow-wrap: break-word; }
+.cell { align-content: start; }
+
+@container (min-width: 40rem) {
+  .cv__top { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "av av" "id act" "bio act" "meta act"; column-gap: var(--space-6); padding: 0 var(--space-8) var(--space-6); }
+  .cv__avatar { grid-area: av; }
+  .cv__id { grid-area: id; } .cv__bio { grid-area: bio; } .cv__meta, .locline { grid-area: meta; } .cv__act { grid-area: act; align-self: start; }
+  .cv .name { font: var(--type-display-weight) var(--type-display-size)/var(--type-display-line-height) var(--font-display); }
+  .disc--badge { width: var(--space-10); height: var(--space-10); }
+  .disc--badge .icon { width: var(--size-icon-lg); height: var(--size-icon-lg); }
+  .cv__strip { grid-template-columns: repeat(var(--n, 2), minmax(0, 1fr)); }
+  .cv__strip > li:last-child:nth-child(odd) { grid-column: auto; }
+  .cv__strip > li, .cv__strip .stat { padding: var(--space-5) var(--space-8); }
+}
+.visually-hidden { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }

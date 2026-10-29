@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Profile card variants</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Grenze+Gotisch:wght@700&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../../system/tokens.css">
+<link rel="stylesheet" href="../../system/components.css">
+<link rel="stylesheet" href="mockup.css">
+<link rel="stylesheet" href="card-variants.css">
+<script src="mockup.js"></script>
+</head>
+<body>
+<!-- Merged main card, three alternatives of variant B (stage card). Sample data, not for production. Gender symbols are custom, drawn in Lucide's style (24 grid, stroke 2, round); eye-off and house are real Lucide 0.469.0 paths. -->
+<svg xmlns="http://www.w3.org/2000/svg" style="display:none" aria-hidden="true"><symbol id="i-menu" viewBox="0 0 24 24"><line x1="4" x2="20" y1="12" y2="12"/><line x1="4" x2="20" y1="6" y2="6"/><line x1="4" x2="20" y1="18" y2="18"/></symbol><symbol id="i-house" viewBox="0 0 24 24"><path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8"/><path d="M3 10a2 2 0 0 1 .709-1.528l7-5.999a2 2 0 0 1 2.582 0l7 5.999A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></symbol><symbol id="i-compass" viewBox="0 0 24 24"><path d="m16.24 7.76-1.804 5.411a2 2 0 0 1-1.265 1.265L7.76 16.24l1.804-5.411a2 2 0 0 1 1.265-1.265z"/><circle cx="12" cy="12" r="10"/></symbol><symbol id="i-map-pin-check" viewBox="0 0 24 24"><path d="M19.43 12.935c.357-.967.57-1.955.57-2.935a8 8 0 0 0-16 0c0 4.993 5.539 10.193 7.399 11.799a1 1 0 0 0 1.202 0 32.197 32.197 0 0 0 .813-.728"/><circle cx="12" cy="10" r="3"/><path d="m16 18 2 2 4-4"/></symbol><symbol id="i-store" viewBox="0 0 24 24"><path d="m2 7 4.41-4.41A2 2 0 0 1 7.83 2h8.34a2 2 0 0 1 1.42.59L22 7"/><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><path d="M15 22v-4a2 2 0 0 0-2-2h-2a2 2 0 0 0-2 2v4"/><path d="M2 7h20"/></symbol><symbol id="i-user-round" viewBox="0 0 24 24"><circle cx="12" cy="8" r="5"/><path d="M20 21a8 8 0 0 0-16 0"/></symbol><symbol id="i-arrow-left" viewBox="0 0 24 24"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></symbol><symbol id="i-pencil" viewBox="0 0 24 24"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/><path d="m15 5 4 4"/></symbol><symbol id="i-camera" viewBox="0 0 24 24"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></symbol><symbol id="i-trash-2" viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/></symbol><symbol id="i-chevron-down" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol><symbol id="i-map-pin" viewBox="0 0 24 24"><path d="M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0"/><circle cx="12" cy="10" r="3"/></symbol><symbol id="i-mail" viewBox="0 0 24 24"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></symbol><symbol id="i-venus" viewBox="0 0 24 24"><path d="M12 15v7"/><path d="M9 19h6"/><circle cx="12" cy="9" r="6"/></symbol><symbol id="i-mars" viewBox="0 0 24 24"><path d="M16 3h5v5"/><path d="m21 3-6.75 6.75"/><circle cx="10" cy="14" r="6"/></symbol><symbol id="i-nb" viewBox="0 0 24 24"><circle cx="11" cy="15" r="6"/><path d="M15.5 10.5 20 6"/></symbol><symbol id="i-eye-off" viewBox="0 0 24 24"><path d="M10.733 5.076a10.744 10.744 0 0 1 11.205 6.575 1 1 0 0 1 0 .696 10.747 10.747 0 0 1-1.444 2.49"/><path d="M14.084 14.158a3 3 0 0 1-4.242-4.242"/><path d="M17.479 17.499a10.75 10.75 0 0 1-15.417-5.151 1 1 0 0 1 0-.696 10.75 10.75 0 0 1 4.446-5.143"/><path d="m2 2 20 20"/></symbol></svg>
+<button class="mock-theme" type="button" aria-label="Toggle theme (mockup only)">Dark</button>
+<div class="shell">
+  <aside class="shell__sidebar"><div class="sidebar">
+    <p class="sidebar__wordmark t-title">MetalHops</p>
+    <nav class="sidebar__nav" aria-label="Main"><a class="nav-item" href="#"><svg class="icon " aria-hidden="true"><use href="#i-house"/></svg>Home</a><a class="nav-item" href="#"><svg class="icon " aria-hidden="true"><use href="#i-compass"/></svg>Discover</a><a class="nav-item" href="#"><svg class="icon " aria-hidden="true"><use href="#i-map-pin-check"/></svg>Check-ins</a><a class="nav-item" href="#"><svg class="icon " aria-hidden="true"><use href="#i-store"/></svg>My venues</a><a class="nav-item" href="#" aria-current="page"><svg class="icon " aria-hidden="true"><use href="#i-user-round"/></svg>Profile</a></nav>
+    <div class="sidebar__foot"><div class="identity identity--compact" style="padding:var(--space-2) var(--space-3)"><span class="avatar avatar--photo" aria-hidden="true"></span><span class="identity__text"><span class="identity__name">Hel Hammerfall</span></span></div></div>
+  </div></aside>
+  <div>
+    <header class="topbar"><span class="btn btn--ghost topbar__menu" aria-label="Open menu"><svg class="icon icon--lg" aria-hidden="true"><use href="#i-menu"/></svg></span><span class="topbar__wordmark t-title">MetalHops</span></header>
+    <main class="shell__main"><div class="cv-page" id="root"></div>
+      <p class="mock-foot t-caption">Sample data. Design mockup, not for production.</p>
+    </main>
+  </div>
+</div>
+<script>
+(function () {
+  var G = { woman: ["Woman", "i-venus"], man: ["Man", "i-mars"], nb: ["Non-binary", "i-nb"], pns: ["Prefer not to say", "i-eye-off"] };
+  var FULL = { city: "Hamburg", country: "Germany", g: "nb" };
+  var STATES = [
+    ["full", "Full data: Hamburg, Germany, non-binary", FULL],
+    ["woman", "Woman", { city: "Hamburg", country: "Germany", g: "woman" }],
+    ["man", "Man", { city: "Hamburg", country: "Germany", g: "man" }],
+    ["pns", "Prefer not to say", { city: "Hamburg", country: "Germany", g: "pns" }],
+    ["country", "City missing, country set", { country: "Germany", g: "nb" }],
+    ["none", "Nothing set: no chips, labels or cells, no Details card", {}],
+    ["long", "Very long city name", { city: "Llanfairpwllgwyngyllgogerychwyrndrobwllllantysiliogogogoch", country: "United Kingdom", g: "nb" }]
+  ];
+  function ic(id, c) { return '<svg class="icon ' + (c || "") + '" aria-hidden="true"><use href="#' + id + '"/></svg>'; }
+  // Accessible name + native tooltip; colour is never the only signal (the glyph shape plus the label carry it).
+  function sym(g, cls) { var d = G[g]; return '<span class="disc ' + (cls || "") + '" role="img" aria-label="Gender: ' + d[0] + '" title="' + d[0] + '">' + ic(d[1]) + '</span>'; }
+  function loc(p, sub) { // city on-surface, en dash and country muted; country alone stays on-surface
+    var s = ""; if (p.city) s += '<span class="loc__city">' + p.city + '</span>';
+    if (p.city && p.country) s += '<span class="loc__sep"> – </span>';
+    if (p.country) s += '<span class="' + (p.city ? "loc__country--sub" : "") + '">' + p.country + '</span>';
+    return s;
+  }
+  var hasLoc = function (p) { return p.city || p.country; };
+  function head(v, p) {
+    var badge = v === "B" && p.g ? sym(p.g, "disc--ring disc--badge") : "";
+    return '<span class="avatar avatar--photo avatar--xl cv__avatar" role="img" aria-label="Profile photo placeholder">Photo</span>' +
+      '<div class="cv__id"><div class="cv__namerow"><h1 class="name">Hel Hammerfall</h1>' + badge + '</div><p class="username">@hel_hammer</p></div>' +
+      '<p class="cv__bio">Louder than hell.<br>Tuesday doom nights at the Anvil.</p>';
+  }
+  var act = '<div class="cv__act"><a class="btn btn--primary" href="edit-1-sectioned.html">' + ic("i-pencil") + 'Edit profile</a></div>';
+  function counters() {
+    return '<li class="stat"><span class="stat__n">42</span><span class="stat__l t-label">' + ic("i-map-pin-check", "icon--sm") + 'Check-ins</span></li>' +
+           '<li class="stat"><span class="stat__n">17</span><span class="stat__l t-label">' + ic("i-store", "icon--sm") + 'Venues</span></li>';
+  }
+  function card(v, p) {
+    var meta = "", cells = counters(), n = 2;
+    if (v === "A") {
+      var c = "";
+      if (hasLoc(p)) c += '<li class="mchip"><span class="disc" aria-hidden="true">' + ic("i-house") + '</span><span class="mchip__text t-label"><span class="visually-hidden">From </span>' + loc(p) + '</span></li>';
+      if (p.g) c += '<li class="mchip mchip--sym">' + sym(p.g) + '</li>';
+      if (c) meta = '<ul class="cv__meta" aria-label="About">' + c + '</ul>';
+    } else if (v === "B" && hasLoc(p)) {
+      meta = '<p class="locline">' + ic("i-house", "icon--sm") + '<span class="locline__text"><span class="visually-hidden">From </span>' + loc(p) + '</span></p>';
+    } else if (v === "C") {
+      if (hasLoc(p)) { n++; cells += '<li class="stat cell"><span class="cell__n stat__n"><span class="disc" aria-hidden="true">' + ic("i-house") + '</span><span>' + (p.city || p.country) + '</span></span><span class="stat__l t-label">' + (p.city && p.country ? p.country : '<span class="visually-hidden">From</span>') + '</span></li>'; }
+      if (p.g) { n++; cells += '<li class="stat cell"><span class="cell__n">' + sym(p.g) + '</span><span class="stat__l t-label"><span class="visually-hidden">Gender: </span>' + G[p.g][0] + '</span></li>'; }
+    }
+    return '<div class="cv"><section class="card cv__card" aria-label="Profile summary"><div class="cv__top">' + head(v, p) + meta + act + '</div>' +
+      '<ul class="cv__strip" style="--n:' + n + '" aria-label="Stats">' + cells + '</ul></section></div>';
+  }
+  var ctx = '<section class="soon" aria-label="Coming soon"><span class="t-caption">Coming soon</span><ul><li class="t-label">Following</li><li class="t-label">Followers</li><li class="t-label">Crews</li></ul></section>' +
+    '<section class="account" aria-labelledby="acc"><h2 id="acc" class="t-label section-title">Account (only you see this)</h2><dl class="facts"><div><dt class="t-label">Email</dt><dd>hel@example.com</dd></div><div><dt class="t-label">Account status</dt><dd><span class="tag">Active</span></dd></div></dl></section>';
+  var V = {
+    A: { name: "Meta chips", one: "Pill chips under the bio: a house in a primary-container disc plus Hamburg – Germany, and a gender symbol chip. Counters strip is untouched.",
+      opt: "Optimises scanning: the person's facts sit together as one row right under the bio, and the strip stays pure numbers.",
+      trade: "The gender chip is symbol only, so a first-time viewer meets a glyph without a word (title and screen-reader name give it); chips wrap to a second row on 375 when the city is long.",
+      grow: "Following, Followers and Crews join the strip as extra cells (5 columns on desktop, 2-column grid on mobile); new facts (pronouns, age) are just more chips that wrap." },
+    B: { name: "Identity line", one: "A ringed circular glyph badge beside the name carries gender; location is one quiet house + Hamburg – Germany line under the bio.",
+      opt: "Optimises restraint and hierarchy: nothing new competes with the avatar and name, the most compact of the three.",
+      trade: "A badge next to a name can read as a verified or status mark, and a symbol-only badge needs the tooltip to be understood; the location line is the lowest-contrast thing on the card.",
+      grow: "The strip takes Following, Followers and Crews as cells; the badge slot cannot take more facts, so a third identity fact would need a different home." },
+    C: { name: "Docked cells", one: "The counters strip grows to four cells: Check-ins, Venues, From (house disc, Hamburg big, Germany small) and Gender (symbol disc, label small); 2 x 2 on mobile, 4 columns on desktop.",
+      opt: "Optimises uniformity and glanceability: everything factual is one tidy grid with one reading rhythm and the biggest tap-free targets for the eye.",
+      trade: "Mixes activity numbers with identity facts in one strip, so it is the tallest on mobile and it runs out of room fastest.",
+      grow: "Following, Followers and Crews would make 7 cells: on desktop it needs two rows or a split into an identity row and a numbers row; on mobile it becomes a long 2-column grid." }
+  };
+  function note(k) { var d = V[k]; return '<div class="cv-note"><dl><div><dt class="t-label">What it optimises</dt><dd>' + d.opt + '</dd></div><div><dt class="t-label">Trade-off</dt><dd>' + d.trade + '</dd></div><div><dt class="t-label">When Following, Followers, Crews arrive</dt><dd>' + d.grow + '</dd></div></dl></div>'; }
+  var h = '<section class="cv-sec"><h1 class="t-heading">Profile card variants</h1><p>The separate Details card is gone: From and Gender fold into the main stage card. Three alternatives, each shown with full data (Hamburg, Germany, non-binary), then every state below. Use the Dark/Light toggle; resize to compare 375 and 1280.</p></section>';
+  ["A", "B", "C"].forEach(function (k) {
+    h += '<section class="cv-sec" id="v' + k + '"><h2 class="t-heading">' + k + '. ' + V[k].name + '</h2><p>' + V[k].one + '</p><div class="cv-flow">' + card(k, FULL) + ctx + '</div>' + note(k) + '</section>';
+  });
+  h += '<section class="cv-sec" id="states"><h2 class="t-heading">States</h2><p>Each variant across the seven states. The last two in each block are the empty and the long-name edge cases.</p></section>';
+  ["A", "B", "C"].forEach(function (k) {
+    h += '<section class="cv-sec" id="s' + k + '"><h3 class="t-label section-title">' + k + '. ' + V[k].name + '</h3><div class="cv-states">' +
+      STATES.map(function (s) { return '<div class="cv-state" id="s' + k + '-' + s[0] + '"><span class="t-caption">' + s[1] + '</span>' + card(k, s[2]) + '</div>'; }).join("") + '</div></section>';
+  });
+  h += '<section class="cv-sec" id="rec"><h2 class="t-heading">Recommendation</h2><div class="cv-note cv-rec"><dl><div><dt class="t-label">Pick A, Meta chips</dt><dd>It keeps the facts together and readable, leaves the counters strip for numbers only (the strip will need the room for Following, Followers and Crews), and absorbs future facts without redesign. The one fix it needs in build: ship the gender symbol with its accessible name and tooltip exactly as drawn here. B is the fallback if the card must stay as short as possible; C is the weakest fit because it spends strip space on non-numbers.</dd></div></dl></div></section>';
+  document.getElementById("root").innerHTML = h;
+})();
+</script>
+</body>
+</html>
