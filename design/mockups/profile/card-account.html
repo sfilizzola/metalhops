@@ -1,0 +1,206 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Profile, Account section alternatives</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Grenze+Gotisch:wght@700&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../../system/tokens.css">
+<link rel="stylesheet" href="../../system/components.css">
+<link rel="stylesheet" href="mockup.css">
+<link rel="stylesheet" href="card-compact.css">
+<link rel="stylesheet" href="card-account.css">
+<script src="mockup.js"></script>
+</head>
+<body>
+<!--
+Round 4: four alternatives for the owner-only Account section (email, status, moderation details), under the
+variant-B stage card with the chosen Byline treatment. A Private card, B Card footer, C Disclosure, D Move it to the edit screen.
+?only=A|B|C|D shows one as a page; &s=active|rename|suspended|long picks a state; &open=1|0 opens or closes C (default: open when not active); &view=edit shows D's edit screen.
+Icons: Lucide 0.469.0 paths, inline. Sample data, not for production.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" style="display:none" aria-hidden="true"><symbol id="i-menu" viewBox="0 0 24 24"><line x1="4" x2="20" y1="12" y2="12"/><line x1="4" x2="20" y1="6" y2="6"/><line x1="4" x2="20" y1="18" y2="18"/></symbol><symbol id="i-house" viewBox="0 0 24 24"><path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8"/><path d="M3 10a2 2 0 0 1 .709-1.528l7-5.999a2 2 0 0 1 2.582 0l7 5.999A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></symbol><symbol id="i-compass" viewBox="0 0 24 24"><path d="m16.24 7.76-1.804 5.411a2 2 0 0 1-1.265 1.265L7.76 16.24l1.804-5.411a2 2 0 0 1 1.265-1.265z"/><circle cx="12" cy="12" r="10"/></symbol><symbol id="i-map-pin-check" viewBox="0 0 24 24"><path d="M19.43 12.935c.357-.967.57-1.955.57-2.935a8 8 0 0 0-16 0c0 4.993 5.539 10.193 7.399 11.799a1 1 0 0 0 1.202 0 32.197 32.197 0 0 0 .813-.728"/><circle cx="12" cy="10" r="3"/><path d="m16 18 2 2 4-4"/></symbol><symbol id="i-store" viewBox="0 0 24 24"><path d="m2 7 4.41-4.41A2 2 0 0 1 7.83 2h8.34a2 2 0 0 1 1.42.59L22 7"/><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><path d="M15 22v-4a2 2 0 0 0-2-2h-2a2 2 0 0 0-2 2v4"/><path d="M2 7h20"/></symbol><symbol id="i-user-round" viewBox="0 0 24 24"><circle cx="12" cy="8" r="5"/><path d="M20 21a8 8 0 0 0-16 0"/></symbol><symbol id="i-pencil" viewBox="0 0 24 24"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/><path d="m15 5 4 4"/></symbol><symbol id="i-mail" viewBox="0 0 24 24"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></symbol><symbol id="i-user-check" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><polyline points="16 11 18 13 22 9"/></symbol><symbol id="i-lock" viewBox="0 0 24 24"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></symbol><symbol id="i-chevron-down" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol><symbol id="i-circle-alert" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/></symbol><symbol id="i-calendar-clock" viewBox="0 0 24 24"><path d="M21 7.5V6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h3.5"/><path d="M16 2v4"/><path d="M8 2v4"/><path d="M3 10h5"/><path d="M17.5 17.5 16 16.3V14"/><circle cx="16" cy="16" r="6"/></symbol><symbol id="i-flag" viewBox="0 0 24 24"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" x2="4" y1="22" y2="15"/></symbol><symbol id="i-message-square-text" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><path d="M13 8H7"/><path d="M17 12H7"/></symbol><symbol id="i-arrow-right" viewBox="0 0 24 24"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></symbol><symbol id="i-arrow-left" viewBox="0 0 24 24"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></symbol><symbol id="i-camera" viewBox="0 0 24 24"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></symbol><symbol id="i-trash-2" viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/></symbol>
+<symbol id="g-nb" viewBox="0 0 24 24"><circle cx="12" cy="15.5" r="5.5"/><path d="M12 10V5"/><path d="m9 2 6 6"/><path d="m15 2-6 6"/></symbol>
+</svg>
+<button class="mock-theme" type="button" aria-label="Toggle theme (mockup only)">Dark</button>
+<div class="shell">
+  <aside class="shell__sidebar"><div class="sidebar">
+    <p class="sidebar__wordmark t-title">MetalHops</p>
+    <nav class="sidebar__nav" aria-label="Main"><a class="nav-item" href="#"><svg class="icon" aria-hidden="true"><use href="#i-house"/></svg>Home</a><a class="nav-item" href="#"><svg class="icon" aria-hidden="true"><use href="#i-compass"/></svg>Discover</a><a class="nav-item" href="#"><svg class="icon" aria-hidden="true"><use href="#i-map-pin-check"/></svg>Check-ins</a><a class="nav-item" href="#"><svg class="icon" aria-hidden="true"><use href="#i-store"/></svg>My venues</a><a class="nav-item" href="#" aria-current="page"><svg class="icon" aria-hidden="true"><use href="#i-user-round"/></svg>Profile</a></nav>
+    <div class="sidebar__foot"><div class="identity identity--compact" style="padding:var(--space-2) var(--space-3)"><span class="avatar avatar--photo" aria-hidden="true"></span><span class="identity__text"><span class="identity__name">Hel Hammerfall</span></span></div></div>
+  </div></aside>
+  <div>
+    <header class="topbar"><span class="btn btn--ghost topbar__menu" aria-label="Open menu"><svg class="icon icon--lg" aria-hidden="true"><use href="#i-menu"/></svg></span><span class="topbar__wordmark t-title">MetalHops</span></header>
+    <main class="shell__main"><div class="cc-page" id="root"></div>
+      <p class="mock-foot t-caption">Sample data. Design mockup, not for production.</p>
+    </main>
+  </div>
+</div>
+<script>
+(function () {
+  var LONG = "a.very.long.email.address.for.testing.overflow@subdomain.example-company.co.uk";
+  var STATES = {
+    active: ["Active", { status: "active", email: "hel@example.com" }],
+    rename: ["Rename required, reason + note", { status: "rename_required", email: "hel@example.com", reason: "Username breaks the naming rules",
+      note: "Usernames can't impersonate a band or another member. Pick a new one and the rest of your profile stays as it is." }],
+    suspended: ["Suspended, reason + 3-sentence note + until", { status: "suspended", email: "hel@example.com", reason: "Harassment in check-in comments",
+      note: "Several of your check-in comments targeted another member after you were asked to stop. Your profile is read-only and hidden from search while the suspension runs. It lifts automatically at the time below.",
+      until: ["2026-11-12T14:30", "12 Nov 2026, 14:30"] }],
+    long: ["Very long email", { status: "active", email: LONG }]
+  };
+  var TAG = { active: "Active", rename_required: "Rename required", suspended: "Suspended" };
+  // Copy unchanged from webclient/src/profile/ProfileStatus.tsx (StatusAlerts).
+  var ALERT = { rename_required: "Your username needs to change. Choose a new username to continue.", suspended: "This profile is suspended, so it can't be changed right now." };
+  var uid = 0;
+
+  function ic(id, c) { return '<svg class="icon ' + (c || "") + '" aria-hidden="true"><use href="#' + id + '"/></svg>'; }
+  var ONLY = '<span class="acc-only t-caption">' + ic("i-lock", "icon--sm") + 'Only you</span>';
+  function tag(s) { return '<span class="tag">' + TAG[s.status] + '</span>'; }
+  function row(icon, k, v, cls) { return '<div class="acc-row' + (cls ? " " + cls : "") + '">' + ic(icon) + '<dt class="t-caption">' + k + '</dt><dd>' + v + '</dd></div>'; }
+  function emailRow(s) { return row("i-mail", "Email", s.email); }
+  function statusRow(s) { return row("i-user-check", "Status", tag(s), "acc-row--tag"); }
+  function modRows(s) {
+    if (s.status === "active") return "";
+    return (s.reason ? row("i-flag", "Reason", s.reason) : "") + (s.note ? row("i-message-square-text", "Moderator note", "<p>" + s.note + "</p>") : "") +
+      (s.until ? row("i-calendar-clock", "Suspended until", '<time datetime="' + s.until[0] + '">' + s.until[1] + '</time>') : "");
+  }
+  // Alert at the top of the page for non-active states; D links it to the edit screen.
+  function alert(s, link) {
+    if (s.status === "active") return "";
+    var a = link ? '<a class="btn btn--ghost acc-alert__link" href="?only=D&view=edit&s=' + (s.status === "suspended" ? "suspended" : "rename") + '">' + (s.status === "suspended" ? "See account details" : "Choose a new username") + ic("i-arrow-right") + '</a>' : "";
+    return '<div class="form-alert">' + ic("i-circle-alert") + '<div class="acc-alert__body"><p>' + ALERT[s.status] + '</p>' + a + '</div></div>';
+  }
+
+  /* Stage card: variant B with the chosen Byline treatment (markup as card-compact.html, treatment 3). */
+  function stage(footer) {
+    return '<div class="st"><section class="card st__card" aria-label="Profile summary"><div class="st__top">' +
+      '<span class="avatar avatar--photo avatar--xl st__avatar" role="img" aria-label="Profile photo placeholder">Photo</span>' +
+      '<div class="st__id"><h1 class="name">Hel Hammerfall</h1><p class="username byline">@hel_hammer<span class="byline__meta">' + ic("i-house", "icon--sm inl byline__house") +
+      '<span class="vh">From </span><span class="loc__city">Hamburg</span><span class="loc__sep"> – </span><span class="loc__country--sub">Germany</span>' +
+      '<span class="byline__g" role="img" aria-label="Gender: Non-binary" title="Non-binary"><svg class="g-icon icon--sm inl" viewBox="0 0 24 24" aria-hidden="true"><use href="#g-nb"/></svg></span></span></p></div>' +
+      '<p class="st__bio">Louder than hell.<br>Tuesday doom nights at the Anvil.</p><div class="st__act"><a class="btn btn--primary" href="?only=D&view=edit">' + ic("i-pencil") + 'Edit profile</a></div></div>' +
+      '<ul class="st__strip" aria-label="Stats"><li class="stat"><span class="stat__n">42</span><span class="stat__l t-label">' + ic("i-map-pin-check", "icon--sm") + 'Check-ins</span></li>' +
+      '<li class="stat"><span class="stat__n">17</span><span class="stat__l t-label">' + ic("i-store", "icon--sm") + 'Venues</span></li></ul>' + (footer || "") + '</section></div>';
+  }
+  var SOON = '<section class="soon" aria-label="Coming soon"><span class="t-caption">Coming soon</span><ul><li class="t-label">Following</li><li class="t-label">Followers</li><li class="t-label">Crews</li></ul></section>';
+
+  /* A. Private card */
+  function accA(s) {
+    var id = "acc" + ++uid;
+    return '<section class="card acc acc-a" aria-labelledby="' + id + '"><div class="acc-a__head"><h2 id="' + id + '" class="t-label section-title">Account</h2>' + ONLY + '</div>' +
+      '<dl class="acc-rows">' + emailRow(s) + statusRow(s) + modRows(s) + '</dl></section>';
+  }
+  /* B. Card footer */
+  function footB(s) {
+    var id = "acc" + ++uid, m = modRows(s);
+    return '<footer class="acc acc-b" aria-labelledby="' + id + '"><h2 id="' + id + '" class="vh">Account, only you can see this</h2><div class="acc-b__bar">' + ONLY +
+      '<span class="acc-b__mail">' + ic("i-mail", "icon--sm") + '<span class="vh">Email: </span><span>' + s.email + '</span></span>' +
+      '<span class="vh">Status: </span>' + tag(s) + '</div>' + (m ? '<dl class="acc-rows">' + m + '</dl>' : "") + '</footer>';
+  }
+  /* C. Disclosure */
+  function accC(s, open) {
+    return '<details class="card acc acc-c"' + (open ? " open" : "") + '><summary class="acc-c__sum">' + ic("i-lock") +
+      '<span class="acc-c__t"><span class="t-label">Account</span><span class="t-caption">Only you</span></span>' +
+      '<span class="vh">Status: </span>' + tag(s) + ic("i-chevron-down", "acc-c__chev") + '</summary>' +
+      '<dl class="acc-rows">' + emailRow(s) + modRows(s) + '</dl></details>';
+  }
+  /* D. Read-only card on the edit screen */
+  function accD(s) {
+    var id = "acc" + ++uid;
+    return '<section class="card form-section acc acc-d" aria-labelledby="' + id + '"><div class="acc-d__head"><h2 id="' + id + '" class="t-heading">Account</h2>' + ONLY + '</div>' +
+      '<dl class="acc-rows acc-rows--flush">' + emailRow(s) + statusRow(s) + modRows(s) + '</dl></section>';
+  }
+  function editD(s) {
+    var dis = s.status === "suspended" ? " disabled" : "";
+    return '<div class="e2"><a class="btn btn--ghost back" href="?only=D">' + ic("i-arrow-left") + 'Back to profile</a><h1 class="t-title">Edit profile</h1>' + alert(s) +
+      '<form class="form" onsubmit="return false"><div class="e2__cols"><div class="e2__col">' +
+      '<section class="card form-section" aria-labelledby="s-photo"><h2 id="s-photo" class="t-heading">Photo</h2><div class="photo"><span class="avatar avatar--photo avatar--lg" role="img" aria-label="Profile photo placeholder">Photo</span>' +
+      (dis ? "" : '<div class="photo__actions"><button class="btn btn--secondary" type="button">' + ic("i-camera") + 'Change photo</button><button class="btn btn--ghost" type="button">' + ic("i-trash-2") + 'Remove</button></div>') + '</div></section>' +
+      '<section class="card form-section" aria-labelledby="s-id"><h2 id="s-id" class="t-heading">Identity</h2><div class="field"><label class="field__label" for="username">Username</label><div class="field__control"><input id="username" value="hel_hammer" autocomplete="username" autocapitalize="none" spellcheck="false"' + dis + '></div></div><div class="field"><label class="field__label" for="dn">Display name</label><div class="field__control"><input id="dn" value="Hel Hammerfall"' + dis + '></div></div></section>' +
+      '</div><div class="e2__col">' +
+      '<section class="card form-section" aria-labelledby="s-about"><h2 id="s-about" class="t-heading">About</h2><div class="field"><label class="field__label" for="bio">Bio</label><div class="field__control"><textarea id="bio" rows="4"' + dis + '>Louder than hell.\nTuesday doom nights at the Anvil.</textarea></div><p class="field__help num">51/280</p></div></section>' +
+      '<section class="card form-section" aria-labelledby="s-loc"><h2 id="s-loc" class="t-heading">Location &amp; details</h2><div class="field"><label class="field__label" for="city">From city</label><div class="field__control"><input id="city" value="Hamburg"' + dis + '></div></div><div class="field"><label class="field__label" for="country">From country</label><div class="field__control"><select id="country"' + dis + '><option>Not set</option><option selected>Germany</option><option>Sweden</option></select><svg class="icon field__chevron" aria-hidden="true"><use href="#i-chevron-down"/></svg></div></div><div class="field"><label class="field__label" for="gender">Gender</label><div class="field__control"><select id="gender"' + dis + '><option>Not set</option><option selected>Non-binary</option></select><svg class="icon field__chevron" aria-hidden="true"><use href="#i-chevron-down"/></svg></div></div></section>' +
+      '</div></div>' + accD(s) + (dis ? "" : '<div class="e2__actions"><button class="btn btn--primary" type="button">Save changes</button><button class="btn btn--secondary" type="button">Cancel</button></div>') + '</form></div>';
+  }
+
+  // The user page for each alternative: Alert (non-active), stage card, Coming soon, then the Account section.
+  function page(k, s, open) {
+    if (k === "A") return alert(s) + stage() + SOON + accA(s);
+    if (k === "B") return alert(s) + stage(footB(s)) + SOON;
+    if (k === "C") return alert(s) + stage() + SOON + accC(s, open === undefined ? s.status !== "active" : open); // open by default when not active
+    return alert(s, true) + stage() + SOON;
+  }
+  function flow(k, s, open) { return '<div class="acc-flow">' + page(k, s, open) + '</div>'; }
+
+  var T = {
+    A: { name: "Private card",
+      one: "A quiet raised card in the Details family under Coming soon: ACCOUNT in the same muted label as the old Details heading, a lock + “Only you” caption on the right, then hairline-divided rows with a muted Lucide icon, a caption label and the value (Status holds the system .tag). Moderation rows join the same list.",
+      opt: "Consistency. It is literally the card the page already uses (surface-raised, elevation 1, radius lg, 32 px inset matching the stage card), so the section stops looking orphaned. Rows read as reference data and scale to any number of facts.",
+      trade: "Adds a full card (about 150 px when active) that a person sees on every visit, for two values they already know. The second card on the page also slightly competes with the stage card for “what is this page about”.",
+      fut: "Best of the on-page options: the rows become actionable (a trailing “Change” ghost button on Email, a new Password row) and Delete account / Export data go as a last row of ghost buttons. Past three actions it wants its own Settings screen.",
+      mob: "Rows stack label over value next to the icon; the long email wraps anywhere inside the value column; the lock + Only you stays top-right of the header." },
+    B: { name: "Card footer",
+      one: "No new card: a slim footer sunk to the page surface under the counters strip, inside the stage card. Lock + “Only you”, then the mail icon and email, then the status .tag on the right. Non-active states expand the footer with Reason, Moderator note and Suspended until rows.",
+      opt: "Height and economy. One 48 px line on desktop, no extra card, and the sunk surface reads as “back of house” without any copy at all.",
+      trade: "It puts private data inside the one card people screenshot and share: the email rides along in every screenshot of the profile. It also makes the owner’s stage card a different object from the one other people see, and the suspended note turns the hero card into a long document.",
+      fut: "Poor. The footer cannot hold actions without becoming a toolbar on the hero; future account actions would need a separate Settings screen and the footer would only link to it.",
+      mob: "Two lines: lock + Only you with the tag pinned right, then the email on its own line (wraps anywhere). Moderation rows stack below." },
+    C: { name: "Disclosure",
+      one: "A collapsed raised row (native details/summary, 64 px target): lock, “Account” over an “Only you” caption, the status .tag and a chevron. Status is visible at a glance; opening reveals the email and, when not active, the moderation rows.",
+      opt: "Minimal presence with status still visible. Closed it is one row the same width as Coming soon; it costs one tap to see the email.",
+      trade: "Hides the email behind a click for no privacy gain (only the owner sees it anyway), and a disclosure on a profile page is an unusual pattern. For non-active states it should render open, which makes it A with a chevron.",
+      fut: "Actions fit inside the open body as a row of ghost buttons, but “Change password inside a collapsed row on your public-looking page” is an odd home; it would move to Settings.",
+      mob: "Summary keeps one line at 375 px even with “Rename required” (Account and Only you stack). The open body stacks rows like A; the long email wraps." },
+    D: { name: "Move it to the edit screen",
+      one: "The user page loses the section entirely, so the owner sees what everyone else sees. The edit screen (variant 2) gets a read-only Account card across both columns at the bottom of the form, above Save: Account heading, lock + Only you, Email, Status and the moderation rows. Non-active states keep the top Alert on the user page and add a 48 px link to the edit screen.",
+      opt: "Hierarchy and privacy by location. The user page is purely the public profile; account data lives with the other things only you touch. Full width (not inside a column) gives the moderator note a readable measure and keeps the account data apart from the editable fields.",
+      trade: "The email is one tap further away, and a read-only card in an edit form invites “why can’t I change this?” until change email exists. Suspended users need the Alert link to find the reason.",
+      fut: "The natural home: Change email and Change password become secondary buttons in this card, Export data and Delete account a separate danger card at the bottom. When those exist the card graduates to a Settings screen and the edit screen links there.",
+      mob: "On the user page nothing changes. On the edit screen the card comes after Location &amp; details, before Save, rows stack label over value, the long email wraps." }
+  };
+  function note(k) { var d = T[k]; return '<div class="cc-note"><dl><div><dt class="t-label">What it optimises</dt><dd>' + d.opt + '</dd></div><div><dt class="t-label">Trade-off</dt><dd>' + d.trade + '</dd></div><div><dt class="t-label">Future: change email / password, delete account, data export</dt><dd>' + d.fut + '</dd></div><div><dt class="t-label">On mobile</dt><dd>' + d.mob + '</dd></div></dl></div>'; }
+
+  var q = new URLSearchParams(location.search), only = q.get("only"), st = (STATES[q.get("s")] || STATES.active)[1], root = document.getElementById("root");
+  if (only && T[only]) {
+    root.innerHTML = only === "D" && q.get("view") === "edit" ? editD(st) : '<div class="cc-flow" id="t' + only + '">' + flow(only, st, q.get("open") === "1" ? true : q.get("open") === "0" ? false : undefined) + '</div>';
+    return;
+  }
+
+  var h = '<section class="cc-sec"><h1 class="t-heading">Profile, round 4: the Account section</h1><p>The owner-only Account section (sign-in email, status, and moderation details when the account is not active) in four treatments under the chosen stage card. Every one replaces the parenthetical with a lock and “Only you”. Toggle Dark/Light; ?only=A, B, C or D shows one as a page, with &amp;s=rename, suspended or long for a state.</p></section>';
+  ["A", "B", "C", "D"].forEach(function (k) {
+    var d = T[k], keys = Object.keys(STATES);
+    h += '<section class="cc-sec" id="t' + k + '"><p class="t-label cc-kicker">Alternative ' + k + '</p><h2 class="t-title">' + d.name + '</h2><p>' + d.one + '</p>';
+    if (k === "D") {
+      h += '<h3 class="t-label section-title">User page, active (no Account section)</h3>' + flow("D", STATES.active[1]) +
+        '<h3 class="t-label section-title">User page, suspended (Alert links to the edit screen)</h3>' + flow("D", STATES.suspended[1]) +
+        '<h3 class="t-label section-title">Edit screen with the Account card</h3>' + editD(STATES.active[1]);
+    } else {
+      h += flow(k, STATES.active[1], false);
+    }
+    h += note(k) + '</section><section class="cc-sec" id="s' + k + '"><h3 class="t-label section-title">' + k + '. ' + d.name + ': states</h3><div class="cc-states' + (k === "D" ? " acc-states-d" : "") + '">';
+    keys.forEach(function (s) {
+      var data = STATES[s][1];
+      if (k === "C") {
+        if (s === "active" || s === "rename") h += '<div class="cc-state" id="sC-' + s + '-closed"><span class="t-caption">' + STATES[s][0] + ', closed</span>' + flow("C", data, false) + '</div>';
+        h += '<div class="cc-state" id="sC-' + s + '"><span class="t-caption">' + STATES[s][0] + ', open' + (s === "active" || s === "long" ? "" : " (default when not active)") + '</span>' + flow("C", data, true) + '</div>';
+      } else if (k === "D") {
+        h += '<div class="cc-state" id="sD-' + s + '"><span class="t-caption">' + STATES[s][0] + ': user page Alert, then the edit-screen card</span><div class="acc-flow">' + alert(data, true) + accD(data) + '</div></div>';
+      } else {
+        h += '<div class="cc-state" id="s' + k + '-' + s + '"><span class="t-caption">' + STATES[s][0] + '</span>' + flow(k, data) + '</div>';
+      }
+    });
+    h += '</div></section>';
+  });
+  h += '<section class="cc-sec" id="rec"><h2 class="t-heading">Ranking and recommendation</h2><div class="cc-note cc-rec"><dl>' +
+    '<div><dt class="t-label">1. D, move it to the edit screen (recommended)</dt><dd>The user page becomes exactly the public profile, so the owner sees what visitors see and a shared screenshot never carries the email. Account data sits with the other things only you change, and it is the only option with a real path to change email, password, export and delete. Keep the top Alert for non-active states and add the link (“See account details” when suspended, “Choose a new username” for a rename): without it a suspended member has no route to the reason.</dd></div>' +
+    '<div><dt class="t-label">2. A, private card</dt><dd>The right answer if the email must stay on the user page: it finally matches the cards above it and handles the long suspended note well. It costs a full card on every visit for two values the owner already knows.</dd></div>' +
+    '<div><dt class="t-label">3. C, disclosure</dt><dd>Smallest on-page footprint with status visible, but it hides non-secret data behind a tap and must open itself for non-active states, at which point it is A with a chevron.</dd></div>' +
+    '<div><dt class="t-label">4. B, card footer</dt><dd>Neatest when active, but it puts private data inside the hero card people screenshot, and the suspended state turns the stage card into a long document. Not recommended.</dd></div>' +
+    '</dl></div></section>';
+  root.innerHTML = h;
+})();
+</script>
+</body>
+</html>

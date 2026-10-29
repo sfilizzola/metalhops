@@ -1,0 +1,83 @@
+/* Account section alternatives (owner-only) under the variant-B stage card, byline treatment.
+   Tokens only; derived sizes are calc() of tokens. Needs mockup.css and card-compact.css (stage card, notes, state grid). */
+.acc-flow { display: grid; gap: var(--space-6); min-width: 0; }
+
+/* Shared: the "Only you" mark. Lock + caption in muted ink; plain text, no pill, so it never reads as a second tag. */
+.acc-only { display: inline-flex; align-items: center; gap: var(--space-1); color: var(--color-on-surface-muted); white-space: nowrap; }
+
+/* Shared: the rows (email, status, moderation details). Icon column + stacked label/value; label column from 36rem. */
+.acc { container: acc / inline-size; min-width: 0; }
+.acc-rows { display: grid; min-width: 0; }
+.acc-row { display: grid; grid-template-columns: var(--size-icon-md) minmax(0, 1fr); column-gap: var(--space-3); padding: var(--space-3) var(--space-5); border-top: var(--border-hairline) solid var(--color-outline-variant); min-width: 0; }
+.acc-row > .icon { grid-row: span 2; margin-top: calc(var(--space-1) / 2); color: var(--color-on-surface-muted); }
+.acc-row dt { color: var(--color-on-surface-muted); }
+.acc-row dd { min-width: 0; overflow-wrap: anywhere; }
+.acc-row dd p { max-width: 60ch; }
+.acc-row--tag dd { display: flex; padding-top: var(--space-1); }
+.acc-rows--flush .acc-row { padding-inline: 0; }
+.acc-rows--flush .acc-row:first-child { border-top: 0; padding-top: 0; }
+@container acc (min-width: 36rem) {
+  .acc-row { grid-template-columns: var(--size-icon-md) 9rem minmax(0, 1fr); align-items: start; }
+  .acc-row > .icon { grid-row: auto; margin-top: calc((var(--type-body-line-height) - var(--size-icon-md)) / 2); }
+  .acc-row dt { line-height: var(--type-body-line-height); }
+  .acc-row--tag dd { padding-top: 0; margin-block: calc((var(--type-body-line-height) - var(--space-8)) / 2); } /* .tag is 32 px tall */
+}
+
+/* Top-of-page Alert (unchanged copy); D adds a 48 px link under the text. */
+.acc-alert__body { display: grid; gap: var(--space-1); min-width: 0; }
+.acc-alert__link { justify-self: start; margin-left: calc(var(--space-3) * -1); margin-block: calc(var(--space-2) * -1); }
+
+/* ============ A. Private card ============ */
+.acc-a { padding: 0; }
+.acc-a__head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); padding: var(--space-4) var(--space-5); }
+@container acc (min-width: 40rem) {
+  .acc-a__head, .acc-a .acc-row { padding-inline: var(--space-8); }
+}
+
+/* ============ B. Card footer (inside the stage card, under the strip) ============ */
+/* Sunk to the page surface: back-of-house, quieter than the card it sits in. Bottom corners follow the card radius
+   (the card cannot clip: the avatar breaks its top edge). */
+.acc-b { background: var(--color-surface); border-top: var(--border-hairline) solid var(--color-outline-variant); border-radius: 0 0 var(--radius-lg) var(--radius-lg); }
+.acc-b__bar { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "only tag" "mail mail"; align-items: center; gap: var(--space-2) var(--space-4); padding: var(--space-3) var(--space-5); min-width: 0; }
+.acc-b__bar .acc-only { grid-area: only; }
+.acc-b__bar .tag { grid-area: tag; }
+.acc-b__mail { grid-area: mail; display: flex; align-items: flex-start; gap: var(--space-2); min-width: 0; color: var(--color-on-surface); }
+.acc-b__mail .icon { margin-top: calc((var(--type-body-line-height) - var(--size-icon-sm)) / 2); color: var(--color-on-surface-muted); }
+.acc-b__mail span { min-width: 0; overflow-wrap: anywhere; }
+.acc-b .acc-row { padding-block: var(--space-3); }
+@container acc (min-width: 40rem) {
+  .acc-b__bar { grid-template-columns: auto minmax(0, 1fr) auto; grid-template-areas: "only mail tag"; column-gap: var(--space-6); padding-inline: var(--space-8); }
+  .acc-b .acc-row { padding-inline: var(--space-8); }
+}
+
+/* ============ C. Disclosure ============ */
+.acc-c { padding: 0; }
+.acc-c__sum { display: flex; align-items: center; gap: var(--space-3); min-height: calc(var(--size-tap-min) + var(--space-4)); padding: var(--space-2) var(--space-4) var(--space-2) var(--space-5); border-radius: var(--radius-lg); list-style: none; cursor: pointer; transition: background-color var(--duration-fast) var(--easing-standard); }
+.acc-c__sum::-webkit-details-marker { display: none; }
+.acc-c__sum:hover { background: color-mix(in oklch, var(--color-on-surface) 5%, transparent); }
+.acc-c[open] .acc-c__sum { border-radius: var(--radius-lg) var(--radius-lg) 0 0; }
+.acc-c__sum > .icon:first-child { color: var(--color-on-surface-muted); }
+.acc-c__t { display: grid; min-width: 0; margin-right: auto; }
+.acc-c__t .t-caption { color: var(--color-on-surface-muted); }
+.acc-c__chev { color: var(--color-on-surface-muted); transition: transform var(--duration-base) var(--easing-standard); }
+.acc-c[open] .acc-c__chev { transform: rotate(180deg); }
+.acc-c__sum:hover .acc-c__chev { color: var(--color-on-surface); }
+@container acc (min-width: 40rem) {
+  .acc-c__sum { padding-inline: var(--space-8) var(--space-6); }
+  .acc-c .acc-row { padding-inline: var(--space-8); }
+}
+
+/* ============ D. Edit screen card (variant 2) ============ */
+.acc-d__head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); }
+/* Edit-2 layout, copied from edit-2-two-column.html (inline styles there). */
+.e2 { display: grid; gap: var(--space-6); width: 100%; max-width: 64rem; margin-inline: auto; } /* width: auto margins shrink it inside the .cc-page grid */
+.e2 .form { gap: var(--space-6); }
+.e2__cols { display: grid; gap: var(--space-6); align-items: start; }
+.e2__col { display: grid; gap: var(--space-6); min-width: 0; }
+.e2 .form-section { padding: var(--space-5); }
+.e2__actions { display: flex; flex-wrap: wrap; gap: var(--space-3); }
+@media (min-width: 960px) {
+  .e2__cols { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-8); }
+  .e2__actions { justify-content: flex-end; }
+}
+.acc-states-d { grid-template-columns: repeat(auto-fill, minmax(min(100%, 26rem), 1fr)); }
