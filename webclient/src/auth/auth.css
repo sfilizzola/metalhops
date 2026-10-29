@@ -1,0 +1,7 @@
+/* Auth card: derived from tokens because the design system has no spec for it. */
+.auth { min-height: 100dvh; display: grid; place-items: center; padding: var(--space-6) var(--space-4); }
+.auth__card { display: grid; gap: var(--space-5); width: 100%; max-width: 26rem; min-width: 0; padding: var(--space-8) var(--space-6); background: var(--color-surface-raised); border-radius: var(--radius-lg); box-shadow: var(--elevation-1); }
+.auth__card h1, .auth__wordmark { margin: 0; }
+.auth__wordmark { color: var(--color-primary); }
+/* .btn is nowrap; the switch link must wrap at 320px and under zoom. */
+.auth__switch { white-space: normal; text-align: center; line-height: var(--type-body-line-height); }

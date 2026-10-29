@@ -1,0 +1,7 @@
+.profile { display: grid; gap: var(--space-5); max-width: 36rem; }
+.profile__form { display: grid; gap: var(--space-4); }
+.profile__actions { display: flex; flex-wrap: wrap; gap: var(--space-3); }
+.profile__facts { display: grid; gap: var(--space-3); margin: 0; }
+.profile__facts dt { color: var(--color-on-surface-muted); }
+.profile__facts dd { margin: 0; overflow-wrap: anywhere; }
+.profile__skeleton { height: var(--space-10); }

@@ -9,7 +9,7 @@ the rules below are what to follow.
 | Path | What | Status |
 | --- | --- | --- |
 | `backend/` | Go REST API (Render) | Active |
-| `webclient/` | Consumer-facing web app (Vite, React, TypeScript); MVP shipped before native apps | Active |
+| `webclient/` | Consumer-facing web app (Vite, React, TypeScript): authentication, app shell, Profile; MVP shipped before native apps | Active |
 | `android/` | Kotlin, Jetpack Compose app | Not started |
 | `admin/` | Moderation web app; documentation only until its own design cycle | Not started |
 | `infra/` | Supabase migrations, Render blueprint | Shared |
@@ -17,7 +17,8 @@ the rules below are what to follow.
 
 ## Current focus
 
-Backend API and the web authentication MVP in `webclient/`.
+Backend API and the web app shell in `webclient/` (authentication, navigation,
+and Profile).
 
 ## Scope
 
