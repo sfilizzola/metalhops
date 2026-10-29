@@ -1,0 +1,5 @@
+.form-alert--success { border-color: var(--color-success); }
+.form-alert--success .icon { color: var(--color-success); }
+.spinner { animation: spinner-turn 0.9s linear infinite; }
+@keyframes spinner-turn { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .spinner { animation: none; } }

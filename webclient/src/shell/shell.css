@@ -1,0 +1,40 @@
+/* App shell, sidebar, nav item, top bar and drawer: derived from tokens because the design system has no spec for them. */
+/* Breakpoint: 960px (the showcase's content breakpoint). It is used once, in the @media block at the end of this file. */
+
+.shell { min-height: 100dvh; min-width: 0; }
+.shell__sidebar { display: none; }
+.shell__main { min-width: 0; padding: var(--space-6) var(--space-4); }
+
+.list-state h1, .list-state p { margin: 0; }
+.page-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: var(--space-3); }
+
+.sidebar { display: flex; flex-direction: column; gap: var(--space-6); height: 100%; min-width: 0; padding: var(--space-6) var(--space-4); }
+.sidebar__wordmark { margin: 0; padding-inline: var(--space-3); color: var(--color-primary); }
+.sidebar__nav { display: grid; gap: var(--space-1); }
+.sidebar__foot { margin-top: auto; display: grid; gap: var(--space-2); }
+.sidebar__foot .btn { justify-content: flex-start; }
+
+.nav-item { display: flex; align-items: center; gap: var(--space-3); min-height: var(--size-tap-min); padding: 0 var(--space-3); border-radius: var(--radius-md); color: var(--color-on-surface-muted); text-decoration: none; font: var(--type-label-weight) 1rem/1 var(--font-body); transition: background-color var(--duration-fast) var(--easing-standard), color var(--duration-fast) var(--easing-standard); }
+.nav-item:hover { background: color-mix(in oklch, var(--color-on-surface) 7%, transparent); color: var(--color-on-surface); }
+.nav-item[aria-current="page"] { background: var(--color-primary-container); color: var(--color-on-primary-container); }
+
+.shell-identity { min-height: var(--size-tap-min); padding: var(--space-2) var(--space-3); border-radius: var(--radius-md); color: inherit; text-decoration: none; }
+.shell-identity:hover { background: color-mix(in oklch, var(--color-on-surface) 7%, transparent); }
+
+.topbar { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; gap: var(--space-2); min-height: calc(var(--size-tap-min) + var(--space-4)); padding: var(--space-2) var(--space-2); background: var(--color-surface-raised); border-bottom: var(--border-hairline) solid var(--color-outline-variant); }
+.topbar__menu { color: var(--color-on-surface); min-width: var(--size-tap-min); }
+.topbar__wordmark { color: var(--color-primary); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.drawer-scrim { position: fixed; inset: 0; z-index: 2; background: var(--color-scrim); animation: drawer-fade var(--duration-base) var(--easing-standard); }
+.drawer { position: fixed; inset: 0 auto 0 0; z-index: 3; width: min(20rem, 85vw); overflow-y: auto; background: var(--color-surface-overlay); box-shadow: var(--elevation-2); animation: drawer-in var(--duration-base) var(--easing-decelerate); }
+.drawer__close { position: absolute; top: var(--space-4); right: var(--space-2); color: var(--color-on-surface); min-width: var(--size-tap-min); }
+.drawer .sidebar__wordmark { padding-right: calc(var(--size-tap-min) + var(--space-2)); }
+@keyframes drawer-in { from { transform: translateX(-100%); } }
+@keyframes drawer-fade { from { opacity: 0; } }
+
+@media (min-width: 960px) {
+  .shell { display: grid; grid-template-columns: 16rem minmax(0, 1fr); }
+  .shell__sidebar { display: block; position: sticky; top: 0; height: 100dvh; overflow-y: auto; background: var(--color-surface-raised); border-right: var(--border-hairline) solid var(--color-outline-variant); }
+  .mobile-nav { display: none; }
+  .shell__main { padding: var(--space-10) var(--space-8); }
+}

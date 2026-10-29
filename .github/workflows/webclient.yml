@@ -2,9 +2,9 @@ name: webclient
 on:
   push:
     branches: [main, dev]
-    paths: ["webclient/**"]
+    paths: ["webclient/**", "design/system/**"]
   pull_request:
-    paths: ["webclient/**"]
+    paths: ["webclient/**", "design/system/**"]
 
 permissions:
   contents: read
