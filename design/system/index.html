@@ -1,0 +1,302 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MetalHops design system · Backline</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Grenze+Gotisch:wght@700&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="tokens.css">
+<link rel="stylesheet" href="components.css">
+<script src="tokens.js"></script>
+<style>
+/* Showcase page layout only; components live in components.css. */
+* { box-sizing: border-box; margin: 0; }
+html { scroll-padding-top: 96px; }
+body {
+  background: var(--color-surface); color: var(--color-on-surface);
+  font: var(--type-body-weight) var(--type-body-size)/var(--type-body-line-height) var(--font-body);
+  font-variant-numeric: tabular-nums;
+  -webkit-font-smoothing: antialiased;
+}
+/* Texture rule: grain and stage glow live on the dark page background only, never behind text blocks. */
+html[data-theme="dark"] body {
+  background:
+    radial-gradient(120% 50% at 50% -8%, oklch(0.24 0.05 50 / 0.55), transparent 60%),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.05'/%3E%3C/svg%3E"),
+    var(--color-surface);
+  background-attachment: fixed;
+}
+.topbar { position: sticky; top: 0; z-index: 10; display: flex; align-items: center; gap: var(--space-6); padding: var(--space-3) var(--space-10); background: color-mix(in oklch, var(--color-surface) 92%, transparent); backdrop-filter: blur(8px); border-bottom: var(--border-hairline) solid var(--color-outline-variant); }
+.wordmark { font: var(--type-title-weight) 2.25rem/1 var(--font-display); color: var(--color-primary); }
+.wordmark-note { font: var(--type-caption-weight) var(--type-caption-size)/var(--type-caption-line-height) var(--font-body); color: var(--color-on-surface-muted); }
+.topbar nav { display: flex; gap: var(--space-1) var(--space-4); margin-left: auto; flex-wrap: wrap; justify-content: flex-end; }
+.topbar nav a { color: var(--color-on-surface-muted); text-decoration: none; font: var(--type-label-weight) var(--type-label-size)/1 var(--font-body); padding: var(--space-1) 0; }
+.topbar nav a:hover { color: var(--color-on-surface); }
+.seg { flex: none; display: inline-flex; border: var(--border-hairline) solid var(--color-outline); border-radius: var(--radius-md); overflow: hidden; }
+.seg button { min-height: var(--size-tap-min); padding: 0 var(--space-3); display: inline-flex; gap: var(--space-2); align-items: center; background: none; border: 0; color: var(--color-on-surface-muted); font: var(--type-label-weight) var(--type-label-size)/1 var(--font-body); cursor: pointer; }
+.seg button + button { border-left: var(--border-hairline) solid var(--color-outline); }
+.seg button[aria-pressed="true"] { background: var(--color-primary-container); color: var(--color-on-primary-container); }
+
+main { padding: var(--space-12) var(--space-10) var(--space-16); max-width: 1440px; margin: 0 auto; }
+.intro { max-width: 64ch; }
+.intro p { color: var(--color-on-surface-muted); margin-top: var(--space-3); }
+.part { font: var(--type-label-weight) var(--type-label-size)/1 var(--font-body); letter-spacing: 0.12em; color: var(--color-primary); margin: var(--space-16) 0 var(--space-2); text-transform: uppercase; }
+section.spec { margin-top: var(--space-12); }
+section.spec > h2 { font: var(--type-title-weight) var(--type-title-size)/var(--type-title-line-height) var(--font-display); }
+section.spec > p { color: var(--color-on-surface-muted); max-width: 72ch; margin-top: var(--space-2); }
+.panels { display: grid; gap: var(--space-4); margin-top: var(--space-5); }
+html[data-view="both"] .panels { grid-template-columns: 1fr 1fr; }
+html[data-view="dark"] .panels > [data-theme="light"],
+html[data-view="light"] .panels > [data-theme="dark"] { display: none; }
+.panel { background: var(--color-surface); color: var(--color-on-surface); border-radius: var(--radius-lg); padding: var(--space-6); box-shadow: 0 0 0 var(--border-hairline) var(--color-outline-variant); min-width: 0; }
+.panel[data-theme="dark"]::before { content: "Dark mode"; }
+.panel[data-theme="light"]::before { content: "Light mode"; }
+.panel::before { display: block; font: var(--type-caption-weight) var(--type-caption-size)/1 var(--font-body); color: var(--color-on-surface-muted); margin-bottom: var(--space-4); }
+.row { display: flex; flex-wrap: wrap; gap: var(--space-4); align-items: flex-start; }
+.stack { display: grid; gap: var(--space-5); }
+.state-label { font: var(--type-caption-weight) var(--type-caption-size)/var(--type-caption-line-height) var(--font-body); color: var(--color-on-surface-muted); margin-bottom: var(--space-2); }
+.matrix { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: var(--space-4) var(--space-3); }
+.cols-2 { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-8); }
+table.data { width: 100%; border-collapse: collapse; margin-top: var(--space-5); font-size: 0.9375rem; }
+table.data th, table.data td { text-align: left; padding: var(--space-2) var(--space-3); border-bottom: var(--border-hairline) solid var(--color-outline-variant); vertical-align: middle; }
+table.data th { font: var(--type-label-weight) var(--type-label-size)/1.2 var(--font-body); color: var(--color-on-surface-muted); }
+code, .code { font: 0.8125rem/1.4 ui-monospace, "SF Mono", Menlo, monospace; color: var(--color-on-surface-muted); }
+.swatch { display: inline-block; width: 40px; height: 28px; border-radius: var(--radius-sm); box-shadow: inset 0 0 0 1px oklch(0.5 0 0 / 0.35); vertical-align: middle; margin-right: var(--space-2); }
+.pass, .fail { padding: 2px 8px; border-radius: var(--radius-sm); font-weight: 600; font-size: 0.8125rem; }
+.pass { color: var(--color-on-success-container); background: var(--color-success-container); }
+.fail { color: var(--color-on-danger); background: var(--color-danger); }
+.type-row { display: grid; grid-template-columns: 200px 1fr; gap: var(--space-6); padding: var(--space-4) 0; border-bottom: var(--border-hairline) solid var(--color-outline-variant); align-items: baseline; }
+.space-row { display: grid; grid-template-columns: 90px 60px 1fr; gap: var(--space-3); align-items: center; padding: 4px 0; }
+.space-bar { height: 14px; background: var(--color-primary); border-radius: 2px; }
+.radius-box { width: 88px; height: 64px; background: var(--color-primary-container); border: var(--border-strong) solid var(--color-primary); }
+.elev-box { width: 170px; height: 100px; border-radius: var(--radius-lg); padding: var(--space-3); display: flex; align-items: flex-end; }
+.border-line { width: 140px; background: var(--color-on-surface); }
+.motion-item { all: unset; cursor: pointer; display: grid; grid-template-columns: 240px 1fr; gap: var(--space-4); align-items: center; min-height: var(--size-tap-min); border-radius: var(--radius-md); }
+.motion-item:focus-visible { outline: var(--border-focus) solid var(--color-focus); outline-offset: 4px; }
+.motion-track { position: relative; height: 32px; border-radius: var(--radius-full); background: var(--color-surface-raised); box-shadow: inset 0 0 0 1px var(--color-outline-variant); }
+.motion-dot { position: absolute; top: 6px; left: 6px; width: 20px; height: 20px; border-radius: 50%; background: var(--color-primary); }
+.motion-go .motion-dot { left: calc(100% - 26px); }
+.icon-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: var(--space-3); margin-top: var(--space-5); }
+.icon-grid > div { display: flex; gap: var(--space-3); align-items: center; padding: var(--space-3); border-radius: var(--radius-md); background: var(--color-surface-raised); }
+@media (max-width: 1100px) { .topbar nav { display: none; } .seg { margin-left: auto; } }
+@media (max-width: 960px) { html[data-view="both"] .panels, .cols-2 { grid-template-columns: 1fr; } main, .topbar { padding-inline: var(--space-5); } .type-row, .motion-item { grid-template-columns: 1fr; gap: var(--space-2); } .topbar { flex-wrap: wrap; gap: var(--space-2); } .seg { margin-left: 0; } table.data { display: block; overflow-x: auto; } }
+</style>
+</head>
+<body>
+<script src="icons.js"></script>
+
+<header class="topbar">
+  <div>
+    <div class="wordmark">MetalHops</div>
+    <div class="wordmark-note">Placeholder wordmark · set in Grenze Gotisch</div>
+  </div>
+  <nav aria-label="Sections">
+    <a href="#color">Color</a><a href="#type">Type</a><a href="#space">Space</a><a href="#elevation">Depth</a><a href="#motion">Motion</a><a href="#icons">Icons</a><a href="#buttons">Buttons</a><a href="#input">Input</a><a href="#venue-card">Venue card</a><a href="#rating">Rating</a><a href="#genre">Genre</a><a href="#verified">Badge</a><a href="#checkin">Check-in</a><a href="#identity">Identity</a><a href="#review">Review</a><a href="#list-states">States</a>
+  </nav>
+  <div class="seg" role="group" aria-label="Theme">
+    <button type="button" data-view="dark"><svg class="icon icon--sm" aria-hidden="true"><use href="#i-moon"/></svg>Dark</button>
+    <button type="button" data-view="light"><svg class="icon icon--sm" aria-hidden="true"><use href="#i-sun"/></svg>Light</button>
+    <button type="button" data-view="both"><svg class="icon icon--sm" aria-hidden="true"><use href="#i-columns-2"/></svg>Both</button>
+  </div>
+</header>
+
+<main>
+  <div class="intro">
+    <h1 class="t-display">Backline</h1>
+    <p>The MetalHops design system: stage-monitor clarity under tungsten light. Oxblood black and a single amber, blackletter for headings only, IBM Plex Sans for everything people need to read in a loud, dim bar. Every value comes from <span class="code">tokens.json</span>; <span class="code">tokens.css</span> and the tables on this page are generated from it. Venues, people and Reviews shown here are sample content.</p>
+  </div>
+
+  <div class="part">Foundations</div>
+
+  <section class="spec" id="color">
+    <h2>Color</h2>
+    <p>Dark-first, with a light mode. Names follow Compose Material roles so Android and iOS can map them one to one. All values are <span class="code">oklch()</span> inside the sRGB gamut; the build checks this.</p>
+    <table class="data" id="color-table"><thead><tr><th>Token</th><th>Dark</th><th>Light</th><th>Compose role</th></tr></thead><tbody></tbody></table>
+  </section>
+
+  <section class="spec" id="contrast">
+    <h2>Contrast, measured</h2>
+    <p>WCAG 2.2 contrast ratios, computed from the token values by <span class="code">build-tokens.mjs</span>; the build fails if a pair drops below its minimum. Text needs 4.5:1. Outlines, focus rings and selected borders are UI parts and need 3:1. Disabled controls are exempt and drawn at reduced opacity. Focus rings sit 2 px outside the control, so they are measured against the surface behind it.</p>
+    <table class="data" id="contrast-table"><thead><tr><th>Foreground</th><th>Background</th><th>Minimum</th><th>Dark</th><th>Light</th></tr></thead><tbody></tbody></table>
+  </section>
+
+  <section class="spec" id="type">
+    <h2>Type</h2>
+    <p>Grenze Gotisch for display and title only: Venue names, page and section titles. Never body, labels or numbers. IBM Plex Sans for everything else. Body is 17 px so it reads at arm's length. All numbers use tabular figures.</p>
+    <div id="type-scale" style="margin-top:var(--space-5)"></div>
+    <div style="margin-top:var(--space-5)"><div class="state-label">Tabular figures in IBM Plex Sans: digits line up in lists</div><div class="t-heading num">4.3 · 128 · 1.2 km<br>1.1 · 111 · 18.7 km</div></div>
+  </section>
+
+  <section class="spec" id="space">
+    <h2>Space, radius, borders</h2>
+    <div class="cols-2" style="margin-top:var(--space-5)">
+      <div id="space-scale"></div>
+      <div class="stack">
+        <div class="row" id="radius-scale"></div>
+        <div class="stack" id="border-scale"></div>
+        <p class="muted t-caption">Minimum tap target: <span class="num">48</span> px (<span class="code">--size-tap-min</span>), above the 44 px floor. The Check-in button is 56 px.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="spec" id="elevation">
+    <h2>Elevation</h2>
+    <p>Shadows barely read on a dark surface, so depth comes from two things together: each level steps the surface lighter and adds a hairline ring. Shadows only reinforce it. In light mode the ring and shadow do the work.</p>
+    <div class="panels"><div class="panel" data-theme="dark">
+      <div class="row">
+        <div class="elev-box" style="background:var(--color-surface);box-shadow:inset 0 0 0 1px var(--color-outline-variant)"><span class="t-label">0 · surface</span></div>
+        <div class="elev-box" style="background:var(--color-surface-raised);box-shadow:var(--elevation-1)"><span class="t-label">1 · surface-raised</span></div>
+        <div class="elev-box" style="background:var(--color-surface-overlay);box-shadow:var(--elevation-2)"><span class="t-label">2 · surface-overlay</span></div>
+      </div>
+    </div></div>
+  </section>
+
+  <section class="spec" id="motion">
+    <h2>Motion</h2>
+    <p>Short and purposeful: state changes use <span class="code">fast</span>, cards and panels <span class="code">base</span>, entering sheets and the Check-in confirmation <span class="code">slow</span>. With reduced motion, durations go to zero. Select a row to play it.</p>
+    <div id="motion-list" class="stack" style="margin-top:var(--space-5);max-width:720px;gap:var(--space-2)"></div>
+  </section>
+
+  <section class="spec" id="icons">
+    <h2>Iconography</h2>
+    <p><strong>Lucide</strong> (lucide.dev, ISC licence): 24 px grid, 2 px stroke, round caps, used at 16, 20 and 24 px. Icons sit next to a text label or carry an accessible name. Never decorative skulls, flames or similar. The icons in use so far:</p>
+    <div class="icon-grid" id="icon-grid"></div>
+  </section>
+
+  <div class="part">Components</div>
+
+  <section class="spec" id="buttons">
+    <h2>Buttons</h2>
+    <p>Primary for the one main action on a screen, secondary for alternatives, ghost for low-emphasis actions, destructive for removing things. All are at least 48 px tall. Hover and pressed states mix toward <span class="code">on-surface</span>, which only ever raises text contrast.</p>
+    <div class="panels"><div class="panel" data-theme="dark"><div class="stack" id="button-matrix"></div></div></div>
+  </section>
+
+  <section class="spec" id="input">
+    <h2>Text input</h2>
+    <p>Label above, help text below; an error replaces the help text. Sign-in errors are generic and sit above the form, so they never reveal whether an email is registered.</p>
+    <div class="panels"><div class="panel" data-theme="dark">
+      <div class="matrix" style="grid-template-columns:repeat(auto-fill,minmax(240px,1fr))">
+        <div><div class="state-label">Default</div>
+          <label class="field"><span class="field__label">Display name <span class="muted num">0 / 80</span></span><span class="field__control"><input placeholder="Your name on MetalHops" maxlength="80"></span><span class="field__help">1 to 80 characters.</span></label></div>
+        <div><div class="state-label">Hover</div>
+          <label class="field"><span class="field__label">Display name <span class="muted num">10 / 80</span></span><span class="field__control is-hover"><input value="Kai Hansen" maxlength="80"></span><span class="field__help">1 to 80 characters.</span></label></div>
+        <div><div class="state-label">Focus</div>
+          <label class="field"><span class="field__label">Username</span><span class="field__control is-focus">@<input value="kai_h" maxlength="30"></span><span class="field__help">3 to 30 letters, digits or underscores.</span></label></div>
+        <div><div class="state-label">Error (validation)</div>
+          <label class="field field--error"><span class="field__label">Username</span><span class="field__control">@<input value="kai h!" aria-invalid="true"></span><span class="field__error"><svg class="icon icon--sm" aria-hidden="true"><use href="#i-circle-alert"/></svg>Use 3 to 30 letters, digits or underscores.</span></label></div>
+        <div><div class="state-label">Disabled</div>
+          <label class="field field--disabled"><span class="field__label">Email</span><span class="field__control"><input value="kai@example.com" disabled></span><span class="field__help">Change your email in Settings.</span></label></div>
+      </div>
+      <div style="margin-top:var(--space-8);max-width:380px" class="stack">
+        <div class="state-label" style="margin:0">Sign-in error, generic</div>
+        <div class="form-alert" role="alert"><svg class="icon" aria-hidden="true"><use href="#i-circle-alert"/></svg><div><div class="t-label">Email or password is incorrect</div><div class="t-caption muted">Check both and try again.</div></div></div>
+        <label class="field field--error"><span class="field__label">Email</span><span class="field__control"><svg class="icon icon--sm" aria-hidden="true"><use href="#i-mail"/></svg><input type="email" value="kai@example.com" aria-invalid="true"></span></label>
+        <label class="field field--error"><span class="field__label">Password</span><span class="field__control"><svg class="icon icon--sm" aria-hidden="true"><use href="#i-lock"/></svg><input type="password" value="hunter22" aria-invalid="true"></span></label>
+        <button class="btn btn--primary" type="button">Sign in</button>
+      </div>
+    </div></div>
+  </section>
+
+  <section class="spec" id="venue-card">
+    <h2>Venue card</h2>
+    <p>The whole card is one link to the Venue page. The name is in the display face; everything you scan for (Venue type, city and country, Genres, rating, Review count, distance) is in Plex Sans. The photo slot is 16:9; without a photo the card simply starts at the badge.</p>
+    <div class="panels"><div class="panel" data-theme="dark">
+      <div class="matrix" id="card-states" style="grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:var(--space-6)"></div>
+    </div></div>
+  </section>
+
+  <section class="spec" id="rating">
+    <h2>Rating</h2>
+    <p>Read-only average: one decimal, a five-segment meter that fills partially, and the Review count. Input: a whole number from 1 to 5 (5 is best), required on every Review. It is a radio group: arrow keys move, each star is a 48 px target, and the chosen value is also written out as text.</p>
+    <div class="panels"><div class="panel" data-theme="dark">
+      <div class="row" style="gap:var(--space-10)" id="rating-display"></div>
+      <div class="matrix" id="rating-input" style="grid-template-columns:repeat(auto-fill,minmax(330px,1fr));margin-top:var(--space-8);gap:var(--space-6) var(--space-4)"></div>
+    </div></div>
+  </section>
+
+  <section class="spec" id="genre">
+    <h2>Genre tag</h2>
+    <p>Two forms. A static tag (small radius, filled, not clickable) labels a Venue. A filter chip (pill, outlined, 48 px tall) toggles a Genre in search; selected chips gain a check mark as well as colour, so state never relies on colour alone.</p>
+    <div class="panels"><div class="panel" data-theme="dark">
+      <div class="cols-2">
+        <div class="stack">
+          <div><div class="state-label">Single tag</div><span class="tag">Death metal</span></div>
+          <div><div class="state-label">Wrapping group (320 px wide)</div><div style="max-width:320px" id="genre-group"></div></div>
+        </div>
+        <div class="stack">
+          <div><div class="state-label">Filter chips (interactive)</div><div class="tags" id="genre-filter"></div></div>
+          <div><div class="state-label">Chip states</div><div class="matrix" id="chip-states" style="grid-template-columns:repeat(auto-fill,minmax(130px,1fr))"></div></div>
+        </div>
+      </div>
+    </div></div>
+  </section>
+
+  <section class="spec" id="verified">
+    <h2>Verified Venue badge</h2>
+    <p>Means one thing: a Platform Moderator accepted this Venue for the public catalogue. It says nothing about the owner, so it uses a plain check mark and the words “Verified Venue”. Never a shield, crown, seal or rosette, and never the words “official”, “owner” or “claimed”. Tapping or hovering it explains what it means.</p>
+    <div class="panels"><div class="panel" data-theme="dark">
+      <div class="row" style="gap:var(--space-10);align-items:flex-start">
+        <div><div class="state-label">Badge</div><span id="badge-slot"></span></div>
+        <div><div class="state-label">In a Venue page header</div><div class="row" style="align-items:center;gap:var(--space-3)"><span class="t-title">Zum Schwarzen Amboss</span><span class="badge-slot"></span></div></div>
+        <div style="max-width:300px"><div class="state-label">Explanation (tooltip or sheet)</div><p class="t-caption">A moderator accepted this Venue for the public catalogue.</p></div>
+      </div>
+    </div></div>
+  </section>
+
+  <section class="spec" id="checkin">
+    <h2>Check-in button</h2>
+    <p>The biggest target on a Venue page: 56 px tall, full width on phones. After a Check-in it turns into a done state with the time, in the success colours, and stops being pressable. Try the interactive one.</p>
+    <div class="panels"><div class="panel" data-theme="dark">
+      <div class="matrix" id="checkin-states" style="grid-template-columns:repeat(auto-fill,minmax(190px,1fr))"></div>
+      <div style="margin-top:var(--space-6);max-width:360px" aria-live="polite"><div class="state-label">Interactive</div><button type="button" class="btn btn--primary btn--lg checkin-live" style="width:100%"><svg class="icon" aria-hidden="true"><use href="#i-map-pin-check"/></svg>Check in</button></div>
+    </div></div>
+  </section>
+
+  <section class="spec" id="identity">
+    <h2>Identity</h2>
+    <p>Avatar, display name (1 to 80 characters) and @username (3 to 30 letters, digits or underscores). Without a photo the avatar shows initials. Long names truncate with an ellipsis. On one line the @username gives way first, but at least its first 8 characters stay visible; the full size gives each its own line.</p>
+    <div class="panels"><div class="panel" data-theme="dark">
+      <div class="matrix" id="identity-states" style="grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:var(--space-6)"></div>
+    </div></div>
+  </section>
+
+  <section class="spec" id="review">
+    <h2>Review item</h2>
+    <p>One Review per User per Verified Venue: a rating, optional commentary, the author and a date. When a moderator removes the commentary, the rating stays and a quiet note replaces the text.</p>
+    <div class="panels"><div class="panel" data-theme="dark"><div id="review-list"></div></div></div>
+  </section>
+
+  <section class="spec" id="list-states">
+    <h2>Venue list: empty, loading, error</h2>
+    <p>Each state says what happened and offers the next step. Loading keeps the card shape so the layout doesn't jump; the pulse stops with reduced motion.</p>
+    <div class="panels"><div class="panel" data-theme="dark">
+      <div class="matrix" style="grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:var(--space-6)">
+        <div><div class="state-label">Empty</div><div class="list-state">
+          <svg class="icon" aria-hidden="true"><use href="#i-map-pinned"/></svg>
+          <h3 class="t-heading">No Verified Venues here yet</h3>
+          <p>Know a bar, pub or club where rock or metal is a regular part of the night? Submit it and a moderator will review it.</p>
+          <button type="button" class="btn btn--secondary"><svg class="icon" aria-hidden="true"><use href="#i-plus"/></svg>Submit a Venue</button>
+        </div></div>
+        <div><div class="state-label">Empty, with Genre filters</div><div class="list-state">
+          <svg class="icon" aria-hidden="true"><use href="#i-search"/></svg>
+          <h3 class="t-heading">No Venues match these Genres</h3>
+          <p>Try fewer Genres or a wider area.</p>
+          <button type="button" class="btn btn--ghost">Clear filters</button>
+        </div></div>
+        <div><div class="state-label">Loading</div><div aria-busy="true"><span class="sr-only" role="status">Loading Venues</span><div id="skeletons" class="stack"></div></div></div>
+        <div><div class="state-label">Error</div><div class="list-state list-state--error" role="alert">
+          <svg class="icon" aria-hidden="true"><use href="#i-circle-alert"/></svg>
+          <h3 class="t-heading">Couldn't load Venues</h3>
+          <p>Check your connection and try again.</p>
+          <button type="button" class="btn btn--secondary"><svg class="icon" aria-hidden="true"><use href="#i-refresh-cw"/></svg>Try again</button>
+        </div></div>
+      </div>
+    </div></div>
+  </section>
+</main>
+
+<script src="showcase.js"></script>
+</body>
+</html>

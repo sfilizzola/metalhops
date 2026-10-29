@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Direction A · Setlist (Pentagram / Bierut)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Barlow:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/lucide@0.469.0/dist/umd/lucide.min.js"></script>
+<style>
+  /* Assumptions: gig-poster typography carries the attitude; colour is restrained to bone, warm black and one amp red. */
+  :root {
+    --surface: oklch(0.16 0.008 50);
+    --surface-raised: oklch(0.215 0.01 50);
+    --on-surface: oklch(0.95 0.012 85);
+    --on-surface-muted: oklch(0.76 0.012 85);
+    --outline: oklch(0.42 0.012 60);
+    --primary: oklch(0.64 0.2 30);
+    --on-primary: oklch(0.14 0.01 30);
+    --accent: oklch(0.86 0.1 85);
+    --success: oklch(0.78 0.14 150);
+  }
+  * { box-sizing: border-box; margin: 0; }
+  body { background: var(--surface); color: var(--on-surface); font: 400 16px/1.5 Barlow, sans-serif; padding: 48px 56px; font-variant-numeric: tabular-nums; }
+  .display { font-family: Anton, sans-serif; text-transform: uppercase; letter-spacing: 0.01em; line-height: 0.92; }
+  header { display: flex; justify-content: space-between; align-items: end; border-bottom: 6px solid var(--on-surface); padding-bottom: 16px; }
+  .wordmark { font-size: 88px; }
+  .tag-label { font: 600 12px/1 Barlow; letter-spacing: 0.14em; text-transform: uppercase; color: var(--on-surface-muted); }
+  .grid { display: grid; grid-template-columns: 1.15fr 1fr; gap: 48px; margin-top: 36px; }
+  .card { background: var(--surface-raised); border-radius: 4px; overflow: hidden; }
+  .photo { aspect-ratio: 16/8; background: repeating-linear-gradient(135deg, oklch(0.26 0.01 50) 0 12px, oklch(0.24 0.01 50) 12px 24px); display: grid; place-items: center; color: var(--on-surface-muted); font: 600 13px Barlow; letter-spacing: .12em; text-transform: uppercase; }
+  .body { padding: 22px 24px 24px; }
+  .meta { display: flex; gap: 14px; color: var(--on-surface-muted); font-weight: 500; margin-top: 10px; align-items: center; flex-wrap: wrap; }
+  .meta i, .meta svg { width: 16px; height: 16px; }
+  .name { font-size: 46px; margin-top: 12px; }
+  .badge { display: inline-flex; gap: 6px; align-items: center; font: 700 12px/1 Barlow; letter-spacing: .12em; text-transform: uppercase; color: var(--success); border: 2px solid currentColor; padding: 6px 10px 6px 8px; border-radius: 2px; }
+  .badge svg { width: 14px; height: 14px; stroke-width: 3; }
+  .row { display: flex; justify-content: space-between; align-items: end; margin-top: 20px; border-top: 2px solid var(--outline); padding-top: 16px; }
+  .score { font-size: 64px; }
+  .tags { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 18px; }
+  .tag { font: 600 14px/1 Barlow; letter-spacing: .06em; text-transform: uppercase; padding: 0 14px; min-height: 36px; display: inline-flex; align-items: center; border: 2px solid var(--on-surface); border-radius: 999px; color: var(--on-surface); background: none; }
+  .tag[aria-pressed="true"] { background: var(--on-surface); color: var(--surface); }
+  .btn { font: 700 16px/1 Barlow; letter-spacing: .1em; text-transform: uppercase; min-height: 52px; padding: 0 24px; border-radius: 4px; border: 0; display: inline-flex; gap: 10px; align-items: center; }
+  .btn svg { width: 20px; height: 20px; }
+  .primary { background: var(--primary); color: var(--on-primary); }
+  .done { background: none; color: var(--success); box-shadow: inset 0 0 0 2px var(--success); }
+  h2 { font-size: 28px; margin-bottom: 14px; }
+  section + section { margin-top: 32px; }
+  .stars { display: flex; gap: 6px; }
+  .stars button { width: 52px; height: 52px; border: 2px solid var(--outline); background: none; color: var(--on-surface-muted); border-radius: 4px; font: 400 26px Anton; }
+  .stars button.on { background: var(--primary); border-color: var(--primary); color: var(--on-primary); }
+  .stars button:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+  .swatches { display: flex; gap: 0; height: 56px; border: 2px solid var(--outline); }
+  .swatches div { flex: 1; }
+  .note { color: var(--on-surface-muted); font-size: 14px; margin-top: 8px; }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <div class="tag-label">Direction A · Setlist · after Pentagram / Michael Bierut · placeholder wordmark</div>
+    <div class="display wordmark">MetalHops</div>
+  </div>
+  <div class="tag-label">Dark mode · Anton + Barlow</div>
+</header>
+
+<div class="grid">
+  <article class="card">
+    <div class="photo">Photo · venue interior</div>
+    <div class="body">
+      <span class="badge"><i data-lucide="check"></i>Verified Venue</span>
+      <div class="display name">Zum Schwarzen Amboss</div>
+      <div class="meta"><span>Pub</span><span>·</span><span><i data-lucide="map-pin"></i> Düsseldorf, Germany</span><span>·</span><span>1.2 km</span></div>
+      <div class="tags">
+        <span class="tag">Classic hard rock</span><span class="tag">Thrash</span><span class="tag">Stoner</span>
+      </div>
+      <div class="meta"><span><i data-lucide="target"></i> Darts</span><span><i data-lucide="music"></i> Live music</span><span><i data-lucide="utensils"></i> Kitchen</span></div>
+      <div class="row">
+        <div><div class="display score">4.3</div><div class="tag-label">128 Reviews</div></div>
+        <button class="btn primary"><i data-lucide="map-pin-check"></i>Check in</button>
+      </div>
+    </div>
+  </article>
+
+  <div>
+    <section>
+      <h2 class="display">Your rating</h2>
+      <div class="stars" role="radiogroup" aria-label="Rating, 1 to 5">
+        <button class="on" role="radio">1</button><button class="on" role="radio">2</button><button class="on" role="radio">3</button><button class="on" role="radio" aria-checked="true">4</button><button role="radio">5</button>
+      </div>
+      <p class="note">Whole numbers, 1 to 5. 5 is best.</p>
+    </section>
+    <section>
+      <h2 class="display">Filter by Genre</h2>
+      <div class="tags">
+        <button class="tag" aria-pressed="true">Death metal</button><button class="tag">Black metal</button><button class="tag" aria-pressed="true">Doom</button><button class="tag">Folk metal</button><button class="tag">Punk</button>
+      </div>
+    </section>
+    <section>
+      <h2 class="display">Check-in states</h2>
+      <div style="display:flex;gap:12px"><button class="btn primary"><i data-lucide="map-pin-check"></i>Check in</button><button class="btn done"><i data-lucide="check"></i>Checked in</button></div>
+    </section>
+    <section>
+      <h2 class="display">Palette</h2>
+      <div class="swatches"><div style="background:var(--surface)"></div><div style="background:var(--surface-raised)"></div><div style="background:var(--on-surface)"></div><div style="background:var(--primary)"></div><div style="background:var(--accent)"></div><div style="background:var(--success)"></div></div>
+      <p class="note">Warm black, bone, amp red. Type does the shouting; colour stays quiet.</p>
+    </section>
+  </div>
+</div>
+<script>lucide.createIcons();</script>
+</body>
+</html>

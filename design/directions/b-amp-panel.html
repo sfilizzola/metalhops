@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Direction B · Amp Panel (Müller-Brockmann)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..900&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/lucide@0.469.0/dist/umd/lucide.min.js"></script>
+<style>
+  /* Assumptions: a strict grid and hairlines like an amp front panel; one signal-yellow accent; data in mono. */
+  :root {
+    --surface: oklch(0.145 0 0);
+    --surface-raised: oklch(0.19 0 0);
+    --on-surface: oklch(0.96 0 0);
+    --on-surface-muted: oklch(0.74 0 0);
+    --outline: oklch(0.36 0 0);
+    --primary: oklch(0.88 0.17 98);
+    --on-primary: oklch(0.15 0 0);
+    --accent: oklch(0.88 0.17 98);
+    --success: oklch(0.8 0.15 155);
+  }
+  * { box-sizing: border-box; margin: 0; }
+  body { background: var(--surface); color: var(--on-surface); font: 400 16px/1.5 Archivo, sans-serif; padding: 48px 56px; font-variant-numeric: tabular-nums; }
+  .display { font-family: Archivo; font-variation-settings: "wdth" 125; font-weight: 800; letter-spacing: -0.02em; line-height: 1; }
+  .mono { font: 500 12px/1.2 "IBM Plex Mono", monospace; letter-spacing: .08em; text-transform: uppercase; color: var(--on-surface-muted); }
+  header { display: grid; grid-template-columns: repeat(12, 1fr); gap: 16px; border-top: 1px solid var(--outline); border-bottom: 1px solid var(--outline); padding: 20px 0; align-items: end; }
+  .wordmark { grid-column: 1 / 9; font-size: 72px; }
+  header .mono { grid-column: 9 / 13; text-align: right; }
+  .grid { display: grid; grid-template-columns: repeat(12, 1fr); gap: 16px; margin-top: 32px; }
+  .card { grid-column: 1 / 8; border: 1px solid var(--outline); background: var(--surface-raised); }
+  .photo { aspect-ratio: 16/7; border-bottom: 1px solid var(--outline); display: grid; place-items: center; background: oklch(0.22 0 0); }
+  .cells { display: grid; grid-template-columns: repeat(3, 1fr); border-top: 1px solid var(--outline); }
+  .cells > div { padding: 14px 20px; }
+  .cells > div + div { border-left: 1px solid var(--outline); }
+  .big { font: 600 34px/1 "IBM Plex Mono", monospace; margin-top: 6px; }
+  .body { padding: 20px; }
+  .name { font-size: 40px; margin: 14px 0 6px; }
+  .meta { display: flex; gap: 16px; color: var(--on-surface-muted); align-items: center; flex-wrap: wrap; }
+  .meta svg { width: 16px; height: 16px; vertical-align: -3px; }
+  .badge { display: inline-flex; gap: 8px; align-items: center; font: 600 12px/1 "IBM Plex Mono"; letter-spacing: .08em; text-transform: uppercase; color: var(--on-surface); }
+  .badge .dot { width: 20px; height: 20px; display: grid; place-items: center; background: var(--success); color: var(--surface); }
+  .badge svg { width: 14px; height: 14px; stroke-width: 3; }
+  .tags { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 16px; }
+  .tag { font: 500 14px/1 Archivo; min-height: 36px; padding: 0 12px; display: inline-flex; align-items: center; border: 1px solid var(--outline); color: var(--on-surface); background: none; border-radius: 0; }
+  .tag[aria-pressed="true"] { background: var(--primary); border-color: var(--primary); color: var(--on-primary); font-weight: 600; }
+  .meter { display: flex; gap: 4px; margin-top: 8px; }
+  .meter span { flex: 1; height: 8px; background: var(--outline); }
+  .meter span.on { background: var(--primary); }
+  .side { grid-column: 8 / 13; display: flex; flex-direction: column; gap: 28px; }
+  .side h2 { font-size: 20px; margin-bottom: 12px; padding-top: 10px; border-top: 1px solid var(--outline); }
+  .btn { font: 700 15px/1 Archivo; font-variation-settings: "wdth" 110; letter-spacing: .04em; text-transform: uppercase; min-height: 52px; padding: 0 22px; border: 0; display: inline-flex; gap: 10px; align-items: center; border-radius: 0; }
+  .btn svg { width: 20px; height: 20px; }
+  .primary { background: var(--primary); color: var(--on-primary); }
+  .done { background: none; color: var(--on-surface); box-shadow: inset 0 0 0 1px var(--success); }
+  .done svg { color: var(--success); }
+  .rate { display: grid; grid-template-columns: repeat(5, 1fr); border: 1px solid var(--outline); }
+  .rate button { height: 56px; background: none; border: 0; color: var(--on-surface); font: 600 20px "IBM Plex Mono"; }
+  .rate button + button { border-left: 1px solid var(--outline); }
+  .rate button.sel { background: var(--primary); color: var(--on-primary); }
+  .swatches { display: grid; grid-template-columns: repeat(6, 1fr); height: 48px; border: 1px solid var(--outline); }
+  .note { color: var(--on-surface-muted); font-size: 14px; margin-top: 8px; }
+</style>
+</head>
+<body>
+<header>
+  <div class="display wordmark">MetalHops</div>
+  <div class="mono">Direction B · Amp Panel<br>after Josef Müller-Brockmann<br>placeholder wordmark · dark mode</div>
+</header>
+
+<div class="grid">
+  <article class="card">
+    <div class="photo"><span class="mono">Photo · venue interior</span></div>
+    <div class="body">
+      <span class="badge"><span class="dot"><i data-lucide="check"></i></span>Verified Venue</span>
+      <div class="display name">Zum Schwarzen Amboss</div>
+      <div class="meta"><span>Pub</span><span><i data-lucide="map-pin"></i> Düsseldorf, Germany</span></div>
+      <div class="tags"><span class="tag">Classic hard rock</span><span class="tag">Thrash</span><span class="tag">Stoner</span></div>
+      <div class="meta" style="margin-top:14px"><span><i data-lucide="target"></i> Darts</span><span><i data-lucide="music"></i> Live music</span><span><i data-lucide="utensils"></i> Kitchen</span></div>
+    </div>
+    <div class="cells">
+      <div><div class="mono">Rating</div><div class="big">4.3</div><div class="meter"><span class="on"></span><span class="on"></span><span class="on"></span><span class="on"></span><span></span></div></div>
+      <div><div class="mono">Reviews</div><div class="big">128</div></div>
+      <div><div class="mono">Distance</div><div class="big">1.2<small style="font-size:16px"> km</small></div></div>
+    </div>
+  </article>
+
+  <div class="side">
+    <section>
+      <h2 class="display">Your rating</h2>
+      <div class="rate" role="radiogroup" aria-label="Rating, 1 to 5"><button>1</button><button>2</button><button>3</button><button class="sel" aria-checked="true">4</button><button>5</button></div>
+      <p class="note">Whole numbers, 1 to 5. 5 is best.</p>
+    </section>
+    <section>
+      <h2 class="display">Filter by Genre</h2>
+      <div class="tags"><button class="tag" aria-pressed="true">Death metal</button><button class="tag">Black metal</button><button class="tag" aria-pressed="true">Doom</button><button class="tag">Folk metal</button><button class="tag">Punk</button></div>
+    </section>
+    <section>
+      <h2 class="display">Check-in</h2>
+      <div style="display:flex;gap:12px"><button class="btn primary"><i data-lucide="map-pin-check"></i>Check in</button><button class="btn done"><i data-lucide="check"></i>Checked in</button></div>
+    </section>
+    <section>
+      <h2 class="display">Palette</h2>
+      <div class="swatches"><div style="background:var(--surface)"></div><div style="background:var(--surface-raised)"></div><div style="background:var(--outline)"></div><div style="background:var(--on-surface)"></div><div style="background:var(--primary)"></div><div style="background:var(--success)"></div></div>
+      <p class="note">Neutral black, hairlines, one signal yellow. Order reads like a front panel.</p>
+    </section>
+  </div>
+</div>
+<script>lucide.createIcons();</script>
+</body>
+</html>
