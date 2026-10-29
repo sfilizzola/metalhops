@@ -9,6 +9,7 @@ the rules below are what to follow.
 | Path | What | Status |
 | --- | --- | --- |
 | `backend/` | Go REST API (Render) | Active |
+| `webclient/` | Consumer-facing web app (Vite, React, TypeScript); MVP shipped before native apps | Active |
 | `android/` | Kotlin, Jetpack Compose app | Not started |
 | `admin/` | Moderation web app; documentation only until its own design cycle | Not started |
 | `infra/` | Supabase migrations, Render blueprint | Shared |
@@ -16,7 +17,7 @@ the rules below are what to follow.
 
 ## Current focus
 
-Backend API.
+Backend API and the web authentication MVP in `webclient/`.
 
 ## Scope
 
@@ -30,6 +31,7 @@ Backend API.
 Read that folder's `AGENTS.md` first:
 
 - `backend/AGENTS.md`
+- `webclient/AGENTS.md`
 - `android/AGENTS.md`
 - `admin/AGENTS.md`
 

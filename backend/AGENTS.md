@@ -59,7 +59,8 @@ the process at startup. Local `.env.example` sets `true`. Render sets `false`.
 
 `TRUSTED_PROXIES` is a comma-separated CIDR list. Empty or unset means the
 TCP peer is the client. `GET /healthz` and `GET /readyz` are not rate
-limited. Every other route uses a token bucket with burst capacity 120 and
+limited. Every other route, except a CORS preflight from an allow-listed
+origin (see `ALLOWED_ORIGINS`), uses a token bucket with burst capacity 120 and
 a sustained rate of 2 requests per second per resolved client IP. A refusal
 is `429` `rate_limited` with `Retry-After`.
 
@@ -71,7 +72,12 @@ through the normal router, which is `405` for a route that does not register
 it; this never affects native app clients, which do not send `Origin`. A
 listed origin gets `Access-Control-Allow-Origin` on every response and a
 direct `204` preflight reply, bypassing routing, for `OPTIONS` requests that
-carry `Access-Control-Request-Method`. `openapi.yaml`'s one `servers` entry
+carry `Access-Control-Request-Method`. That preflight is answered before the
+rate limiter and does not consume the bucket (a non-browser caller can forge
+the header; the reply is a cheap `204` with no database work). `429`
+responses to listed origins carry `Access-Control-Allow-Origin` so the
+browser can read them; requests from unlisted origins, `OPTIONS` included,
+stay rate limited and get no CORS headers. `openapi.yaml`'s one `servers` entry
 is the relative URL `/`, so Scalar's "Send" button targets whatever host
 served `/docs`, local or deployed, without per-environment edits.
 

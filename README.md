@@ -51,21 +51,22 @@ The idea came from a trip to Indústria/Düsseldorf for a System of a Down show,
 
 1. **Supabase as the foundation:** managed Postgres + PostGIS, auth, and storage at $0 to start.
 2. **Go API on Render:** custom business logic (verification, moderation, and rankings) lives in a Go service, so the admin app, Android, and iOS share one contract. Moderation rules are permanent privileged endpoints.
-3. **Admin web app:** build it in its own design cycle, calling the privileged Go API endpoints.
-4. **Native Android client:** build it after the admin app exists. GPS and maps are core features, so Android is native.
-5. **Validate:** grow the venue database and gather feedback from the scene.
-6. **Native iOS (Swift) later:** reuse the same API once Android proves the concept.
+3. **Web client MVP:** ship a consumer-facing web app (Vite, React, TypeScript) first, calling only the public and app endpoints.
+4. **Admin web app:** build it in its own design cycle, calling the privileged Go API endpoints.
+5. **Native Android client:** build it after the admin app exists. GPS and maps are core features, so Android is native.
+6. **Validate:** grow the venue database and gather feedback from the scene.
+7. **Native iOS (Swift) later:** reuse the same API once Android proves the concept.
 
 The project is deliberately scoped to need **less constant dedication**, making it a good fit for a small team contributing part-time.
 
 ## Architecture
 
 ```text
-┌──────────────┐   ┌──────────────┐   ┌──────────────┐
-│  Admin app   │   │ Android app  │   │   iOS app    │
-│              │   │ (after admin)│   │   (later)    │
-└──────┬───────┘   └──────┬───────┘   └──────┬───────┘
-       └──────────────────┼──────────────────┘
+┌──────────────┐   ┌──────────────┐   ┌──────────────┐   ┌──────────────┐
+│  Web client  │   │  Admin app   │   │ Android app  │   │   iOS app    │
+│ (MVP, first) │   │              │   │ (after admin)│   │   (later)    │
+└──────┬───────┘   └──────┬───────┘   └──────┬───────┘   └──────┬───────┘
+       └──────────────────┴─────────┬────────┴──────────────────┘
                           ▼
                Go REST API (Render)
                           ▼
@@ -73,7 +74,7 @@ The project is deliberately scoped to need **less constant dedication**, making 
               Auth · Storage
 ```
 
-The admin app, Android, and iOS authenticate with Supabase Auth and send the
+The web client, admin app, Android, and iOS authenticate with Supabase Auth and send the
 resulting JWT to the Go API, which verifies it. All product data goes through
 the Go API so every client uses the same contract and visibility rules.
 Supabase row-level security remains enabled as defense in depth.
@@ -147,6 +148,7 @@ Free-tier caveats to watch (verify on Supabase's pricing page):
 - [ ] Supabase project: schema, PostGIS, auth, RLS policies
 - [ ] Repo setup, tooling, and CI (monorepo: `backend/` (Go), `android/`, later `ios/`)
 - [ ] Go API on Render, including privileged moderation endpoints ([DevSteps](DevSteps.md))
+- [ ] Web client MVP: sign-up, sign-in, and Profile creation (`webclient/`)
 - [ ] Admin web app, in its own design cycle
 - [ ] Seed venue data from OpenStreetMap
 - [ ] Android client: map, venue pages, submissions, ratings
@@ -160,6 +162,7 @@ Free-tier caveats to watch (verify on Supabase's pricing page):
 | `android/` | Android app (Kotlin) |
 | `ios/` | iOS app (future) |
 | `backend/` | Go API |
+| `webclient/` | Consumer-facing web app (Vite, React, TypeScript) |
 | `admin/` | Moderation web app (future) |
 | `docs/` | Product, architecture and API docs |
 | `design/` | Wireframes and assets |

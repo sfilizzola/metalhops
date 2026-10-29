@@ -289,3 +289,86 @@ func assertRequestID(t *testing.T, rec *httptest.ResponseRecorder) {
 		}
 	}
 }
+
+func TestCORSRateLimit(t *testing.T) {
+	const trusted = "https://metalhops.app"
+	deny := func(http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusTooManyRequests)
+		})
+	}
+	// counting lets 2 requests through, then denies; hits counts every request that reaches the limiter.
+	counting := func(hits *int) func(http.Handler) http.Handler {
+		return func(next http.Handler) http.Handler {
+			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				*hits++
+				if *hits > 2 {
+					w.WriteHeader(http.StatusTooManyRequests)
+					return
+				}
+				next.ServeHTTP(w, r)
+			})
+		}
+	}
+	send := func(h http.Handler, method, origin string, preflight bool) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(method, "/readyz", nil)
+		if origin != "" {
+			req.Header.Set("Origin", origin)
+		}
+		if preflight {
+			req.Header.Set("Access-Control-Request-Method", "GET")
+		}
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		return rec
+	}
+
+	t.Run("429 from allowed origin carries ACAO", func(t *testing.T) {
+		h := New(Options{Readiness: readyOK(), PublicLimit: deny, AllowedOrigins: []string{trusted}})
+		rec := send(h, http.MethodGet, trusted, false)
+		if rec.Code != http.StatusTooManyRequests || rec.Header().Get("Access-Control-Allow-Origin") != trusted {
+			t.Fatalf("%d %q", rec.Code, rec.Header().Get("Access-Control-Allow-Origin"))
+		}
+	})
+	t.Run("untrusted origin 429 has no ACAO and no preflight 204", func(t *testing.T) {
+		h := New(Options{Readiness: readyOK(), PublicLimit: deny, AllowedOrigins: []string{trusted}})
+		rec := send(h, http.MethodGet, "https://evil.example", false)
+		if rec.Code != http.StatusTooManyRequests || rec.Header().Get("Access-Control-Allow-Origin") != "" {
+			t.Fatalf("%d %q", rec.Code, rec.Header().Get("Access-Control-Allow-Origin"))
+		}
+		rec = send(h, http.MethodOptions, "https://evil.example", true)
+		if rec.Code == http.StatusNoContent || rec.Header().Get("Access-Control-Allow-Origin") != "" {
+			t.Fatalf("preflight %d %q", rec.Code, rec.Header().Get("Access-Control-Allow-Origin"))
+		}
+	})
+	t.Run("allowed preflights leave the bucket untouched", func(t *testing.T) {
+		hits := 0
+		h := New(Options{Readiness: readyOK(), PublicLimit: counting(&hits), AllowedOrigins: []string{trusted}})
+		for i := 0; i < 5; i++ {
+			if rec := send(h, http.MethodOptions, trusted, true); rec.Code != http.StatusNoContent {
+				t.Fatalf("preflight %d status %d", i, rec.Code)
+			}
+		}
+		if rec := send(h, http.MethodGet, trusted, false); rec.Code != http.StatusOK || hits != 1 {
+			t.Fatalf("get %d hits %d", rec.Code, hits)
+		}
+	})
+	t.Run("untrusted OPTIONS is still limited", func(t *testing.T) {
+		hits := 0
+		h := New(Options{Readiness: readyOK(), PublicLimit: counting(&hits), AllowedOrigins: []string{trusted}})
+		var last int
+		for i := 0; i < 3; i++ {
+			last = send(h, http.MethodOptions, "https://evil.example", true).Code
+		}
+		if hits != 3 || last != http.StatusTooManyRequests {
+			t.Fatalf("hits %d last %d", hits, last)
+		}
+	})
+	t.Run("empty allow-list still limits without CORS headers", func(t *testing.T) {
+		h := New(Options{Readiness: readyOK(), PublicLimit: deny})
+		rec := send(h, http.MethodGet, trusted, false)
+		if rec.Code != http.StatusTooManyRequests || rec.Header().Get("Access-Control-Allow-Origin") != "" {
+			t.Fatalf("%d %q", rec.Code, rec.Header().Get("Access-Control-Allow-Origin"))
+		}
+	})
+}

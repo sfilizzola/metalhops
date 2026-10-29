@@ -43,3 +43,6 @@ backend/bin/
 # Supabase local
 infra/supabase/.branches/
 infra/supabase/.temp/
+
+# Web client
+dist/

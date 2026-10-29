@@ -1,7 +1,10 @@
 # Client API reference discoverability and the webclient stack
 
 **Date:** 2026-10-25
-**Status:** Draft
+**Status:** Partly implemented. `webclient/` now exists with a real guide and
+README, and the framework was chosen: Vite, React, and TypeScript. The root
+`AGENTS.md` and `README.md` rows are done. The `android/` and `admin/` API
+reference pointer sections (scope 2) remain future work.
 
 ## Goal
 

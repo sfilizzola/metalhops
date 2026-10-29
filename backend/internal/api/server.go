@@ -162,11 +162,14 @@ func New(options Options) http.Handler {
 	mux.Handle("DELETE /v1/me/check-ins/{checkInID}", requireApp(options.Auth, options.Logger, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		deleteCheckIn(w, r, options.CheckIns, options.Logger)
 	})))
-	var handler http.Handler = mux
+	limit := options.PublicLimit
 	if len(options.AllowedOrigins) > 0 {
-		handler = cors(options.AllowedOrigins, handler)
+		// cors sits outside the limiter so 429s carry ACAO and allow-listed preflights skip the bucket.
+		limit = func(next http.Handler) http.Handler {
+			return cors(options.AllowedOrigins, options.PublicLimit(next))
+		}
 	}
-	return wrap(options.Logger, options.PublicLimit, handler)
+	return wrap(options.Logger, limit, mux)
 }
 
 func healthHandler(w http.ResponseWriter, _ *http.Request) {
