@@ -1,5 +1,6 @@
 {
   "enabledPlugins": {
-    "ponytail@ponytail": true
+    "ponytail@ponytail": true,
+    "oh-my-claudecode@omc": true
   }
 }
