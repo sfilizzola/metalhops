@@ -2,11 +2,14 @@ import { CircleAlert } from "lucide-react";
 import { Alert } from "../ui/Alert";
 import { Button } from "../ui/Button";
 import { Icon } from "../ui/Icon";
+import { AvatarUpload } from "./AvatarUpload";
+import { countryName } from "./countries";
 import { initials } from "./initials";
-import { ProfileForm } from "./ProfileForm";
+import { GENDER_LABEL, ProfileForm } from "./ProfileForm";
 import { useMe } from "./MeProvider";
 import "./profile.css";
 
+const SOON = ["Following", "Followers", "Crews"];
 const STATUS_LABEL = { active: "Active", rename_required: "Rename required", suspended: "Suspended" } as const;
 
 export function ProfilePage({ email }: { email: string }) {
@@ -35,13 +38,30 @@ export function ProfilePage({ email }: { email: string }) {
       {me?.kind === "no_profile" && <p className="t-heading">Signed in — no profile yet</p>}
       {profile && (
         <>
-          <div className="identity identity--full">
-            <span className="avatar" aria-hidden="true">{initials(profile.display_name)}</span>
-            <div className="identity__text">
-              <span className="identity__name">{profile.display_name}</span>
-              <span className="identity__username">@{profile.username}</span>
+          <section className="profile__card" aria-label="Profile summary">
+            <div className="identity identity--full">
+              <span className="avatar" aria-hidden="true">
+                {profile.avatar_url ? <img className="profile__photo" src={profile.avatar_url} alt="" /> : initials(profile.display_name)}
+              </span>
+              <div className="identity__text">
+                <span className="identity__name">{profile.display_name}</span>
+                <span className="identity__username">@{profile.username}</span>
+              </div>
             </div>
-          </div>
+            {profile.bio && <p className="profile__bio">{profile.bio}</p>}
+            {(profile.from_city || profile.from_country) && (
+              <p className="profile__meta">From {[profile.from_city, profile.from_country && countryName(profile.from_country)].filter(Boolean).join(", ")}</p>
+            )}
+            {profile.gender && <p className="profile__meta">{GENDER_LABEL[profile.gender]}</p>}
+            <AvatarUpload profile={profile} />
+          </section>
+          <ul className="profile__stats" aria-label="Stats">
+            <li><span className="t-heading">{profile.stats.check_ins}</span><span className="t-label">Check-ins</span></li>
+            <li><span className="t-heading">{profile.stats.venues}</span><span className="t-label">Venues</span></li>
+            {SOON.map((label) => (
+              <li key={label} className="profile__stat--soon"><span className="t-label">{label}</span><span>Coming soon</span></li>
+            ))}
+          </ul>
           {/* Static status shown on load, so not live regions. */}
           {profile.status === "rename_required" && <Alert kind="error" live={false}>Your username needs to change. Choose a new username to continue.</Alert>}
           {profile.status === "suspended" && <Alert kind="error" live={false}>This profile is suspended, so it can't be changed right now.</Alert>}

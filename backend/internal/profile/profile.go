@@ -15,11 +15,31 @@ type Profile struct {
 	SuspendedUntil   *time.Time `json:"suspended_until"`
 	CreatedAt        time.Time  `json:"created_at"`
 	UpdatedAt        time.Time  `json:"updated_at"`
+	// Owner-only fields: api.profileView serves them on /v1/me, and the
+	// moderation JSON, which marshals Profile directly, leaves them out.
+	Bio         *string `json:"-"`
+	Gender      *string `json:"-"`
+	FromCity    *string `json:"-"`
+	FromCountry *string `json:"-"`
+	AvatarURL   *string `json:"-"`
+	Stats       Stats   `json:"-"`
 }
 
+type Stats struct {
+	CheckIns int `json:"check_ins"`
+	Venues   int `json:"venues"`
+}
+
+// Patch fields are nil when absent. An empty string clears Bio, Gender,
+// FromCity, FromCountry, and AvatarURL.
 type Patch struct {
 	Username    *string
 	DisplayName *string
+	Bio         *string
+	Gender      *string
+	FromCity    *string
+	FromCountry *string
+	AvatarURL   *string
 }
 
 type DeleteCommand struct {

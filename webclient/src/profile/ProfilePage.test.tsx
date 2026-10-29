@@ -13,7 +13,7 @@ vi.mock("../supabase", () => ({
 }));
 vi.mock("../api");
 
-const profile: Profile = { id: "u1", username: "metal_fan", display_name: "Metal Fan", status: "active", moderation_reason: null, moderation_note: null, suspended_until: null };
+const profile: Profile = { id: "u1", username: "metal_fan", display_name: "Metal Fan", status: "active", moderation_reason: null, moderation_note: null, suspended_until: null, bio: null, gender: null, from_city: null, from_country: null, avatar_url: null, stats: { check_ins: 0, venues: 0 } };
 const auth = { getSession: vi.fn(), signOut: vi.fn() };
 
 beforeEach(() => {
@@ -81,7 +81,7 @@ test("edit and save shows saved values; unchanged disables Save", async () => {
   await user.type(screen.getByLabelText("Display name"), "Renamed");
   expect(save.disabled).toBe(false);
   await user.click(save);
-  expect(saveProfile).toHaveBeenCalledWith("http://api.test", expect.any(Function), { username: "metal_fan", display_name: "Renamed" });
+  expect(saveProfile).toHaveBeenCalledWith("http://api.test", expect.any(Function), { display_name: "Renamed" });
   expect(await screen.findByText("Profile saved")).toBeTruthy();
   expect(screen.getByText("Renamed", { selector: ".identity__name" })).toBeTruthy();
   expect(save.disabled).toBe(true);
@@ -119,7 +119,7 @@ test("400 with fields uses client wording, never server text, and focuses the fi
 });
 
 test("400 with only unknown fields falls back to the general message", async () => {
-  await submitWith({ kind: "invalid", code: "validation_error", fields: { bio: "<b>raw</b>" } });
+  await submitWith({ kind: "invalid", code: "validation_error", fields: { avatar_url: "<b>raw</b>" } });
   expect(await screen.findByText("Check the details and try again")).toBeTruthy();
   expect(screen.queryByText(/raw/)).toBeNull();
 });
@@ -144,7 +144,7 @@ test.each([
   await user.paste(name);
   await user.click(screen.getByRole("button", { name: "Save changes" }));
   if (ok) {
-    expect(saveProfile).toHaveBeenCalledWith("http://api.test", expect.any(Function), { username: "metal_fan", display_name: name });
+    expect(saveProfile).toHaveBeenCalledWith("http://api.test", expect.any(Function), { display_name: name });
   } else {
     expect(screen.getByText("Display name must be 1-80 characters")).toBeTruthy();
     expect(saveProfile).not.toHaveBeenCalled();

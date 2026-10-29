@@ -42,7 +42,13 @@ A Platform Moderator calling any of these routes gets `403 forbidden` — see
 
 ### `GET /v1/me` — Read my profile
 
-Returns the caller's stored Username, display name, and moderation status.
+Returns the caller's stored Username, display name, and moderation status,
+plus the optional profile details (`bio`, `gender`, `from_city`,
+`from_country`, `avatar_url`, each `null` when unset) and read-only
+counters: `stats.check_ins` (all of the caller's Check-ins) and
+`stats.venues` (distinct Venues among them). The counters are computed on
+every read, so deleting a Check-in lowers them on the next load; they cannot
+be written.
 `404 profile_not_found` means this sign-in hasn't created a Profile yet —
 that's the normal first-run state, not an error to alarm the user over.
 
@@ -59,6 +65,21 @@ display name again is a no-op: `200` with `updated_at` unchanged.
 - While a Community Suspension stands, the Username and display name cannot
   change: `403 profile_suspended`.
 - A display name has no uniqueness rule — it's just what's shown.
+- Send only the fields you change; an absent field stays as it is. Creating
+  a Profile still needs only Username and display name.
+- Optional details, cleared by sending `""` (`null` is rejected):
+  - `bio`: up to 280 characters, line breaks allowed.
+  - `gender`: `woman`, `man`, `non_binary`, or `prefer_not_to_say`.
+  - `from_city` (up to 80 characters, one line) and `from_country` (two
+    uppercase letters, such as `DE`) together make the "From" place.
+  - `avatar_url`: the app uploads the picture straight to Supabase Storage
+    under `avatars/<own user id>/`, then saves its public URL here. Any URL
+    outside the caller's own folder is refused.
+- Invalid values are `400 validation_error` with the field name as the key
+  (`bio`, `gender`, `from_city`, `from_country`, `avatar_url`).
+- Only a Username or display-name change answers a rename request: editing
+  just the bio, gender, place, or picture leaves `rename_required` and its
+  moderation reason in place. A suspended Profile cannot change any field.
 
 ### `DELETE /v1/me` — Delete my account
 

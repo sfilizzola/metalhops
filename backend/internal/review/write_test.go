@@ -27,7 +27,7 @@ func newWriteHarness(t *testing.T) *writeHarness {
 	h := &writeHarness{pool: testPool(t), now: t0}
 	clock := func() time.Time { return h.now }
 	h.limiter = ratelimit.NewUserLimiter(clock)
-	h.service = New(h.pool, profile.New(h.pool, h.limiter, nil, clock), h.limiter, clock)
+	h.service = New(h.pool, profile.New(h.pool, h.limiter, nil, clock, ""), h.limiter, clock)
 	return h
 }
 

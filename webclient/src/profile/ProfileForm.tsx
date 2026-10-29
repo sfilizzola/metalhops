@@ -1,19 +1,33 @@
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { saveProfile } from "../api";
-import type { ApiFailure, Profile } from "../api";
+import type { ApiFailure, Gender, Profile, ProfileInput } from "../api";
 import { apiBaseUrl, supabase } from "../supabase";
 import { Alert } from "../ui/Alert";
 import { Button } from "../ui/Button";
 import { Field } from "../ui/Field";
+import { COUNTRIES } from "./countries";
 import { useMe } from "./MeProvider";
 
 const USERNAME_RE = /^[A-Za-z0-9_]{3,30}$/;
 // Field ids in form order (first error gets focus) and the client wording used for both local and server (400) errors.
-const FIELD_IDS = { username: "profile-username", display_name: "profile-display-name" } as const;
+const FIELD_IDS = {
+  username: "profile-username",
+  display_name: "profile-display-name",
+  bio: "profile-bio",
+  from_city: "profile-from-city",
+  from_country: "profile-from-country",
+  gender: "profile-gender",
+} as const;
+export const GENDER_LABEL: Record<Gender, string> = { woman: "Woman", man: "Man", non_binary: "Non-binary", prefer_not_to_say: "Prefer not to say" };
+const BIO_MAX = 280;
 const FIELD_MESSAGES: Record<string, string> = {
   username: "Username must be 3-30 letters, numbers or underscores",
   display_name: "Display name must be 1-80 characters",
+  bio: `Bio must be plain text of ${BIO_MAX} characters or fewer`,
+  from_city: "City must be 1-80 characters on one line",
+  from_country: "Choose a country from the list",
+  gender: "Choose one of the listed options",
 };
 
 function failureMessage(f: ApiFailure): string {
@@ -27,13 +41,29 @@ export function ProfileForm({ profile, suspended }: { profile: Profile | null; s
   const { getToken, setProfile, reload } = useMe();
   const [username, setUsername] = useState(profile?.username ?? "");
   const [displayName, setDisplayName] = useState(profile?.display_name ?? "");
+  const [bio, setBio] = useState(profile?.bio ?? "");
+  const [city, setCity] = useState(profile?.from_city ?? "");
+  const [country, setCountry] = useState(profile?.from_country ?? "");
+  const [gender, setGender] = useState<string>(profile?.gender ?? "");
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [general, setGeneral] = useState("");
   const [retryable, setRetryable] = useState(false);
   const [saved, setSaved] = useState(false);
   const [pending, setPending] = useState(false);
 
-  const dirty = !!profile && (username !== profile.username || displayName.trim() !== profile.display_name);
+  // Fields that differ from the loaded profile, in API wording ("" clears a nullable field).
+  function changes(): ProfileInput {
+    if (!profile) return { username, display_name: displayName.trim() };
+    const next: ProfileInput = {
+      username, display_name: displayName.trim(), bio: bio.trim(), from_city: city.trim(), from_country: country, gender,
+    };
+    const before: ProfileInput = {
+      username: profile.username, display_name: profile.display_name, bio: profile.bio ?? "",
+      from_city: profile.from_city ?? "", from_country: profile.from_country ?? "", gender: profile.gender ?? "",
+    };
+    return Object.fromEntries(Object.entries(next).filter(([k, v]) => v !== before[k as keyof ProfileInput]));
+  }
+  const dirty = !!profile && Object.keys(changes()).length > 0;
 
   // Runs for client and server errors alike; every setErrors call passes a new object.
   useEffect(() => {
@@ -48,6 +78,10 @@ export function ProfileForm({ profile, suspended }: { profile: Profile | null; s
   function cancel() {
     setUsername(profile?.username ?? "");
     setDisplayName(profile?.display_name ?? "");
+    setBio(profile?.bio ?? "");
+    setCity(profile?.from_city ?? "");
+    setCountry(profile?.from_country ?? "");
+    setGender(profile?.gender ?? "");
     setErrors({});
     setGeneral("");
     setRetryable(false);
@@ -65,16 +99,22 @@ export function ProfileForm({ profile, suspended }: { profile: Profile | null; s
     const nameLength = [...name].length;
     if (!USERNAME_RE.test(username)) next.username = FIELD_MESSAGES.username;
     if (nameLength < 1 || nameLength > 80) next.display_name = FIELD_MESSAGES.display_name;
+    if ([...bio.trim()].length > BIO_MAX) next.bio = FIELD_MESSAGES.bio;
+    if ([...city.trim()].length > 80) next.from_city = FIELD_MESSAGES.from_city;
     setErrors(next);
     if (Object.keys(next).length) return;
 
     setPending(true);
-    const res = await saveProfile(apiBaseUrl, getToken, { username, display_name: name });
+    const res = await saveProfile(apiBaseUrl, getToken, changes());
     setPending(false);
     switch (res.kind) {
       case "ok":
         setUsername(res.profile.username);
         setDisplayName(res.profile.display_name);
+        setBio(res.profile.bio ?? "");
+        setCity(res.profile.from_city ?? "");
+        setCountry(res.profile.from_country ?? "");
+        setGender(res.profile.gender ?? "");
         setProfile(res.profile);
         return setSaved(true);
       case "invalid": {
@@ -103,6 +143,20 @@ export function ProfileForm({ profile, suspended }: { profile: Profile | null; s
     <form className="profile__form" onSubmit={submit} noValidate>
       <Field id="profile-username" label="Username" value={username} onChange={edit(setUsername)} error={errors.username} disabled={suspended} autoComplete="username" autoCapitalize="none" spellCheck={false} />
       <Field id="profile-display-name" label="Display name" value={displayName} onChange={edit(setDisplayName)} error={errors.display_name} disabled={suspended} autoComplete="nickname" />
+      {profile && (
+        <>
+          <Field as="textarea" rows={4} id="profile-bio" label="Bio" value={bio} onChange={edit(setBio)} error={errors.bio} disabled={suspended} help={`${[...bio].length}/${BIO_MAX}`} />
+          <Field id="profile-from-city" label="From city" value={city} onChange={edit(setCity)} error={errors.from_city} disabled={suspended} autoComplete="address-level2" />
+          <Field as="select" id="profile-from-country" label="From country" value={country} onChange={edit(setCountry)} error={errors.from_country} disabled={suspended} autoComplete="country">
+            <option value="">Not set</option>
+            {COUNTRIES.map((c) => <option key={c.code} value={c.code}>{c.name}</option>)}
+          </Field>
+          <Field as="select" id="profile-gender" label="Gender" value={gender} onChange={edit(setGender)} error={errors.gender} disabled={suspended}>
+            <option value="">Not set</option>
+            {(Object.keys(GENDER_LABEL) as Gender[]).map((g) => <option key={g} value={g}>{GENDER_LABEL[g]}</option>)}
+          </Field>
+        </>
+      )}
       {general && <Alert kind="error">{general}</Alert>}
       {saved && <Alert kind="success">Profile saved</Alert>}
       {!suspended && (

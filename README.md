@@ -149,6 +149,7 @@ Free-tier caveats to watch (verify on Supabase's pricing page):
 - [ ] Repo setup, tooling, and CI (monorepo: `backend/` (Go), `android/`, later `ios/`)
 - [ ] Go API on Render, including privileged moderation endpoints ([DevSteps](DevSteps.md))
 - [ ] Web client MVP: sign-up, sign-in, and Profile creation (`webclient/`)
+- [ ] Profile: following and followers, and crews ([plan](docs/product/profile-roadmap.md))
 - [ ] Admin web app, in its own design cycle
 - [ ] Seed venue data from OpenStreetMap
 - [ ] Android client: map, venue pages, submissions, ratings

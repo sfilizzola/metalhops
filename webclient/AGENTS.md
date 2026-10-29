@@ -32,9 +32,11 @@ Node 22.12 or newer. Setup, Supabase settings, and Vercel notes are in
 - `src/pages/`: `Home`, `Discover`, `CheckIns`, `MyVenues`, and
   `UnderConstruction`, the placeholder for sections not built yet.
 - `src/profile/`: `MeProvider` (loads `GET /v1/me` once and exposes `useMe()`),
-  `ProfilePage`, `ProfileForm`, `initials.ts` (avatar initials, shared with
-  the sidebar), `profile.css`.
-- `src/ui/`: shared primitives: `Button`, `Field`, `Alert`, `Spinner` (with
+  `ProfilePage`, `ProfileForm`, `AvatarUpload` (downscale, upload to the
+  Supabase `avatars` bucket), `countries.ts` (ISO codes, names via
+  `Intl.DisplayNames`), `initials.ts` (avatar initials, shared with the
+  sidebar), `profile.css`.
+- `src/ui/`: shared primitives: `Button`, `Field` (input, textarea or select via `as`), `Alert`, `Spinner` (with
   `Skeleton`), `Icon`.
 - `src/design/`: generated copy of `design/system/tokens.css` and
   `components.css`. Header says generated.

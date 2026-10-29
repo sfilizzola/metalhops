@@ -97,3 +97,90 @@ func TestModerationText(t *testing.T) {
 		t.Fatal("control")
 	}
 }
+
+func TestOptionalFieldValidation(t *testing.T) {
+	fieldError := func(err error, key string) bool {
+		var validation *ValidationError
+		return errors.As(err, &validation) && validation.Fields[key] != ""
+	}
+
+	bio, err := normalizeBio("  line one\nline two  ")
+	if err != nil || bio == nil || *bio != "line one\nline two" {
+		t.Fatalf("bio %v %v", bio, err)
+	}
+	if bio, err := normalizeBio(strings.Repeat("é", 280)); err != nil || utf8.RuneCountInString(*bio) != 280 {
+		t.Fatalf("bio 280 %v", err)
+	}
+	for _, bad := range []string{strings.Repeat("a", 281), "bad\x00", "bad\r", "bad\x01", string([]byte{0xff})} {
+		if _, err := normalizeBio(bad); !fieldError(err, "bio") {
+			t.Fatalf("bio %q err %v", bad, err)
+		}
+	}
+	if bio, err := normalizeBio("   "); err != nil || bio != nil {
+		t.Fatalf("bio clear %v %v", bio, err)
+	}
+
+	city, err := normalizeCity(" Hamburg ")
+	if err != nil || city == nil || *city != "Hamburg" {
+		t.Fatalf("city %v %v", city, err)
+	}
+	if _, err := normalizeCity(strings.Repeat("é", 80)); err != nil {
+		t.Fatal(err)
+	}
+	for _, bad := range []string{strings.Repeat("a", 81), "Ham\nburg", "bad\x00"} {
+		if _, err := normalizeCity(bad); !fieldError(err, "from_city") {
+			t.Fatalf("city %q err %v", bad, err)
+		}
+	}
+	if city, err := normalizeCity(""); err != nil || city != nil {
+		t.Fatalf("city clear %v %v", city, err)
+	}
+
+	if country, err := normalizeCountry("DE"); err != nil || *country != "DE" {
+		t.Fatalf("country %v", err)
+	}
+	for _, bad := range []string{"de", "DEU", "D", " DE", "D1"} {
+		if _, err := normalizeCountry(bad); !fieldError(err, "from_country") {
+			t.Fatalf("country %q err %v", bad, err)
+		}
+	}
+	if country, err := normalizeCountry(""); err != nil || country != nil {
+		t.Fatalf("country clear %v %v", country, err)
+	}
+
+	for _, ok := range []string{"woman", "man", "non_binary", "prefer_not_to_say"} {
+		if gender, err := normalizeGender(ok); err != nil || *gender != ok {
+			t.Fatalf("gender %q %v", ok, err)
+		}
+	}
+	for _, bad := range []string{"x", "Woman", "other"} {
+		if _, err := normalizeGender(bad); !fieldError(err, "gender") {
+			t.Fatalf("gender %q err %v", bad, err)
+		}
+	}
+	if gender, err := normalizeGender(""); err != nil || gender != nil {
+		t.Fatalf("gender clear %v %v", gender, err)
+	}
+
+	base, user := "https://abc.supabase.co", "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+	own := base + "/storage/v1/object/public/avatars/" + user + "/0f1e2d3c.webp"
+	if avatar, err := normalizeAvatarURL(own, base, user); err != nil || *avatar != own {
+		t.Fatalf("avatar %v", err)
+	}
+	for _, bad := range []string{
+		"https://evil.example/a.webp",
+		base + "/storage/v1/object/public/avatars/bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb/a.webp",
+		base + "/storage/v1/object/public/avatars/" + user + "/",
+		base + "/storage/v1/object/public/avatars/" + user + "/../other/a.webp",
+		base + "/storage/v1/object/public/avatars/" + user + "/a.webp?x=1",
+		base + "/storage/v1/object/public/other/" + user + "/a.webp",
+		"https://abc.supabase.co.evil.example/storage/v1/object/public/avatars/" + user + "/a.webp",
+	} {
+		if _, err := normalizeAvatarURL(bad, base, user); !fieldError(err, "avatar_url") {
+			t.Fatalf("avatar %q err %v", bad, err)
+		}
+	}
+	if avatar, err := normalizeAvatarURL("", base, user); err != nil || avatar != nil {
+		t.Fatalf("avatar clear %v %v", avatar, err)
+	}
+}

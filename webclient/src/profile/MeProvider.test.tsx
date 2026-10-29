@@ -11,7 +11,7 @@ vi.mock("../supabase", () => ({
 }));
 vi.mock("../api");
 
-const profile = { id: "u1", username: "metal_fan", display_name: "Metal Fan", status: "active" as const, moderation_reason: null, moderation_note: null, suspended_until: null };
+const profile = { id: "u1", username: "metal_fan", display_name: "Metal Fan", status: "active" as const, moderation_reason: null, moderation_note: null, suspended_until: null, bio: null, gender: null, from_city: null, from_country: null, avatar_url: null, stats: { check_ins: 0, venues: 0 } };
 const auth = { getSession: vi.fn(), signOut: vi.fn() };
 
 function Probe() {

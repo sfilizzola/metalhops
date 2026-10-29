@@ -155,7 +155,7 @@ func newCreateHarness(t *testing.T) *createHarness {
 	h := &createHarness{pool: testPool(t), now: t0}
 	clock := func() time.Time { return h.now }
 	h.limiter = ratelimit.NewUserLimiter(clock)
-	h.service = New(h.pool, profile.New(h.pool, h.limiter, nil, clock), h.limiter, clock, time.Hour)
+	h.service = New(h.pool, profile.New(h.pool, h.limiter, nil, clock, ""), h.limiter, clock, time.Hour)
 	return h
 }
 

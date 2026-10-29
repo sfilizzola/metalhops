@@ -2,12 +2,14 @@ package database
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"runtime"
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/metalhops/metalhops/backend/internal/pgtest"
 )
 
@@ -152,8 +154,39 @@ func TestMigrationVersions(t *testing.T) {
 	execSQL(t, pool, readMigration(t, "0012_commentary_restriction_lift.sql"))
 	execSQL(t, pool, `insert into supabase_migrations.schema_migrations (version) values ('0012')`)
 	ready, reason = pool.Check(ctx)
-	if !ready || reason != "ok" {
+	if ready || reason != "migrations_behind" {
 		t.Fatalf("0012 ready %v reason %s", ready, reason)
+	}
+
+	execSQL(t, pool, `
+		insert into auth.users (id) values ('cccccccc-cccc-4ccc-8ccc-cccccccccccc');
+		insert into profiles (id, username, display_name) values ('cccccccc-cccc-4ccc-8ccc-cccccccccccc', 'existing', 'Existing')`)
+	execSQL(t, pool, readMigration(t, "0013_profile_enrichment.sql"))
+	execSQL(t, pool, `insert into supabase_migrations.schema_migrations (version) values ('0013')`)
+	ready, reason = pool.Check(ctx)
+	if !ready || reason != "ok" {
+		t.Fatalf("0013 ready %v reason %s", ready, reason)
+	}
+	var bio, gender, fromCity, fromCountry, avatarURL *string
+	if err := pool.pool.QueryRow(ctx, `
+		select bio, gender, from_city, from_country, avatar_url from profiles where username = 'existing'`).Scan(&bio, &gender, &fromCity, &fromCountry, &avatarURL); err != nil {
+		t.Fatal(err)
+	}
+	if bio != nil || gender != nil || fromCity != nil || fromCountry != nil || avatarURL != nil {
+		t.Fatalf("existing profile gained values %v %v %v %v %v", bio, gender, fromCity, fromCountry, avatarURL)
+	}
+	for constraint, set := range map[string]string{
+		"profiles_bio_length":          `bio = repeat('a', 281)`,
+		"profiles_gender_check":        `gender = 'x'`,
+		"profiles_from_city_length":    `from_city = ''`,
+		"profiles_from_country_format": `from_country = 'de'`,
+		"profiles_avatar_url_length":   `avatar_url = repeat('a', 501)`,
+	} {
+		_, err := pool.pool.Exec(ctx, `update profiles set `+set+` where username = 'existing'`)
+		var pgErr *pgconn.PgError
+		if !errors.As(err, &pgErr) || pgErr.ConstraintName != constraint {
+			t.Fatalf("%s err %v", constraint, err)
+		}
 	}
 	var searchName, searchCity string
 	var updated time.Time
