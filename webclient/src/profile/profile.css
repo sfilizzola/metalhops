@@ -16,7 +16,6 @@
 .profile-facts { display: grid; gap: var(--space-4); }
 .profile-facts dt { color: var(--color-on-surface-muted); }
 .profile-facts dd { overflow-wrap: anywhere; }
-.profile-section-title { color: var(--color-on-surface-muted); }
 
 /* ---------- User page (stage card) ---------- */
 .profile-view { display: grid; gap: var(--space-6); width: 100%; max-width: 60rem; min-width: 0; margin-inline: auto; }
@@ -49,8 +48,28 @@
 /* Full muted colour, never opacity: the caption must keep its contrast pair. */
 .profile-soon { display: grid; gap: var(--space-2); padding: var(--space-3) var(--space-4); border: var(--border-hairline) dashed var(--color-outline-variant); border-radius: var(--radius-md); color: var(--color-on-surface-muted); }
 .profile-soon ul { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-3); }
-.profile-account { display: grid; gap: var(--space-3); padding-top: var(--space-5); border-top: var(--border-hairline) solid var(--color-outline-variant); }
-.profile-account .profile-facts { gap: var(--space-3); }
+/* Account disclosure (mockup card-account.css, alternative C). Open by default only when the account is not active. */
+.profile-acc { container: acc / inline-size; }
+.profile-acc__sum { display: flex; align-items: center; gap: var(--space-3); min-height: calc(var(--size-tap-min) + var(--space-4)); padding: var(--space-2) var(--space-4) var(--space-2) var(--space-5); border-radius: var(--radius-lg); list-style: none; cursor: pointer; transition: background-color var(--duration-fast) var(--easing-standard); }
+.profile-acc__sum::-webkit-details-marker { display: none; }
+.profile-acc__sum:hover { background: color-mix(in oklch, var(--color-on-surface) 5%, transparent); }
+.profile-acc[open] > .profile-acc__sum { border-radius: var(--radius-lg) var(--radius-lg) 0 0; }
+.profile-acc__sum > .icon:first-child, .profile-acc__chev { color: var(--color-on-surface-muted); }
+.profile-acc__t { display: grid; min-width: 0; margin-right: auto; }
+.profile-acc__t .t-caption { color: var(--color-on-surface-muted); }
+.profile-acc__chev { transition: transform var(--duration-base) var(--easing-standard); }
+.profile-acc[open] .profile-acc__chev { transform: rotate(180deg); }
+.profile-acc__sum:hover .profile-acc__chev { color: var(--color-on-surface); }
+.profile-acc__rows { display: grid; min-width: 0; }
+.profile-acc__row { display: grid; grid-template-columns: var(--size-icon-md) minmax(0, 1fr); column-gap: var(--space-3); padding: var(--space-3) var(--space-5); border-top: var(--border-hairline) solid var(--color-outline-variant); min-width: 0; }
+.profile-acc__row > .icon { grid-row: span 2; margin-top: calc(var(--space-1) / 2); color: var(--color-on-surface-muted); }
+.profile-acc__row dt { color: var(--color-on-surface-muted); }
+.profile-acc__row dd { min-width: 0; overflow-wrap: anywhere; }
+.profile-acc__row dd p { max-width: 60ch; }
+@container acc (min-width: 40rem) {
+  .profile-acc__sum { padding-inline: var(--space-8) var(--space-6); }
+  .profile-acc__row { padding-inline: var(--space-8); }
+}
 
 /* ---------- Edit screen (two columns) ---------- */
 .profile-edit { display: grid; gap: var(--space-6); width: 100%; max-width: 64rem; min-width: 0; margin-inline: auto; }

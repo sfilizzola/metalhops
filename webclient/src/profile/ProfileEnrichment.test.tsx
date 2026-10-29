@@ -72,6 +72,51 @@ test("full profile shows photo, bio, From with country name, gender, counters an
   expect(screen.getByText("fan@example.com")).toBeTruthy();
 });
 
+const acc = () => document.querySelector("details.profile-acc") as HTMLDetailsElement;
+
+test("account disclosure is closed for an active account, with the status in the summary and the email in the DOM", async () => {
+  await loaded(full, "/profile");
+  expect(acc().open).toBe(false);
+  const sum = within(acc().querySelector("summary") as HTMLElement);
+  expect(sum.getByText("Account")).toBeTruthy();
+  expect(sum.getByText("Only you")).toBeTruthy();
+  expect(sum.getByText("Active", { selector: ".tag" })).toBeTruthy();
+  expect(acc().querySelector("summary .profile-acc__chev")?.getAttribute("aria-hidden")).toBe("true");
+  expect(screen.getByText("fan@example.com").closest("dd")?.parentElement?.textContent).toContain("Email");
+  expect(document.body.textContent).not.toMatch(/only you see this/i);
+  expect(screen.queryByText("Reason")).toBeNull();
+  expect(screen.queryByText("Suspended until")).toBeNull();
+});
+
+test("clicking the account summary toggles it", async () => {
+  await loaded(full, "/profile");
+  const user = userEvent.setup();
+  await user.click(screen.getByText("Account"));
+  expect(acc().open).toBe(true);
+  await user.click(screen.getByText("Account"));
+  expect(acc().open).toBe(false);
+});
+
+test.each([
+  ["rename_required", "Rename required"],
+  ["suspended", "Suspended"],
+] as const)("account disclosure is open by default for %s with the moderation rows", async (status, label) => {
+  await loaded({ ...full, status, moderation_reason: "Offensive name", moderation_note: "Pick another.", suspended_until: "2030-01-02T03:04:05Z" }, "/profile");
+  expect(acc().open).toBe(true);
+  expect(within(acc()).getByText(label, { selector: ".tag" })).toBeTruthy();
+  for (const t of ["Email", "Reason", "Moderator note", "Suspended until"]) expect(within(acc()).getByText(t)).toBeTruthy();
+  expect(within(acc()).getByText("Offensive name")).toBeTruthy();
+  expect(within(acc()).getByText("Pick another.")).toBeTruthy();
+  expect(acc().querySelector("time")?.getAttribute("datetime")).toBe("2030-01-02T03:04:05Z");
+  await userEvent.setup().click(screen.getByText("Account"));
+  expect(acc().open).toBe(false);
+});
+
+test("account email wraps anywhere so a long address cannot overflow", async () => {
+  await loaded(full, "/profile");
+  expect(screen.getByText("fan@example.com").closest("dd")?.parentElement?.className).toBe("profile-acc__row");
+});
+
 test("empty profile shows initials, no empty labels, zero counters", async () => {
   await loaded(empty, "/profile");
   const card = screen.getByRole("region", { name: "Profile summary" });

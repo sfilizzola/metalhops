@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, Navigate, useLocation, useNavigate } from "react-router-dom";
-import { House, MapPinCheck, Pencil, Store } from "lucide-react";
+import type { ReactNode } from "react";
+import { CalendarClock, ChevronDown, Flag, House, Lock, MapPinCheck, Mail, MessageSquareText, Pencil, Store } from "lucide-react";
 import { Alert } from "../ui/Alert";
 import { GenderIcon } from "../ui/GenderIcon";
 import { Icon } from "../ui/Icon";
@@ -12,6 +13,10 @@ import "./profile.css";
 
 const SOON = ["Following", "Followers", "Crews"];
 const STATUS_LABEL = { active: "Active", rename_required: "Rename required", suspended: "Suspended" } as const;
+
+function AccRow({ icon, label, children }: { icon: Parameters<typeof Icon>[0]["icon"]; label: string; children: ReactNode }) {
+  return <div className="profile-acc__row"><Icon icon={icon} /><dt className="t-caption">{label}</dt><dd>{children}</dd></div>;
+}
 
 // Read-only user page (mockup variant B, Backline stage card). Editing lives on /profile/edit.
 export function ProfilePage({ email }: { email: string }) {
@@ -80,18 +85,22 @@ export function ProfilePage({ email }: { email: string }) {
           {SOON.map((label) => <li key={label} className="t-label">{label}</li>)}
         </ul>
       </section>
-      <section className="profile-account" aria-labelledby="profile-account-title">
-        <h2 id="profile-account-title" className="t-label profile-section-title">Account (only you see this)</h2>
-        <dl className="profile-facts">
-          <div><dt className="t-label">Email</dt><dd>{email}</dd></div>
-          <div><dt className="t-label">Account status</dt><dd><span className="tag">{STATUS_LABEL[profile.status]}</span></dd></div>
-          {profile.status !== "active" && profile.moderation_reason && <div><dt className="t-label">Reason</dt><dd>{profile.moderation_reason}</dd></div>}
-          {profile.status !== "active" && profile.moderation_note && <div><dt className="t-label">Note</dt><dd>{profile.moderation_note}</dd></div>}
+      <details className="profile-card profile-acc" open={profile.status !== "active"}>
+        <summary className="profile-acc__sum">
+          <Icon icon={Lock} />
+          <span className="profile-acc__t"><span className="t-label">Account</span><span className="t-caption">Only you</span></span>
+          <span className="tag">{STATUS_LABEL[profile.status]}</span>
+          <Icon icon={ChevronDown} className="profile-acc__chev" />
+        </summary>
+        <dl className="profile-acc__rows">
+          <AccRow icon={Mail} label="Email">{email}</AccRow>
+          {profile.status !== "active" && profile.moderation_reason && <AccRow icon={Flag} label="Reason">{profile.moderation_reason}</AccRow>}
+          {profile.status !== "active" && profile.moderation_note && <AccRow icon={MessageSquareText} label="Moderator note"><p>{profile.moderation_note}</p></AccRow>}
           {profile.status !== "active" && profile.suspended_until && (
-            <div><dt className="t-label">Suspended until</dt><dd>{new Date(profile.suspended_until).toLocaleString()}</dd></div>
+            <AccRow icon={CalendarClock} label="Suspended until"><time dateTime={profile.suspended_until}>{new Date(profile.suspended_until).toLocaleString()}</time></AccRow>
           )}
         </dl>
-      </section>
+      </details>
     </div>
   );
 }
