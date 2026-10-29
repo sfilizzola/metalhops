@@ -46,3 +46,6 @@ infra/supabase/.temp/
 
 # Web client
 dist/
+
+# OMC local state
+.omc/
