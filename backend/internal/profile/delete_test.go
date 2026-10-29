@@ -56,7 +56,7 @@ func TestDeleteUser(t *testing.T) {
 	}))
 	t.Cleanup(server.Close)
 	limiter := ratelimit.NewUserLimiter(clock)
-	service := New(pool, limiter, NewAdminClient(server.URL, "service-secret", server.Client()), clock)
+	service := New(pool, limiter, NewAdminClient(server.URL, "service-secret", server.Client()), clock, "")
 	cmd := DeleteCommand{UserID: userID, SessionCreatedAt: created, Confirmation: "DELETE"}
 	if err := service.Delete(ctx, cmd); err == nil {
 		t.Fatal("bad confirmation")
@@ -88,7 +88,7 @@ func TestDeleteUser(t *testing.T) {
 	}
 
 	fail = false
-	service = New(pool, ratelimit.NewUserLimiter(clock), NewAdminClient(server.URL, "service-secret", server.Client()), clock)
+	service = New(pool, ratelimit.NewUserLimiter(clock), NewAdminClient(server.URL, "service-secret", server.Client()), clock, "")
 	if err := service.Delete(ctx, cmd); err != nil {
 		t.Fatal(err)
 	}
@@ -122,7 +122,7 @@ func TestDeleteWithoutProfileAndRateLimit(t *testing.T) {
 	t.Cleanup(server.Close)
 	clock := func() time.Time { return now }
 	limiter := ratelimit.NewUserLimiter(clock)
-	service := New(pool, limiter, NewAdminClient(server.URL, "service-secret", server.Client()), clock)
+	service := New(pool, limiter, NewAdminClient(server.URL, "service-secret", server.Client()), clock, "")
 	err := service.Delete(ctx, DeleteCommand{
 		UserID: userID, SessionCreatedAt: now, Confirmation: "DELETE MY ACCOUNT",
 	})
@@ -131,7 +131,7 @@ func TestDeleteWithoutProfileAndRateLimit(t *testing.T) {
 	}
 
 	ownerLimiter := ratelimit.NewUserLimiter(clock)
-	owner := New(pool, ownerLimiter, nil, clock)
+	owner := New(pool, ownerLimiter, nil, clock, "")
 	username, display := "metal_fan", "Metal Fan"
 	if _, err := owner.Patch(ctx, other, Patch{Username: &username, DisplayName: &display}); err != nil {
 		t.Fatal(err)

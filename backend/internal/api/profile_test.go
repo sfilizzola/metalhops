@@ -118,9 +118,16 @@ func TestProfileRoutes(t *testing.T) {
 	if ok.Code != http.StatusOK || bytes.Contains(ok.Body.Bytes(), []byte("created_at")) {
 		t.Fatalf("get %d %s", ok.Code, ok.Body.String())
 	}
-	if ok.Body.String() != `{"data":{"id":"`+caller.UserID+`","username":"metal_fan","display_name":"Metal Fan","status":"active","moderation_reason":null,"moderation_note":null,"suspended_until":null}}`+"\n" {
+	if ok.Body.String() != `{"data":{"id":"`+caller.UserID+`","username":"metal_fan","display_name":"Metal Fan","status":"active","moderation_reason":null,"moderation_note":null,"suspended_until":null,"bio":null,"gender":null,"from_city":null,"from_country":null,"avatar_url":null,"stats":{"check_ins":0,"venues":0}}}`+"\n" {
 		t.Fatalf("body %s", ok.Body.String())
 	}
+	bio, country := "Riffs", "DE"
+	profiles.got.Bio, profiles.got.FromCountry, profiles.got.Stats = &bio, &country, profile.Stats{CheckIns: 3, Venues: 2}
+	enriched := authed(handler, http.MethodGet, "/v1/me", "", nil)
+	if !bytes.Contains(enriched.Body.Bytes(), []byte(`"bio":"Riffs","gender":null,"from_city":null,"from_country":"DE","avatar_url":null,"stats":{"check_ins":3,"venues":2}`)) {
+		t.Fatalf("enriched %s", enriched.Body.String())
+	}
+	profiles.got = stored
 
 	profiles.getErr = profile.ErrNotFound
 	assertCode(t, authed(handler, http.MethodGet, "/v1/me", "", nil), http.StatusNotFound, "profile_not_found")
@@ -152,6 +159,23 @@ func TestProfileRoutes(t *testing.T) {
 		t.Fatalf("idempotency %d %s", rec.Code, rec.Body.String())
 	}
 	assertCode(t, authed(handler, http.MethodPatch, "/v1/me", "", []byte(`{"username":null}`)), http.StatusBadRequest, "validation_error")
+	rec = authed(handler, http.MethodPatch, "/v1/me", "", []byte(`{"bio":"hi","gender":"","from_city":"Hamburg","from_country":"DE","avatar_url":"u"}`))
+	got := profiles.patch
+	if rec.Code != http.StatusOK || got.Username != nil || got.DisplayName != nil || got.Bio == nil || *got.Bio != "hi" || got.Gender == nil || *got.Gender != "" ||
+		got.FromCity == nil || *got.FromCity != "Hamburg" || got.FromCountry == nil || *got.FromCountry != "DE" || got.AvatarURL == nil || *got.AvatarURL != "u" {
+		t.Fatalf("optional patch %d %#v", rec.Code, got)
+	}
+	rec = authed(handler, http.MethodPatch, "/v1/me", "", []byte(`{"bio":"only"}`))
+	if rec.Code != http.StatusOK || profiles.patch.Bio == nil || profiles.patch.Gender != nil || profiles.patch.AvatarURL != nil {
+		t.Fatalf("absent fields %d %#v", rec.Code, profiles.patch)
+	}
+	patches := profiles.patches
+	nullBio := authed(handler, http.MethodPatch, "/v1/me", "", []byte(`{"bio":null,"avatar_url":null}`))
+	assertCode(t, nullBio, http.StatusBadRequest, "validation_error")
+	if profiles.patches != patches || !bytes.Contains(nullBio.Body.Bytes(), []byte(`"bio":"must not be null"`)) || !bytes.Contains(nullBio.Body.Bytes(), []byte(`"avatar_url":"must not be null"`)) {
+		t.Fatalf("null optional %s", nullBio.Body.String())
+	}
+	assertCode(t, authed(handler, http.MethodPatch, "/v1/me", "", []byte(`{"location":"x"}`)), http.StatusBadRequest, "validation_error")
 	profiles.patchErr = profile.ErrUsernameReserved
 	assertCode(t, authed(handler, http.MethodPatch, "/v1/me", "", []byte(`{"username":"admin"}`)), http.StatusBadRequest, "username_reserved")
 	profiles.patchErr = profile.ErrUsernameTaken

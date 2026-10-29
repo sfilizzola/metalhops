@@ -1,6 +1,6 @@
 import { Link } from "react-router-dom";
 import { LogOut } from "lucide-react";
-import { initials } from "../profile/initials";
+import { Avatar } from "../profile/Avatar";
 import { useMe } from "../profile/MeProvider";
 import { supabase } from "../supabase";
 import { Button } from "../ui/Button";
@@ -20,7 +20,7 @@ function Identity({ onSelect }: { onSelect?: () => void }) {
   const profile = me?.kind === "ok" ? me.profile : null;
   return (
     <Link to="/profile" className="identity shell-identity" onClick={onSelect}>
-      <span className="avatar" aria-hidden="true">{profile ? initials(profile.display_name) : "?"}</span>
+      {profile ? <Avatar profile={profile} /> : <span className="avatar" aria-hidden="true">?</span>}
       <span className="identity__text">
         {profile ? (
           <>

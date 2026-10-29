@@ -21,7 +21,7 @@ func TestListReports(t *testing.T) {
 	until := now.Add(3 * time.Hour)
 	clock := func() time.Time { return now }
 	limiter := ratelimit.NewUserLimiter(clock)
-	service := New(pool, limiter, nil, clock)
+	service := New(pool, limiter, nil, clock, "")
 
 	repA := "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1"
 	tgtA := "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa2"
@@ -137,13 +137,6 @@ func assertFullProfile(t *testing.T, got, want Profile) {
 	}
 }
 
-func sameText(got, want *string) bool {
-	if got == nil || want == nil {
-		return got == nil && want == nil
-	}
-	return *got == *want
-}
-
 func sameTime(got, want *time.Time) bool {
 	if got == nil || want == nil {
 		return got == nil && want == nil
@@ -157,7 +150,7 @@ func TestModerationReplayIgnoresCurrentMatch(t *testing.T) {
 	now := time.Date(2026, 10, 16, 14, 0, 0, 0, time.UTC)
 	clock := func() time.Time { return now }
 	limiter := ratelimit.NewUserLimiter(clock)
-	service := New(pool, limiter, nil, clock)
+	service := New(pool, limiter, nil, clock, "")
 	actor := "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa10"
 	target := "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbb10"
 	insertActor(t, pool, actor)
@@ -226,7 +219,7 @@ func TestModerationReplayAfterSuspensionExpiry(t *testing.T) {
 	now := time.Date(2026, 10, 16, 18, 0, 0, 0, time.UTC)
 	current := now
 	clock := func() time.Time { return current }
-	service := New(pool, ratelimit.NewUserLimiter(clock), nil, clock)
+	service := New(pool, ratelimit.NewUserLimiter(clock), nil, clock, "")
 	actor := "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa17"
 	target := "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbb17"
 	insertActor(t, pool, actor)
@@ -270,7 +263,7 @@ func TestModerationTransitions(t *testing.T) {
 	pool := testPool(t)
 	now := time.Date(2026, 10, 16, 14, 30, 0, 0, time.UTC)
 	clock := func() time.Time { return now }
-	service := New(pool, ratelimit.NewUserLimiter(clock), nil, clock)
+	service := New(pool, ratelimit.NewUserLimiter(clock), nil, clock, "")
 	actor := "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa11"
 	target := "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbb11"
 	insertActor(t, pool, actor)
@@ -359,7 +352,7 @@ func TestModerationRestore(t *testing.T) {
 	pool := testPool(t)
 	now := time.Date(2026, 10, 16, 15, 0, 0, 0, time.UTC)
 	clock := func() time.Time { return now }
-	service := New(pool, ratelimit.NewUserLimiter(clock), nil, clock)
+	service := New(pool, ratelimit.NewUserLimiter(clock), nil, clock, "")
 	actor := "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa12"
 	target := "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbb12"
 	insertActor(t, pool, actor)
@@ -408,7 +401,7 @@ func TestModerationActionsPendingReports(t *testing.T) {
 	now := time.Date(2026, 10, 16, 15, 30, 0, 0, time.UTC)
 	clock := func() time.Time { return now }
 	limiter := ratelimit.NewUserLimiter(clock)
-	service := New(pool, limiter, nil, clock)
+	service := New(pool, limiter, nil, clock, "")
 	actor := "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa13"
 	target := "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbb13"
 	other := "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbb14"
@@ -457,7 +450,7 @@ func TestModerationReusedKey(t *testing.T) {
 	pool := testPool(t)
 	now := time.Date(2026, 10, 16, 16, 0, 0, 0, time.UTC)
 	clock := func() time.Time { return now }
-	service := New(pool, ratelimit.NewUserLimiter(clock), nil, clock)
+	service := New(pool, ratelimit.NewUserLimiter(clock), nil, clock, "")
 	actor := "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa15"
 	target := "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbb15"
 	insertActor(t, pool, actor)
@@ -489,7 +482,7 @@ func TestDismissReport(t *testing.T) {
 	now := time.Date(2026, 10, 16, 16, 30, 0, 0, time.UTC)
 	clock := func() time.Time { return now }
 	limiter := ratelimit.NewUserLimiter(clock)
-	service := New(pool, limiter, nil, clock)
+	service := New(pool, limiter, nil, clock, "")
 	actor := "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa16"
 	target := "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbb16"
 	reporter := "cccccccc-cccc-4ccc-8ccc-cccccccccc16"

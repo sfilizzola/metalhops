@@ -1616,6 +1616,14 @@ paths:
                   moderation_reason: null
                   moderation_note: null
                   suspended_until: null
+                  bio: null
+                  gender: null
+                  from_city: Hamburg
+                  from_country: DE
+                  avatar_url: null
+                  stats:
+                    check_ins: 3
+                    venues: 2
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
@@ -1660,6 +1668,8 @@ paths:
             example:
               username: metal_fan
               display_name: Metal Fan
+              from_city: Hamburg
+              from_country: DE
       responses:
         "200":
           description: The stored profile. An unchanged profile is returned as stored.
@@ -1676,6 +1686,14 @@ paths:
                   moderation_reason: null
                   moderation_note: null
                   suspended_until: null
+                  bio: null
+                  gender: null
+                  from_city: Hamburg
+                  from_country: DE
+                  avatar_url: null
+                  stats:
+                    check_ins: 3
+                    venues: 2
         "400":
           description: The profile was invalid or the username is reserved.
           content:
@@ -4176,7 +4194,7 @@ components:
     Profile:
       type: object
       additionalProperties: false
-      required: [id, username, display_name, status, moderation_reason, moderation_note, suspended_until]
+      required: [id, username, display_name, status, moderation_reason, moderation_note, suspended_until, bio, gender, from_city, from_country, avatar_url, stats]
       properties:
         id:
           type: string
@@ -4196,6 +4214,39 @@ components:
         suspended_until:
           type: [string, "null"]
           format: date-time
+        bio:
+          type: [string, "null"]
+          maxLength: 280
+          description: Free text; may contain line breaks.
+        gender:
+          type: [string, "null"]
+          enum: [woman, man, non_binary, prefer_not_to_say, null]
+        from_city:
+          type: [string, "null"]
+          minLength: 1
+          maxLength: 80
+        from_country:
+          type: [string, "null"]
+          pattern: "^[A-Z]{2}$"
+          description: ISO 3166-1 alpha-2 code.
+        avatar_url:
+          type: [string, "null"]
+          format: uri
+          maxLength: 500
+          description: Public Supabase Storage URL in the owner's avatars/<user id>/ folder.
+        stats:
+          type: object
+          additionalProperties: false
+          required: [check_ins, venues]
+          description: Read-only counters computed from the owner's Check-ins.
+          properties:
+            check_ins:
+              type: integer
+              minimum: 0
+            venues:
+              type: integer
+              minimum: 0
+              description: Distinct Venues the owner has checked into.
     ProfileResponse:
       type: object
       additionalProperties: false
@@ -4206,11 +4257,30 @@ components:
     ProfilePatch:
       type: object
       additionalProperties: false
+      description: Absent fields stay unchanged. An empty string clears bio, gender, from_city, from_country, or avatar_url; null is rejected. Creating a profile needs username and display_name.
       properties:
         username:
           type: string
         display_name:
           type: string
+        bio:
+          type: string
+          maxLength: 280
+          description: Trimmed and NFC-normalized; line breaks allowed, other control characters rejected. Length counts code points.
+        gender:
+          type: string
+          enum: [woman, man, non_binary, prefer_not_to_say, ""]
+        from_city:
+          type: string
+          maxLength: 80
+          description: One line, trimmed. Length counts code points.
+        from_country:
+          type: string
+          pattern: "^([A-Z]{2})?$"
+        avatar_url:
+          type: string
+          maxLength: 500
+          description: Must start with <SUPABASE_URL>/storage/v1/object/public/avatars/<caller user id>/ followed by one object name.
     ModeratorProfile:
       type: object
       additionalProperties: false

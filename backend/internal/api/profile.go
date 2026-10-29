@@ -24,18 +24,29 @@ type Profiles interface {
 }
 
 type profileView struct {
-	ID               string     `json:"id"`
-	Username         string     `json:"username"`
-	DisplayName      string     `json:"display_name"`
-	Status           string     `json:"status"`
-	ModerationReason *string    `json:"moderation_reason"`
-	ModerationNote   *string    `json:"moderation_note"`
-	SuspendedUntil   *time.Time `json:"suspended_until"`
+	ID               string        `json:"id"`
+	Username         string        `json:"username"`
+	DisplayName      string        `json:"display_name"`
+	Status           string        `json:"status"`
+	ModerationReason *string       `json:"moderation_reason"`
+	ModerationNote   *string       `json:"moderation_note"`
+	SuspendedUntil   *time.Time    `json:"suspended_until"`
+	Bio              *string       `json:"bio"`
+	Gender           *string       `json:"gender"`
+	FromCity         *string       `json:"from_city"`
+	FromCountry      *string       `json:"from_country"`
+	AvatarURL        *string       `json:"avatar_url"`
+	Stats            profile.Stats `json:"stats"`
 }
 
 type profilePatchRequest struct {
 	Username    optionalString `json:"username"`
 	DisplayName optionalString `json:"display_name"`
+	Bio         optionalString `json:"bio"`
+	Gender      optionalString `json:"gender"`
+	FromCity    optionalString `json:"from_city"`
+	FromCountry optionalString `json:"from_country"`
+	AvatarURL   optionalString `json:"avatar_url"`
 }
 
 type deleteRequest struct {
@@ -89,6 +100,16 @@ func patchMe(w http.ResponseWriter, r *http.Request, profiles Profiles, logger *
 	if req.DisplayName.Null {
 		fields["display_name"] = "must not be null"
 	}
+	// Optional fields clear with "", so null is rejected like the names.
+	optional := map[string]optionalString{
+		"bio": req.Bio, "gender": req.Gender, "from_city": req.FromCity,
+		"from_country": req.FromCountry, "avatar_url": req.AvatarURL,
+	}
+	for key, value := range optional {
+		if value.Null {
+			fields[key] = "must not be null"
+		}
+	}
 	if len(fields) > 0 {
 		WriteError(w, http.StatusBadRequest, "validation_error", "The request is invalid.", requestID(r.Context()), fields)
 		return
@@ -99,6 +120,21 @@ func patchMe(w http.ResponseWriter, r *http.Request, profiles Profiles, logger *
 	}
 	if req.DisplayName.Set {
 		patch.DisplayName = &req.DisplayName.Value
+	}
+	if req.Bio.Set {
+		patch.Bio = &req.Bio.Value
+	}
+	if req.Gender.Set {
+		patch.Gender = &req.Gender.Value
+	}
+	if req.FromCity.Set {
+		patch.FromCity = &req.FromCity.Value
+	}
+	if req.FromCountry.Set {
+		patch.FromCountry = &req.FromCountry.Value
+	}
+	if req.AvatarURL.Set {
+		patch.AvatarURL = &req.AvatarURL.Value
 	}
 	got, err := profiles.Patch(r.Context(), caller.UserID, patch)
 	if err != nil {
@@ -199,6 +235,8 @@ func view(got profile.Profile) profileView {
 	return profileView{
 		ID: got.ID, Username: got.Username, DisplayName: got.DisplayName, Status: got.Status,
 		ModerationReason: got.ModerationReason, ModerationNote: got.ModerationNote, SuspendedUntil: got.SuspendedUntil,
+		Bio: got.Bio, Gender: got.Gender, FromCity: got.FromCity, FromCountry: got.FromCountry, AvatarURL: got.AvatarURL,
+		Stats: got.Stats,
 	}
 }
 

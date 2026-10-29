@@ -42,7 +42,7 @@ func main() {
 	userLimiter := ratelimit.NewUserLimiter(time.Now)
 	authenticator := auth.New(cfg.SupabaseURL, cfg.SupabaseJWTAudience, pool.Raw(), httpClient, time.Now)
 	admin := profile.NewAdminClient(cfg.SupabaseURL, cfg.SupabaseServiceRoleKey, httpClient)
-	profiles := profile.New(pool.Raw(), userLimiter, admin, time.Now)
+	profiles := profile.New(pool.Raw(), userLimiter, admin, time.Now, cfg.SupabaseURL)
 	venues := venue.New(pool.Raw(), profiles, userLimiter, time.Now)
 	reviews := review.New(pool.Raw(), profiles, userLimiter, time.Now)
 	checkIns := checkin.New(pool.Raw(), profiles, userLimiter, time.Now, cfg.CheckInSpacing)

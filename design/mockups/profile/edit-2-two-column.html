@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Edit 2, two-column form</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Grenze+Gotisch:wght@700&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../../system/tokens.css">
+<link rel="stylesheet" href="../../system/components.css">
+<link rel="stylesheet" href="mockup.css">
+<script src="mockup.js"></script>
+<style>
+
+.e2 { display: grid; gap: var(--space-6); max-width: 64rem; margin-inline: auto; }
+.e2 .form { gap: var(--space-6); }
+.e2__cols { display: grid; gap: var(--space-6); align-items: start; }
+.e2__col { display: grid; gap: var(--space-6); min-width: 0; }
+.e2 .form-section { padding: var(--space-5); }
+.e2__actions { display: flex; flex-wrap: wrap; gap: var(--space-3); }
+@media (min-width: 960px) {
+  .e2__cols { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-8); }
+  .e2__actions { justify-content: flex-end; }
+}
+</style>
+</head>
+<body>
+<!--
+2. Two-column form, edit screen.
+Narrative role: a workspace: who you are on the left, the details on the right.
+Viewer distance: desk distance; both columns visible without scrolling at 1280.
+Visual temperature: more structured; each section is a raised card, like the user page.
+Capacity: the right column takes longer content (bio, future fields). Same stacked form with inline actions on mobile; actions at the bottom right on desktop.
+Sample data, not for production. Layout uses design-system tokens only.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" style="display:none" aria-hidden="true"><symbol id="i-menu" viewBox="0 0 24 24"><line x1="4" x2="20" y1="12" y2="12"/><line x1="4" x2="20" y1="6" y2="6"/><line x1="4" x2="20" y1="18" y2="18"/></symbol><symbol id="i-house" viewBox="0 0 24 24"><path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8"/><path d="M3 10a2 2 0 0 1 .709-1.528l7-5.999a2 2 0 0 1 2.582 0l7 5.999A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></symbol><symbol id="i-compass" viewBox="0 0 24 24"><path d="m16.24 7.76-1.804 5.411a2 2 0 0 1-1.265 1.265L7.76 16.24l1.804-5.411a2 2 0 0 1 1.265-1.265z"/><circle cx="12" cy="12" r="10"/></symbol><symbol id="i-map-pin-check" viewBox="0 0 24 24"><path d="M19.43 12.935c.357-.967.57-1.955.57-2.935a8 8 0 0 0-16 0c0 4.993 5.539 10.193 7.399 11.799a1 1 0 0 0 1.202 0 32.197 32.197 0 0 0 .813-.728"/><circle cx="12" cy="10" r="3"/><path d="m16 18 2 2 4-4"/></symbol><symbol id="i-store" viewBox="0 0 24 24"><path d="m2 7 4.41-4.41A2 2 0 0 1 7.83 2h8.34a2 2 0 0 1 1.42.59L22 7"/><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><path d="M15 22v-4a2 2 0 0 0-2-2h-2a2 2 0 0 0-2 2v4"/><path d="M2 7h20"/></symbol><symbol id="i-user-round" viewBox="0 0 24 24"><circle cx="12" cy="8" r="5"/><path d="M20 21a8 8 0 0 0-16 0"/></symbol><symbol id="i-arrow-left" viewBox="0 0 24 24"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></symbol><symbol id="i-pencil" viewBox="0 0 24 24"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/><path d="m15 5 4 4"/></symbol><symbol id="i-camera" viewBox="0 0 24 24"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></symbol><symbol id="i-trash-2" viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/></symbol><symbol id="i-chevron-down" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol><symbol id="i-map-pin" viewBox="0 0 24 24"><path d="M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0"/><circle cx="12" cy="10" r="3"/></symbol><symbol id="i-mail" viewBox="0 0 24 24"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></symbol></svg>
+<button class="mock-theme" type="button" aria-label="Toggle theme (mockup only)">Dark</button>
+<div class="shell">
+  <aside class="shell__sidebar"><div class="sidebar">
+    <p class="sidebar__wordmark t-title">MetalHops</p>
+    <nav class="sidebar__nav" aria-label="Main"><a class="nav-item" href="#"><svg class="icon " aria-hidden="true"><use href="#i-house"/></svg>Home</a><a class="nav-item" href="#"><svg class="icon " aria-hidden="true"><use href="#i-compass"/></svg>Discover</a><a class="nav-item" href="#"><svg class="icon " aria-hidden="true"><use href="#i-map-pin-check"/></svg>Check-ins</a><a class="nav-item" href="#"><svg class="icon " aria-hidden="true"><use href="#i-store"/></svg>My venues</a><a class="nav-item" href="#" aria-current="page"><svg class="icon " aria-hidden="true"><use href="#i-user-round"/></svg>Profile</a></nav>
+    <div class="sidebar__foot"><div class="identity identity--compact" style="padding:var(--space-2) var(--space-3)"><span class="avatar avatar--photo" aria-hidden="true"></span><span class="identity__text"><span class="identity__name">Hel Hammerfall</span></span></div></div>
+  </div></aside>
+  <div>
+    <header class="topbar"><span class="btn btn--ghost topbar__menu" aria-label="Open menu"><svg class="icon icon--lg" aria-hidden="true"><use href="#i-menu"/></svg></span><span class="topbar__wordmark t-title">MetalHops</span></header>
+    <main class="shell__main ">
+<div class="e2">
+  <a class="btn btn--ghost back" href="page-a-stacked.html"><svg class="icon " aria-hidden="true"><use href="#i-arrow-left"/></svg>Back to profile</a>
+  <h1 class="t-title">Edit profile</h1>
+  <form class="form" onsubmit="return false">
+    <div class="e2__cols">
+      <div class="e2__col">
+        <section class="card form-section" aria-labelledby="s-photo"><h2 id="s-photo" class="t-heading">Photo</h2><div class="photo"><span class="avatar avatar--photo avatar--lg" role="img" aria-label="Profile photo placeholder">Photo</span><div class="photo__actions"><button class="btn btn--secondary" type="button"><svg class="icon " aria-hidden="true"><use href="#i-camera"/></svg>Change photo</button><button class="btn btn--ghost" type="button"><svg class="icon " aria-hidden="true"><use href="#i-trash-2"/></svg>Remove</button></div></div></section>
+        <section class="card form-section" aria-labelledby="s-id"><h2 id="s-id" class="t-heading">Identity</h2><div class="field"><label class="field__label" for="username">Username</label><div class="field__control"><input id="username" value="hel_hammer" autocomplete="username" autocapitalize="none" spellcheck="false"></div></div><div class="field"><label class="field__label" for="dn">Display name</label><div class="field__control"><input id="dn" value="Hel Hammerfall" ></div></div></section>
+      </div>
+      <div class="e2__col">
+        <section class="card form-section" aria-labelledby="s-about"><h2 id="s-about" class="t-heading">About</h2><div class="field"><label class="field__label" for="bio">Bio</label><div class="field__control"><textarea id="bio" rows="4">Louder than hell.
+Tuesday doom nights at the Anvil.</textarea></div><p class="field__help num">51/280</p></div></section>
+        <section class="card form-section" aria-labelledby="s-loc"><h2 id="s-loc" class="t-heading">Location &amp; details</h2><div class="field"><label class="field__label" for="city">From city</label><div class="field__control"><input id="city" value="Hamburg" ></div></div><div class="field"><label class="field__label" for="country">From country</label><div class="field__control"><select id="country"><option>Not set</option><option>Austria</option><option selected>Germany</option><option>Netherlands</option><option>Sweden</option><option>United Kingdom</option></select><svg class="icon field__chevron" aria-hidden="true"><use href="#i-chevron-down"/></svg></div></div><div class="field"><label class="field__label" for="gender">Gender</label><div class="field__control"><select id="gender"><option>Not set</option><option>Woman</option><option>Man</option><option selected>Non-binary</option><option>Prefer not to say</option></select><svg class="icon field__chevron" aria-hidden="true"><use href="#i-chevron-down"/></svg></div></div></section>
+      </div>
+    </div>
+    <div class="e2__actions"><button class="btn btn--primary" type="button">Save changes</button><button class="btn btn--secondary" type="button">Cancel</button></div>
+  </form>
+</div>
+      <p class="mock-foot t-caption">Sample data. Design mockup, not for production.</p>
+    </main>
+  </div>
+</div>
+</body>
+</html>

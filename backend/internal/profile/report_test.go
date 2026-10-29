@@ -24,7 +24,7 @@ func TestReport(t *testing.T) {
 	insertProfile(t, pool, reporter, "reporter", "Reporter", "active", nil, now)
 	insertProfile(t, pool, target, "metalfan", "Metal Fan", "active", nil, now)
 	limiter := ratelimit.NewUserLimiter(clock)
-	service := New(pool, limiter, nil, clock)
+	service := New(pool, limiter, nil, clock, "")
 
 	got, err := service.Report(ctx, ReportCommand{
 		ReporterID: reporter, Username: "MetalFan", Reason: "spam", Key: "report-key",
@@ -214,7 +214,7 @@ func TestQuotaSurvivesTargetDeletion(t *testing.T) {
 		}
 	}
 	limiter := ratelimit.NewUserLimiter(clock)
-	service := New(pool, limiter, nil, clock)
+	service := New(pool, limiter, nil, clock, "")
 	created, err := service.Report(ctx, ReportCommand{
 		ReporterID: reporter, Username: "targetone", Reason: "spam", Key: "report-key",
 	})
@@ -265,7 +265,7 @@ func TestConcurrentReportQuota(t *testing.T) {
 		}
 	}
 	limiter := ratelimit.NewUserLimiter(clock)
-	service := New(pool, limiter, nil, clock)
+	service := New(pool, limiter, nil, clock, "")
 	var wg sync.WaitGroup
 	start := make(chan struct{})
 	errs := make([]error, 2)

@@ -50,7 +50,7 @@ when that file exists. Variables already in the environment win.
 
 `GET /healthz` reports process health and does not check the database.
 `GET /readyz` returns 200 when the database ping succeeds and migration
-`0012` or newer is recorded. Otherwise it returns 503. The 200 body adds
+`0013` or newer is recorded. Otherwise it returns 503. The 200 body adds
 `commit` when `RENDER_GIT_COMMIT` is a full 40-character lowercase hex SHA.
 `GET /openapi.yaml` serves the embedded `openapi.yaml` in every environment.
 `GET /docs` serves the Scalar page when `DOCS_UI_ENABLED` is unset or `true`.
@@ -147,7 +147,10 @@ Never drift from it silently.
 ## Auth model
 
 - The apps sign in with Supabase Auth and send the JWT to this API.
-- `SUPABASE_URL` derives the issuer, JWKS, and Admin URL. `SUPABASE_JWT_AUDIENCE`
+- `SUPABASE_URL` derives the issuer, JWKS, Admin URL, and the only accepted
+  Profile `avatar_url` prefix (`/storage/v1/object/public/avatars/<user id>/`).
+  It must match the web client's `VITE_SUPABASE_URL` exactly (scheme, host,
+  port), or every avatar save returns 400. `SUPABASE_JWT_AUDIENCE`
   is the exact accepted audience. `SUPABASE_SERVICE_ROLE_KEY` is server-only
   and is used for hard User deletion. Never put it in a client app.
 - Accepted algorithms are `RS256` and `ES256` (P-256). A symmetric JWT secret

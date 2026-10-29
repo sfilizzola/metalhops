@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Profile card, compact facts</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Grenze+Gotisch:wght@700&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../../system/tokens.css">
+<link rel="stylesheet" href="../../system/components.css">
+<link rel="stylesheet" href="mockup.css">
+<link rel="stylesheet" href="card-compact.css">
+<script src="mockup.js"></script>
+</head>
+<body>
+<!--
+Round 3: three compact treatments for From and Gender on the variant-B stage card (secondary facts, small, inventive).
+1 Tour-stop line, 2 Ticket sub-row, 3 Byline. Sample data, not for production.
+Gender symbols are custom, drawn in Lucide's style (24 grid, stroke 2, round caps and joins, no fill); house, eye-off,
+map-pin-check, store are Lucide 0.469.0 paths. ?only=1|2|3 shows one treatment as a page; add &s=<state> for a state.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" style="display:none" aria-hidden="true"><symbol id="i-menu" viewBox="0 0 24 24"><line x1="4" x2="20" y1="12" y2="12"/><line x1="4" x2="20" y1="6" y2="6"/><line x1="4" x2="20" y1="18" y2="18"/></symbol><symbol id="i-house" viewBox="0 0 24 24"><path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8"/><path d="M3 10a2 2 0 0 1 .709-1.528l7-5.999a2 2 0 0 1 2.582 0l7 5.999A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></symbol><symbol id="i-compass" viewBox="0 0 24 24"><path d="m16.24 7.76-1.804 5.411a2 2 0 0 1-1.265 1.265L7.76 16.24l1.804-5.411a2 2 0 0 1 1.265-1.265z"/><circle cx="12" cy="12" r="10"/></symbol><symbol id="i-map-pin-check" viewBox="0 0 24 24"><path d="M19.43 12.935c.357-.967.57-1.955.57-2.935a8 8 0 0 0-16 0c0 4.993 5.539 10.193 7.399 11.799a1 1 0 0 0 1.202 0 32.197 32.197 0 0 0 .813-.728"/><circle cx="12" cy="10" r="3"/><path d="m16 18 2 2 4-4"/></symbol><symbol id="i-store" viewBox="0 0 24 24"><path d="m2 7 4.41-4.41A2 2 0 0 1 7.83 2h8.34a2 2 0 0 1 1.42.59L22 7"/><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><path d="M15 22v-4a2 2 0 0 0-2-2h-2a2 2 0 0 0-2 2v4"/><path d="M2 7h20"/></symbol><symbol id="i-user-round" viewBox="0 0 24 24"><circle cx="12" cy="8" r="5"/><path d="M20 21a8 8 0 0 0-16 0"/></symbol><symbol id="i-pencil" viewBox="0 0 24 24"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/><path d="m15 5 4 4"/></symbol><symbol id="i-mail" viewBox="0 0 24 24"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></symbol><symbol id="i-user-check" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><polyline points="16 11 18 13 22 9"/></symbol><symbol id="i-users" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></symbol><symbol id="i-users-round" viewBox="0 0 24 24"><path d="M18 21a8 8 0 0 0-16 0"/><circle cx="10" cy="8" r="5"/><path d="M22 20c0-3.37-2-6.5-4-8a5 5 0 0 0-.45-8.3"/></symbol>
+<!-- Gender glyphs (custom, Lucide style) -->
+<symbol id="g-woman" viewBox="0 0 24 24"><circle cx="12" cy="9" r="6"/><path d="M12 15v7"/><path d="M9 19h6"/></symbol>
+<symbol id="g-man" viewBox="0 0 24 24"><circle cx="10" cy="14" r="6"/><path d="M16 3h5v5"/><path d="m21 3-6.75 6.75"/></symbol>
+<symbol id="g-nb" viewBox="0 0 24 24"><circle cx="12" cy="15.5" r="5.5"/><path d="M12 10V5"/><path d="m9 2 6 6"/><path d="m15 2-6 6"/></symbol>
+<symbol id="g-pns" viewBox="0 0 24 24"><path d="M10.733 5.076a10.744 10.744 0 0 1 11.205 6.575 1 1 0 0 1 0 .696 10.747 10.747 0 0 1-1.444 2.49"/><path d="M14.084 14.158a3 3 0 0 1-4.242-4.242"/><path d="M17.479 17.499a10.75 10.75 0 0 1-15.417-5.151 1 1 0 0 1 0-.696 10.75 10.75 0 0 1 4.446-5.143"/><path d="m2 2 20 20"/></symbol>
+<symbol id="g-nb-open" viewBox="0 0 24 24"><circle cx="12" cy="17" r="5"/><path d="M12 12V5"/><path d="m8.5 1.5 7 7"/><path d="m15.5 1.5-7 7"/></symbol>
+</svg>
+<button class="mock-theme" type="button" aria-label="Toggle theme (mockup only)">Dark</button>
+<div class="shell">
+  <aside class="shell__sidebar"><div class="sidebar">
+    <p class="sidebar__wordmark t-title">MetalHops</p>
+    <nav class="sidebar__nav" aria-label="Main"><a class="nav-item" href="#"><svg class="icon" aria-hidden="true"><use href="#i-house"/></svg>Home</a><a class="nav-item" href="#"><svg class="icon" aria-hidden="true"><use href="#i-compass"/></svg>Discover</a><a class="nav-item" href="#"><svg class="icon" aria-hidden="true"><use href="#i-map-pin-check"/></svg>Check-ins</a><a class="nav-item" href="#"><svg class="icon" aria-hidden="true"><use href="#i-store"/></svg>My venues</a><a class="nav-item" href="#" aria-current="page"><svg class="icon" aria-hidden="true"><use href="#i-user-round"/></svg>Profile</a></nav>
+    <div class="sidebar__foot"><div class="identity identity--compact" style="padding:var(--space-2) var(--space-3)"><span class="avatar avatar--photo" aria-hidden="true"></span><span class="identity__text"><span class="identity__name">Hel Hammerfall</span></span></div></div>
+  </div></aside>
+  <div>
+    <header class="topbar"><span class="btn btn--ghost topbar__menu" aria-label="Open menu"><svg class="icon icon--lg" aria-hidden="true"><use href="#i-menu"/></svg></span><span class="topbar__wordmark t-title">MetalHops</span></header>
+    <main class="shell__main"><div class="cc-page" id="root"></div>
+      <p class="mock-foot t-caption">Sample data. Design mockup, not for production.</p>
+    </main>
+  </div>
+</div>
+<script>
+(function () {
+  var G = { woman: "Woman", man: "Man", nb: "Non-binary", pns: "Prefer not to say" };
+  var FULL = { city: "Hamburg", country: "Germany", g: "nb" };
+  var STATES = {
+    full: ["Full data, non-binary", FULL],
+    woman: ["Woman", { city: "Hamburg", country: "Germany", g: "woman" }],
+    man: ["Man", { city: "Hamburg", country: "Germany", g: "man" }],
+    pns: ["Prefer not to say", { city: "Hamburg", country: "Germany", g: "pns" }],
+    country: ["City missing: country only", { country: "Germany", g: "nb" }],
+    city: ["Country missing: city only", { city: "Hamburg", g: "nb" }],
+    none: ["No location, gender unset: nothing rendered", {}],
+    long: ["Very long city", { city: "Llanfairpwllgwyngyllgogerychwyrndrobwllllantysiliogogogoch", country: "United Kingdom", g: "nb" }]
+  };
+  function ic(id, c) { return '<svg class="icon ' + (c || "") + '" aria-hidden="true"><use href="#' + id + '"/></svg>'; }
+  // Gender symbol: accessible name and tooltip on the wrapper; the shape carries the meaning, never colour alone.
+  function gsym(g, wrap, svg) { return '<span class="' + wrap + '" role="img" aria-label="Gender: ' + G[g] + '" title="' + G[g] + '"><svg class="g-icon ' + svg + '" viewBox="0 0 24 24" aria-hidden="true"><use href="#g-' + g + '"/></svg></span>'; }
+  function hasLoc(p) { return !!(p.city || p.country); }
+  function loc(p, label) {
+    var s = label ? "" : '<span class="vh">From </span>';
+    if (p.city) s += '<span class="loc__city">' + p.city + '</span>';
+    if (p.city && p.country) s += '<span class="loc__sep"> – </span>';
+    if (p.country) s += '<span class="' + (p.city ? "loc__country--sub" : "") + '">' + p.country + '</span>';
+    return s;
+  }
+  var EDIT = '<a class="btn btn--primary" href="edit-1-sectioned.html">' + ic("i-pencil") + 'Edit profile</a>';
+  var BIO = 'Louder than hell.<br>Tuesday doom nights at the Anvil.';
+  function strip(index) {
+    return '<ul class="st__strip" aria-label="Stats">' + [["42", "Check-ins", "i-map-pin-check"], ["17", "Venues", "i-store"]].map(function (c, i) {
+      return '<li class="stat"><span class="stat__n">' + c[0] + '</span><span class="stat__l t-label">' + (index ? '<span class="idx" aria-hidden="true">0' + (i + 1) + '</span>' : "") + ic(c[2], "icon--sm") + c[1] + '</span></li>';
+    }).join("") + '</ul>';
+  }
+  function card(o) {
+    return '<div class="st' + (o.mod ? " " + o.mod : "") + '"><section class="card st__card" aria-label="Profile summary"><div class="st__top">' +
+      '<span class="avatar avatar--photo avatar--xl st__avatar" role="img" aria-label="Profile photo placeholder">Photo</span>' +
+      '<div class="st__id"><h1 class="name">Hel Hammerfall</h1>' + (o.user || '<p class="username">@hel_hammer</p>') + '</div>' +
+      '<p class="st__bio">' + BIO + '</p>' + (o.meta || "") + '<div class="st__act">' + EDIT + '</div></div>' +
+      (o.sub || "") + strip(o.index) + '</section></div>';
+  }
+
+  /* 1. Tour-stop line: one quiet line under the bio. */
+  function tour(p) {
+    if (!hasLoc(p) && !p.g) return card({});
+    var s = '<p class="tstop' + (hasLoc(p) ? " tstop--loc" : "") + '">';
+    if (hasLoc(p)) s += ic("i-house", "icon--sm inl tstop__house") + loc(p);
+    if (p.g) s += '<span class="tstop__g">' + (hasLoc(p) ? '<span class="tstop__div" aria-hidden="true"></span>' : "") + gsym(p.g, "", "g-18 inl") + '</span>';
+    return card({ meta: s + '</p>' });
+  }
+  /* 2. Ticket sub-row: perforated line between bio and counters. */
+  function ticket(p) {
+    if (!hasLoc(p) && !p.g) return card({ index: true });
+    var s = '<div class="tk">';
+    if (hasLoc(p)) s += '<p class="tk__loc"><span class="tk__k">From</span>' + ic("i-house", "icon--sm inl tk__house") + loc(p, true) + '</p>';
+    if (p.g) s += gsym(p.g, "tk__g", "g-18");
+    return card({ mod: "st--tk", sub: s + '</div>', index: true });
+  }
+  /* 3. Byline: the facts join the @username line. */
+  function byline(p) {
+    if (!hasLoc(p) && !p.g) return card({});
+    var m = hasLoc(p) ? '<span class="byline__meta">' + ic("i-house", "icon--sm inl byline__house") + loc(p) + (p.g ? gsym(p.g, "byline__g", "icon--sm inl") : "") + '</span>'
+      : '<span class="byline__meta byline__meta--g">' + gsym(p.g, "byline__g", "icon--sm inl") + '</span>';
+    return card({ user: '<p class="username byline">@hel_hammer' + m + '</p>' });
+  }
+
+  var T = {
+    1: { fn: tour, name: "Tour-stop line",
+      one: "One quiet line directly under the bio, set like a tour date: amber house, HAMBURG – GERMANY in letterspaced label caps (city on-surface, dash and country muted), a hairline divider, then the gender symbol at 18 px in muted ink.",
+      opt: "The tour-stop idea at its purest. One line, one amber mark, reads after the bio and before the counters, which is exactly the hierarchy. Uppercase label type makes it read as a caption, never as a heading.",
+      trade: "Adds one 20 px line plus one 12 px gap (32 px). Uppercase letterspacing makes long place names long; the divider is the one ornament and only appears when both facts exist.",
+      grow: "Further facts (e.g. member since, favourite genre) append after another hairline divider on the same line, and wrap as whole groups. Following, Followers and Crews belong in the strip, not here; the line is untouched by them.",
+      mob: "Stays one line for normal names at 375 px. Long names wrap with a hanging indent so the text aligns under the city, not under the house; the divider and symbol move together (no orphaned divider in the middle of a line)." },
+    2: { fn: ticket, name: "Ticket sub-row",
+      one: "A slim stub between the bio and the counters: a dashed perforation with two small punched notches at the card edges, then one ticket line, FROM ⌂ Hamburg – Germany on the left, the symbol on the right. Shown with the optional set-list index (01, 02) in the strip.",
+      opt: "Structure. The facts get their own band, separate from the person (top) and the numbers (strip), so the top block stays exactly variant B. The FROM key makes the line self-explanatory without caps on the place name.",
+      trade: "The most chrome of the three: a perforation, two notches and a key for two small facts; about 33 px. The notches need the page background behind the card (a card on another surface would show the wrong colour).",
+      grow: "The ticket line takes more key–value pairs (SINCE 2024, CREW Anvil Doomers) left to right, or a second ticket row. With Following, Followers and Crews the strip grows to 03–05 and the index starts to carry meaning.",
+      mob: "One line at 375 px: location left, symbol pinned right. Long names wrap inside the left cell; the symbol stays top-right on the first line. If only gender is set, the symbol sits alone on the left." },
+    3: { fn: byline, name: "Byline",
+      one: "My pick for the third idea: the facts join the @username line as a byline, @hel_hammer · ⌂ Hamburg – Germany followed by the symbol, in label-size sentence case, house and symbol both muted (no amber at all), the symbol a 16 px tail.",
+      opt: "Height. Zero extra pixels on desktop, one 20 px line on a phone. It is where people already look for this kind of meta (Untappd, Instagram, Mastodon), and it is the quietest: no amber, no caps, no ornament.",
+      trade: "It moves the facts above the bio, so the reading order is name, handle and place, then bio. Size and colour keep them quieter than the bio, but the strict order name > bio > counters > From/Gender is bent. Less MetalHops character: it could be any app.",
+      grow: "Poor. A byline holds one or two short facts; a third makes it a run-on line under the name. More facts would have to move elsewhere, so this is a dead end if Details grow.",
+      mob: "Under 40 rem the location drops to its own line under the handle (no dangling separator); the symbol trails the last word. The long city wraps anywhere, still under the name block." }
+  };
+  var ctx = '<section class="soon" aria-label="Coming soon"><span class="t-caption">Coming soon</span><ul><li class="t-label">Following</li><li class="t-label">Followers</li><li class="t-label">Crews</li></ul></section>' +
+    '<section class="account" aria-labelledby="acc"><h2 id="acc" class="t-label section-title">Account (only you see this)</h2><dl class="facts"><div><dt class="t-label">Email</dt><dd>hel@example.com</dd></div><div><dt class="t-label">Account status</dt><dd><span class="tag">Active</span></dd></div></dl></section>';
+  function note(k) { var d = T[k]; return '<div class="cc-note"><dl><div><dt class="t-label">What it optimises</dt><dd>' + d.opt + '</dd></div><div><dt class="t-label">Trade-off</dt><dd>' + d.trade + '</dd></div><div><dt class="t-label">How it grows</dt><dd>' + d.grow + '</dd></div><div><dt class="t-label">On mobile</dt><dd>' + d.mob + '</dd></div></dl></div>'; }
+
+  var q = new URLSearchParams(location.search), only = q.get("only"), st = STATES[q.get("s")] || STATES.full;
+  if (only && T[only]) {
+    document.getElementById("root").innerHTML = '<div class="cc-flow" id="t' + only + '">' + T[only].fn(st[1]) + ctx + '</div>';
+    return;
+  }
+  var h = '<section class="cc-sec"><h1 class="t-heading">Profile card, round 3: small From and Gender</h1><p>From and Gender are secondary facts, so each treatment stays small: label or caption type, 16 to 20 px symbols, at most one amber mark. The card is variant B unchanged (avatar breaking the top edge, name, @username, bio, Edit profile, counters strip). Toggle Dark/Light; ?only=1, 2 or 3 shows a treatment as a plain page.</p></section>';
+
+  function g(id, sz) { return '<svg class="g-icon glab__' + sz + '" viewBox="0 0 24 24" aria-hidden="true"><use href="#' + id + '"/></svg>'; }
+  var rows = [["g-woman", "Woman"], ["g-man", "Man"], ["g-nb", "Non-binary, stem + X (round 2)"], ["g-nb-open", "Non-binary, small-size cut (proposed)"], ["g-pns", "Prefer not to say (eye-off)"]];
+  h += '<section class="cc-sec" id="glyphs"><h2 class="t-heading">Symbols at real size</h2><p>16, 18 and 20 px, then 18 px in its tour-stop context. At 16 to 18 px the round-2 non-binary X is two 4 px strokes meeting the stem in one point and closes into an asterisk-like knot. The proposed small-size cut keeps the same symbol but gives the X arms 7 units instead of 6 and the ring half a unit less, so the crossing has room and the X stays open; use it for every size under 24 px.</p>' +
+    '<div class="card glab"><span class="t-label">Symbol</span><span class="t-label">16</span><span class="t-label">18</span><span class="t-label">20</span><span class="t-label">In context, 18 px</span>' +
+    rows.map(function (r) { return '<span class="t-label">' + r[1] + '</span>' + ["16", "18", "20"].map(function (s) { return '<span class="glab__sz">' + g(r[0], s) + '</span>'; }).join("") +
+      '<span class="tstop tstop--loc glab__ctx">' + ic("i-house", "icon--sm inl tstop__house") + '<span class="loc__city">Hamburg</span><span class="loc__sep"> – </span><span class="loc__country--sub">Germany</span><span class="tstop__g"><span class="tstop__div"></span><svg class="g-icon g-18 inl" viewBox="0 0 24 24" aria-hidden="true"><use href="#' + r[0] + '"/></svg></span></span>'; }).join("") +
+    '</div></section>';
+
+  [1, 2, 3].forEach(function (k) {
+    var d = T[k];
+    h += '<section class="cc-sec" id="t' + k + '"><p class="t-label cc-kicker">Treatment ' + k + '</p><h2 class="t-title">' + d.name + '</h2><p>' + d.one + '</p>' +
+      '<div class="cc-flow">' + d.fn(FULL) + ctx + '</div>' + note(k) + '</section>' +
+      '<section class="cc-sec" id="s' + k + '"><h3 class="t-label section-title">' + k + '. ' + d.name + ': states</h3><div class="cc-states">' +
+      Object.keys(STATES).filter(function (s) { return s !== "full"; }).map(function (s) { return '<div class="cc-state" id="s' + k + '-' + s + '"><span class="t-caption">' + STATES[s][0] + '</span>' + d.fn(STATES[s][1]) + '</div>'; }).join("") + '</div></section>';
+  });
+  h += '<section class="cc-sec" id="rec"><h2 class="t-heading">Set-list index (optional micro-touch)</h2><p>Shown on 2 only. Opinion: keep it in the pocket. With two counters, 01 and 02 say nothing, and they add a second or third amber mark to a card that already has the house and the Edit button. Ship it together with Following, Followers and Crews, when 01–05 reads as a real set list.</p></section>' +
+    '<section class="cc-sec"><h2 class="t-heading">Ranking and recommendation</h2><div class="cc-note cc-rec"><dl>' +
+    '<div><dt class="t-label">1. Tour-stop line (recommended)</dt><dd>It is the round-2 direction the feedback liked, made small: one line, one amber house, the symbol in muted ink, and it sits exactly where the hierarchy says (after the bio, before the counters). 32 px on desktop, one line on a phone, wraps cleanly, and has room for one or two more facts.</dd></div>' +
+    '<div><dt class="t-label">2. Ticket sub-row</dt><dd>The most characterful and the best container for future facts, but the perforation and notches are a lot of drawing for two small facts; it competes with the strip as a second horizontal band. Keep it for check-in receipts or venue tickets.</dd></div>' +
+    '<div><dt class="t-label">3. Byline</dt><dd>The cheapest in height and the most conventional, but it lifts the facts above the bio and has no room to grow. A safe fallback if vertical space becomes the constraint.</dd></div>' +
+    '</dl></div></section>';
+  document.getElementById("root").innerHTML = h;
+})();
+</script>
+</body>
+</html>

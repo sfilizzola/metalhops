@@ -40,6 +40,85 @@ func normalizeDisplayName(value string) (string, error) {
 	return value, nil
 }
 
+// The optional-field normalizers return nil for an empty value, which clears
+// the stored field.
+
+func normalizeBio(value string) (*string, error) {
+	if !utf8.ValidString(value) || noteControl(value) {
+		return nil, &ValidationError{Fields: map[string]string{"bio": "must be valid text"}}
+	}
+	value = norm.NFC.String(strings.TrimSpace(value))
+	if utf8.RuneCountInString(value) > 280 {
+		return nil, &ValidationError{Fields: map[string]string{"bio": "must be at most 280 characters"}}
+	}
+	return optional(value), nil
+}
+
+func normalizeCity(value string) (*string, error) {
+	if !utf8.ValidString(value) || lineOrControl(value) {
+		return nil, &ValidationError{Fields: map[string]string{"from_city": "must be valid text"}}
+	}
+	value = norm.NFC.String(strings.TrimSpace(value))
+	if utf8.RuneCountInString(value) > 80 {
+		return nil, &ValidationError{Fields: map[string]string{
+			"from_city": "must be at most 80 characters on one line",
+		}}
+	}
+	return optional(value), nil
+}
+
+var countryPattern = regexp.MustCompile(`^[A-Z]{2}$`)
+
+func normalizeCountry(value string) (*string, error) {
+	if value != "" && !countryPattern.MatchString(value) {
+		return nil, &ValidationError{Fields: map[string]string{
+			"from_country": "must be a two-letter uppercase ISO 3166-1 code",
+		}}
+	}
+	return optional(value), nil
+}
+
+var genders = map[string]struct{}{
+	"woman":             {},
+	"man":               {},
+	"non_binary":        {},
+	"prefer_not_to_say": {},
+}
+
+func normalizeGender(value string) (*string, error) {
+	if _, ok := genders[value]; value != "" && !ok {
+		return nil, &ValidationError{Fields: map[string]string{
+			"gender": "must be woman, man, non_binary, or prefer_not_to_say",
+		}}
+	}
+	return optional(value), nil
+}
+
+var avatarObjectPattern = regexp.MustCompile(`^[A-Za-z0-9_-][A-Za-z0-9._-]{0,199}$`)
+
+// normalizeAvatarURL accepts only a public object directly inside the caller's
+// own avatars/<userID>/ folder, so the field cannot point at another host.
+func normalizeAvatarURL(value, supabaseURL, userID string) (*string, error) {
+	if value == "" {
+		return nil, nil
+	}
+	prefix := supabaseURL + "/storage/v1/object/public/avatars/" + userID + "/"
+	object, ok := strings.CutPrefix(value, prefix)
+	if !ok || !avatarObjectPattern.MatchString(object) || len(value) > 500 {
+		return nil, &ValidationError{Fields: map[string]string{
+			"avatar_url": "must be an image in your own avatars folder",
+		}}
+	}
+	return &value, nil
+}
+
+func optional(value string) *string {
+	if value == "" {
+		return nil
+	}
+	return &value
+}
+
 func lineOrControl(value string) bool {
 	return disallowedControl(value, false)
 }

@@ -34,7 +34,7 @@ func newHarness(t *testing.T) *harness {
 	limiter := ratelimit.NewUserLimiter(clock)
 	return &harness{
 		pool:    pool,
-		service: New(pool, profile.New(pool, limiter, nil, clock), limiter, clock),
+		service: New(pool, profile.New(pool, limiter, nil, clock, ""), limiter, clock),
 		limiter: limiter,
 	}
 }

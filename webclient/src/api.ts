@@ -7,7 +7,16 @@ export type Profile = {
   moderation_reason: string | null;
   moderation_note: string | null;
   suspended_until: string | null;
+  bio: string | null;
+  gender: Gender | null;
+  from_city: string | null;
+  from_country: string | null;
+  avatar_url: string | null;
+  stats: { check_ins: number; venues: number };
 };
+export type Gender = "woman" | "man" | "non_binary" | "prefer_not_to_say";
+// Absent = unchanged; "" clears a nullable field.
+export type ProfileInput = Partial<Record<"username" | "display_name" | "bio" | "gender" | "from_city" | "from_country" | "avatar_url", string>>;
 export type ApiFailure =
   | { kind: "unauthorized" }
   | { kind: "forbidden" }
@@ -78,14 +87,14 @@ export async function getMe(baseUrl: string, getToken: GetToken, signal?: AbortS
 export async function saveProfile(
   baseUrl: string,
   getToken: GetToken,
-  input: { username: string; display_name: string },
+  input: ProfileInput,
   signal?: AbortSignal,
 ): Promise<SaveProfileResult> {
   const r = await attempt(
     baseUrl,
     getToken,
     "/v1/me",
-    { method: "PATCH", body: JSON.stringify({ username: input.username, display_name: input.display_name }) },
+    { method: "PATCH", body: JSON.stringify(input) },
     signal,
   );
   if ("unauthorized" in r) return { kind: "unauthorized" };

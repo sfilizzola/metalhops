@@ -5,6 +5,7 @@ import { expect, test, vi } from "vitest";
 import { Alert } from "./Alert";
 import { Button } from "./Button";
 import { Field } from "./Field";
+import { GenderIcon } from "./GenderIcon";
 import { Icon } from "./Icon";
 import { Skeleton, Spinner } from "./Spinner";
 
@@ -64,4 +65,16 @@ test("Spinner and Skeleton render hidden decorative elements", () => {
   const { container } = render(<><Spinner /><Skeleton width="10px" /></>);
   expect(container.querySelector("svg.spinner")).toHaveAttribute("aria-hidden", "true");
   expect(container.querySelector(".skeleton")).toHaveStyle({ width: "10px" });
+});
+
+test("GenderIcon exposes an accessible name and tooltip and draws one decorative svg", () => {
+  const { container, rerender } = render(<GenderIcon gender="non_binary" />);
+  const img = screen.getByRole("img", { name: "Gender: Non-binary" });
+  expect(img).toHaveAttribute("title", "Non-binary");
+  expect(container.querySelectorAll("svg")).toHaveLength(1);
+  expect(container.querySelector("svg")).toHaveAttribute("aria-hidden", "true");
+  for (const [g, name] of [["woman", "Woman"], ["man", "Man"], ["prefer_not_to_say", "Prefer not to say"]] as const) {
+    rerender(<GenderIcon gender={g} />);
+    expect(screen.getByRole("img", { name: `Gender: ${name}` })).toBeTruthy();
+  }
 });

@@ -14,7 +14,7 @@ vi.mock("./api");
 
 const TOKEN = "secret-jwt-token";
 const session = { access_token: TOKEN, user: { id: "u1", email: "me@example.com" } };
-const profile = { id: "u1", username: "metal_fan", display_name: "Metal Fan", status: "active" as const, moderation_reason: null, moderation_note: null, suspended_until: null };
+const profile = { id: "u1", username: "metal_fan", display_name: "Metal Fan", status: "active" as const, moderation_reason: null, moderation_note: null, suspended_until: null, bio: null, gender: null, from_city: null, from_country: null, avatar_url: null, stats: { check_ins: 0, venues: 0 } };
 
 const auth = {
   getSession: vi.fn(),
@@ -91,7 +91,7 @@ test("shows_loading_until_initial_session_without_login_flash", () => {
   expect(auth.onAuthStateChange).toHaveBeenCalledTimes(1);
 });
 
-test.each(PROTECTED)("unauthed_visit_to_%s_redirects_to_login", (path) => {
+test.each([...PROTECTED, "/profile/edit"])("unauthed_visit_to_%s_redirects_to_login", (path) => {
   signedOutAt(path);
   expect(loc()).toBe("/login");
   expect(screen.getByRole("heading", { level: 1, name: "Sign in" })).toBeInTheDocument();
@@ -261,10 +261,20 @@ test("profile_route_shows_profile_and_email", async () => {
   expect(within(screen.getByRole("main")).getByText("@metal_fan")).toBeInTheDocument();
 });
 
-test("404_shows_no_profile_state", async () => {
+test("404_redirects_to_create_on_profile_edit", async () => {
   signedInAt("/profile", { kind: "no_profile" });
   expect(await screen.findByText(/no profile yet/)).toBeInTheDocument();
+  expect(loc()).toBe("/profile/edit");
   expect(screen.getByLabelText("Username")).toBeInTheDocument();
+});
+
+test("profile_edit_route_has_no_nav_entry_and_keeps_profile_active", async () => {
+  signedInAt("/profile/edit");
+  expect(await screen.findByLabelText("Display name")).toBeInTheDocument();
+  expect(screen.getByRole("heading", { level: 1, name: "Edit profile" })).toBeInTheDocument();
+  const links = sidebarNav().getAllByRole("link", { hidden: true });
+  expect(links.map((a) => a.getAttribute("href"))).not.toContain("/profile/edit");
+  expect(sidebarNav().getByRole("link", { name: "Profile", hidden: true })).toHaveAttribute("aria-current", "page");
 });
 
 test("401_signs_out_locally_and_shows_login", async () => {
@@ -326,7 +336,17 @@ test("identity_shows_initials_name_and_username", async () => {
   const identity = await within(sidebarEl()).findByRole("link", { name: /Metal Fan/, hidden: true });
   expect(identity).toHaveAttribute("href", "/profile");
   expect(identity).toHaveTextContent("MF");
+  expect(identity.querySelector(".avatar img")).toBeNull();
   expect(identity).toHaveTextContent("@metal_fan");
+});
+
+test("identity_shows_the_uploaded_photo_instead_of_initials", async () => {
+  signedInAt("/", { kind: "ok", profile: { ...profile, avatar_url: "https://x.supabase.co/storage/v1/object/public/avatars/u1/a.webp" } });
+  const identity = await within(sidebarEl()).findByRole("link", { name: /Metal Fan/, hidden: true });
+  const img = identity.querySelector(".avatar img");
+  expect(img).toHaveAttribute("src", "https://x.supabase.co/storage/v1/object/public/avatars/u1/a.webp");
+  expect(img).toHaveAttribute("alt", "");
+  expect(identity).not.toHaveTextContent("MF");
 });
 
 test("identity_without_profile_links_to_profile", async () => {

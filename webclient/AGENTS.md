@@ -20,8 +20,10 @@ Node 22.12 or newer. Setup, Supabase settings, and Vercel notes are in
 
 - `src/main.tsx`: mounts the app in `BrowserRouter`, imports the global CSS.
 - `src/App.tsx`: route table. `/login` and `/signup` are Public; `/`,
-  `/discover`, `/check-ins`, `/my-venues`, and `/profile` are App routes behind
-  `RequireAuth`. Any other path redirects to `/`.
+  `/discover`, `/check-ins`, `/my-venues`, `/profile` (read-only user page),
+  and `/profile/edit` (edit screen, and create mode when there is no Profile
+  yet) are App routes behind `RequireAuth`. `/profile/edit` has no nav entry.
+  Any other path redirects to `/`.
 - `src/api.ts`: pure `fetch` client for the Go API. It takes a `getToken`
   function and holds no session state.
 - `src/supabase.ts`: the single Supabase client. Create no other.
@@ -32,10 +34,17 @@ Node 22.12 or newer. Setup, Supabase settings, and Vercel notes are in
 - `src/pages/`: `Home`, `Discover`, `CheckIns`, `MyVenues`, and
   `UnderConstruction`, the placeholder for sections not built yet.
 - `src/profile/`: `MeProvider` (loads `GET /v1/me` once and exposes `useMe()`),
-  `ProfilePage`, `ProfileForm`, `initials.ts` (avatar initials, shared with
-  the sidebar), `profile.css`.
-- `src/ui/`: shared primitives: `Button`, `Field`, `Alert`, `Spinner` (with
-  `Skeleton`), `Icon`.
+  `ProfilePage` (`/profile`, read-only; sends a User with no Profile to
+  `/profile/edit`), `ProfileEditPage` (`/profile/edit`: back link, unsaved
+  changes confirm, `beforeunload` while dirty), `ProfileForm` (validation and
+  changed-fields-only save; on success the edit page navigates to `/profile`
+  with a `saved` router state flag), `ProfileStatus.tsx` (loading/error state and the `rename_required`
+  and `suspended` alerts, shared by both screens), `Avatar` (photo or
+  initials, shared with the sidebar), `AvatarUpload` (downscale, upload to the
+  Supabase `avatars` bucket), `countries.ts` (ISO codes, names via
+  `Intl.DisplayNames`), `initials.ts` (avatar initials), `profile.css`.
+- `src/ui/`: shared primitives: `Button`, `Field` (input, textarea or select via `as`), `Alert`, `Spinner` (with
+  `Skeleton`), `Icon`, `GenderIcon` (gender symbols, the only non-Lucide icons).
 - `src/design/`: generated copy of `design/system/tokens.css` and
   `components.css`. Header says generated.
 - `scripts/sync-design.mjs`: writes `src/design/` from `design/system/`.
@@ -54,7 +63,8 @@ Node 22.12 or newer. Setup, Supabase settings, and Vercel notes are in
 - Use design tokens (`var(--color-*)`, `var(--space-*)`, `var(--type-*)`) and
   the design system classes. No literal colours, font families, or other
   one-off values in component CSS.
-- Icons come from Lucide (`lucide-react`) only, at the design system's sizes.
+- Icons come from Lucide (`lucide-react`) only, at the design system's sizes,
+  except `src/ui/GenderIcon.tsx`: Lucide has no gender symbols.
 - Components the design system does not specify (sidebar, top bar, drawer,
   nav item, under-construction state) are derived. Keep them documented as
   derived in [README.md](README.md#derived-components).
